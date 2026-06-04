@@ -85,6 +85,13 @@ const ROOM_POTS = {
   S1:[{label:"F"},{label:"C"},{label:"E"},{label:"B"},{label:"D"},{label:"A"}],
   S2:[{label:"B"},{label:"A"},{label:"C",wide:true},{label:"D"},{label:"K",circular:true}],
 };
+// Config por defecto si una sala no tiene fila en room_config
+const RC_DEFAULTS = {flower_days:65,flush_days:20,harvest_days:5,veg_days:0,temp_min:null,temp_max:null,hum_min:null,hum_max:null,irrigation_type:"manual"};
+// Devuelve la config de una sala (de room_config) o defaults
+const getRC = (roomConfig,roomId) => {
+  const rc=(roomConfig||[]).find(r=>r.room_id===roomId);
+  return {...RC_DEFAULTS,...(rc||{}),room_id:roomId,display_name:rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId)};
+};
 const TODAY = new Date();
 const todayISO = TODAY.toISOString().split("T")[0];
 const daysFrom = d => Math.floor((TODAY-new Date(d))/86400000);
@@ -210,7 +217,7 @@ function TopBar({user,page,setPage,onLogout}){
 }
 
 function NavBar({user,page,setPage}){
-  const adminNav=[{id:"dashboard",l:"Inicio",i:"⌂"},{id:"tareas",l:"Tareas",i:"✓"},{id:"vegetativo",l:"Vege",i:"🌱"},{id:"estadisticas",l:"Stats",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"}];
+  const adminNav=[{id:"dashboard",l:"Inicio",i:"⌂"},{id:"tareas",l:"Tareas",i:"✓"},{id:"vegetativo",l:"Vege",i:"🌱"},{id:"estadisticas",l:"Stats",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"},{id:"configuracion",l:"Config",i:"⚙"}];
   const stdNav=[{id:"mi_turno",l:"Mi turno",i:"🌿"},{id:"tareas",l:"Tareas",i:"✓"},{id:"vegetativo",l:"Vegetativo",i:"🌱"}];
   const nav=user.role==="admin"?adminNav:stdNav;
   return <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"8px 14px",display:"flex",gap:6,overflowX:"auto"}}>
@@ -267,7 +274,7 @@ function MiTurno({user}){
 }
 
 // DASHBOARD
-function Dashboard({setPage,user}){
+function Dashboard({setPage,user,roomConfig,rooms}){
   const [cycles,setCycles]=useState([]);
   const [tasks,setTasks]=useState([]);
   const [vegStock,setVegStock]=useState([]);
@@ -311,7 +318,7 @@ function Dashboard({setPage,user}){
     </div>}
     <SL>Salas de cultivo</SL>
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      {["S1","S2"].map(rid=><RoomCard key={rid} roomId={rid} cycle={cycles.find(c=>c.room_id===rid)} onClick={()=>setPage(`sala_${rid}`)}/>)}
+      {rooms.map(rid=><RoomCard key={rid} roomId={rid} rc={getRC(roomConfig,rid)} cycle={cycles.find(c=>c.room_id===rid)} onClick={()=>setPage(`sala_${rid}`)}/>)}
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
       <Card onClick={()=>setPage("vegetativo")} style={{padding:0,overflow:"hidden"}}>
@@ -357,16 +364,18 @@ function Dashboard({setPage,user}){
   </div>;
 }
 
-function RoomCard({roomId,cycle,onClick}){
-  if(!cycle)return <Card onClick={onClick}><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:20,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif",margin:"4px 0"}}>{roomId==="S1"?"Sala 1":"Sala 2"}</div><div style={{fontSize:13,color:C.textSoft}}>Sin ciclo activo</div></Card>;
+function RoomCard({roomId,rc,cycle,onClick}){
+  const name=rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId);
+  const fdays=rc?.flower_days||65;
+  if(!cycle)return <Card onClick={onClick}><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:20,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif",margin:"4px 0"}}>{name}</div><div style={{fontSize:13,color:C.textSoft}}>Sin ciclo activo</div></Card>;
   const dayIn=daysFrom(cycle.flower_start);
   const dLeft=daysTo(cycle.estimated_harvest);
-  const pct=Math.min(100,Math.round(dayIn/65*100));
+  const pct=Math.min(100,Math.round(dayIn/fdays*100));
   const pm=PM[cycle.phase]||PM["floración"];
   return <Card onClick={onClick} style={{padding:0,overflow:"hidden"}}>
     <div style={{background:cycle.phase==="floración"?"linear-gradient(135deg,#FDF5E8,#FAE8C8)":"linear-gradient(135deg,#E4F0E6,#CDE6D0)",padding:"18px 20px 14px",borderBottom:`1px solid ${C.border}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif"}}>{roomId==="S1"?"Sala 1":"Sala 2"}</div></div>
+        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif"}}>{name}</div></div>
         <PBadge phase={cycle.phase}/>
       </div>
       <div style={{display:"flex",alignItems:"flex-end",gap:6,marginTop:10}}><span style={{fontSize:48,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif",lineHeight:1}}>{dayIn}</span><span style={{fontSize:14,color:C.textSoft,paddingBottom:9}}>días</span></div>
@@ -382,13 +391,13 @@ function RoomCard({roomId,cycle,onClick}){
 }
 
 // SALA PAGE
-function SalaPage({roomId,setPage,user,genetics}){
+function SalaPage({roomId,setPage,user,genetics,rc}){
   const [cycle,setCycle]=useState(null);
   const [tasks,setTasks]=useState([]);
   const [cg,setCg]=useState([]);
   const [wLog,setWLog]=useState([]);
   const [nLog,setNLog]=useState([]);
-  const [mDone,setMDone]=useState([]);
+  const [msRows,setMsRows]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selPot,setSelPot]=useState(null);
   const [toast,setToast]=useState(null);
@@ -399,17 +408,20 @@ function SalaPage({roomId,setPage,user,genetics}){
   const [showTimer,setShowTimer]=useState(false);
   const [showDoneT,setShowDoneT]=useState(false);
 
+  const fdays=rc?.flower_days||65;
+  const flushDays=rc?.flush_days||20;
+  const roomName=rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId);
+
   const getMilestones=c=>{
     if(!c||!c.flower_start)return[];
-    const di=daysFrom(c.flower_start);
     return [
-      {label:"Inicio floración",   date:c.flower_start,                   done:true,     type:"start"    },
-      {label:"Zoil Monkey 1",      date:c.flower_start,                   done:di>=1,    type:"nutricion"},
-      {label:"Poda 1 — día 15",    date:addDays(c.flower_start,15),       done:di>15,    type:"poda"     },
-      {label:"Zoil Monkey 2",      date:addDays(c.flower_start,15),       done:di>15,    type:"nutricion"},
-      {label:"Poda 2 — día 21",    date:addDays(c.flower_start,21),       done:di>21,    type:"poda"     },
-      {label:"Inicio lavado",      date:addDays(c.estimated_harvest,-20), done:false,    type:"lavado"   },
-      {label:"Cosecha estimada",   date:c.estimated_harvest,              done:false,    type:"cosecha"  },
+      {label:"Inicio floración",   date:c.flower_start,                          type:"start"    },
+      {label:"Zoil Monkey 1",      date:c.flower_start,                          type:"nutricion"},
+      {label:"Poda 1 — día 15",    date:addDays(c.flower_start,15),              type:"poda"     },
+      {label:"Zoil Monkey 2",      date:addDays(c.flower_start,15),              type:"nutricion"},
+      {label:"Poda 2 — día 21",    date:addDays(c.flower_start,21),              type:"poda"     },
+      {label:"Inicio lavado",      date:addDays(c.estimated_harvest,-flushDays), type:"lavado"   },
+      {label:"Cosecha estimada",   date:c.estimated_harvest,                     type:"cosecha"  },
     ];
   };
 
@@ -427,12 +439,27 @@ function SalaPage({roomId,setPage,user,genetics}){
       if(c){
         const cgData=await db.query("cycle_genetics",`cycle_id=eq.${c.id}`);
         setCg(cgData);
-        setMDone(getMilestones(c).map(m=>m.done));
+        const ms=await db.query("cycle_milestones",`cycle_id=eq.${c.id}`);
+        setMsRows(ms);
       }
     }finally{setLoading(false);}
   },[roomId]);
 
   useEffect(()=>{load();},[load]);
+
+  // Marca/desmarca un milestone y lo persiste en cycle_milestones
+  const toggleMilestone=async(m)=>{
+    if(!cycle)return;
+    const existing=msRows.find(r=>r.label===m.label);
+    if(existing){
+      const ns=!existing.done;
+      await db.update("cycle_milestones",existing.id,{done:ns,done_at:ns?new Date().toISOString():null});
+      setMsRows(prev=>prev.map(r=>r.id===existing.id?{...r,done:ns,done_at:ns?new Date().toISOString():null}:r));
+    }else{
+      const ins=await db.insert("cycle_milestones",{cycle_id:cycle.id,label:m.label,due_date:m.date,type:m.type,done:true,done_at:new Date().toISOString(),auto_generated:false});
+      if(ins&&ins[0])setMsRows(prev=>[...prev,ins[0]]);
+    }
+  };
 
   const toggleTask=async task=>{
     const ns=task.status==="completada"?"pendiente":"completada";
@@ -450,7 +477,7 @@ function SalaPage({roomId,setPage,user,genetics}){
   const milestones=getMilestones(cycle);
   const dayIn=cycle?daysFrom(cycle.flower_start):0;
   const pm=cycle?PM[cycle.phase]||PM["floración"]:PM["vegetativo"];
-  const pct=cycle?Math.min(100,Math.round(dayIn/65*100)):0;
+  const pct=cycle?Math.min(100,Math.round(dayIn/fdays*100)):0;
   const pendingT=tasks.filter(t=>t.status==="pendiente");
   const doneT=tasks.filter(t=>t.status==="completada");
   const byRoom={S1:[],S2:[],General:[]};
@@ -458,10 +485,10 @@ function SalaPage({roomId,setPage,user,genetics}){
 
   if(!cycle)return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-    {showPh&&<PhaseModal roomId={roomId} cycle={null} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Ciclo iniciado ✓",type:"success"});}}/>}
+    {showPh&&<PhaseModal roomId={roomId} cycle={null} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Ciclo iniciado ✓",type:"success"});}}/>}
     <div style={{textAlign:"center",padding:"40px 20px"}}>
       <div style={{fontSize:48,marginBottom:16}}>🌱</div>
-      <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>{roomId==="S1"?"Sala 1":"Sala 2"}</div>
+      <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>{roomName}</div>
       <div style={{fontSize:14,color:C.textSoft,marginBottom:24}}>Sin ciclo activo</div>
       {user.role==="admin"&&<Btn onClick={()=>setShowPh(true)} full>Iniciar ciclo</Btn>}
     </div>
@@ -471,14 +498,14 @@ function SalaPage({roomId,setPage,user,genetics}){
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
     {showW&&<WaterModal roomId={roomId} user={user} onClose={()=>setShowW(false)} onSaved={()=>{setShowW(false);load();setToast({msg:"Riego registrado ✓",type:"success"});}}/>}
     {showN&&<NutriModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowN(false)} onSaved={()=>{setShowN(false);load();setToast({msg:"Nutrición registrada ✓",type:"success"});}}/>}
-    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Fase actualizada ✓",type:"success"});}}/>}
+    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Fase actualizada ✓",type:"success"});}}/>}
     {showAG&&<AddGenModal cycleId={cycle.id} genetics={genetics} existing={cg} onClose={()=>setShowAG(false)} onSaved={()=>{setShowAG(false);load();setToast({msg:"Genética agregada ✓",type:"success"});}}/>}
     {showTimer&&<TimerModal onClose={()=>setShowTimer(false)}/>}
 
     {/* Hero */}
     <div style={{background:cycle.phase==="floración"?"linear-gradient(135deg,#FDF5E8,#FAE8C8)":"linear-gradient(135deg,#E4F0E6,#CDE6D0)",borderRadius:20,padding:"22px 20px 18px",border:`1px solid ${C.border}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:28,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif"}}>{roomId==="S1"?"Sala 1":"Sala 2"}</div></div>
+        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:28,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif"}}>{roomName}</div></div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
           <PBadge phase={cycle.phase}/>
           {user.role==="admin"&&<button onClick={()=>setShowPh(true)} style={{fontSize:11,color:C.textMid,background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>Cambiar fase</button>}
@@ -520,11 +547,12 @@ function SalaPage({roomId,setPage,user,genetics}){
       <SL>Fechas clave del ciclo</SL>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {milestones.map((m,i)=>{
-          const done=mDone[i]||false;
+          const row=msRows.find(r=>r.label===m.label);
+          const done=row?row.done:false;
           const tm=TM[m.type]||{icon:"📅"};
           const dL=daysTo(m.date);
           const isToday=m.date===todayISO;
-          return <div key={i} onClick={()=>setMDone(prev=>{const n=[...prev];n[i]=!n[i];return n;})}
+          return <div key={i} onClick={()=>toggleMilestone(m)}
             style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:done?C.greenLight:isToday?C.amberLight:C.bg,border:`1px solid ${done?C.green+"44":isToday?"#E8C07A":C.border}`,cursor:"pointer",opacity:done?0.65:1,transition:"all 0.1s"}}>
             <div style={{width:22,height:22,borderRadius:6,flexShrink:0,background:done?C.green:"transparent",border:`2px solid ${done?C.green:C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13}}>{done?"✓":""}</div>
             <span style={{fontSize:17}}>{tm.icon}</span>
@@ -725,16 +753,17 @@ function NutriModal({roomId,cycleId,user,onClose,onSaved}){
     <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving||!products.trim()} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
   </Modal>;
 }
-function PhaseModal({roomId,cycle,user,onClose,onSaved}){
+function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
+  const fdays=rc?.flower_days||65;
   const [phase,setPhase]=useState(cycle?.phase||"vegetativo");
   const [flowerStart,setFlowerStart]=useState(todayISO);
-  const [estimatedHarvest,setEstimatedHarvest]=useState(addDays(todayISO,65));
+  const [estimatedHarvest,setEstimatedHarvest]=useState(addDays(todayISO,fdays));
   const [saving,setSaving]=useState(false);
   const save=async()=>{
     setSaving(true);
     try{
       if(cycle){await db.update("cycles",cycle.id,{phase,flower_start:phase==="floración"?flowerStart:cycle.flower_start,estimated_harvest:phase==="floración"?estimatedHarvest:cycle.estimated_harvest});}
-      else{await db.insert("cycles",{room_id:roomId,phase,flower_start:flowerStart,estimated_harvest:estimatedHarvest,irrigation_type:roomId==="S1"?"automático":"manual",active:true});}
+      else{await db.insert("cycles",{room_id:roomId,phase,flower_start:flowerStart,estimated_harvest:estimatedHarvest,irrigation_type:rc?.irrigation_type||(roomId==="S1"?"automático":"manual"),active:true});}
       if(phase==="floración"){
         const hitos=[{l:"Zoil Monkey 1",t:"nutricion",o:0},{l:"Poda 1 — día 15",t:"poda",o:15},{l:"Zoil Monkey 2",t:"nutricion",o:15},{l:"Poda 2 — día 21",t:"poda",o:21}];
         for(const h of hitos)await db.insert("tasks",{title:`${h.l} ${roomId}`,room_id:roomId,type:h.t,assignee:"Lucas",due_date:addDays(flowerStart,h.o),status:"pendiente",priority:h.t==="poda"?"alta":"normal",auto_generated:true,created_by:"sistema"});
@@ -743,16 +772,16 @@ function PhaseModal({roomId,cycle,user,onClose,onSaved}){
       onSaved();
     }finally{setSaving(false);}
   };
-  return <Modal title={`Fase — ${roomId}`} onClose={onClose}>
+  return <Modal title={`Fase — ${rc?.display_name||roomId}`} onClose={onClose}>
     <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
       {["vegetativo","floración","cosechando"].map(p=>{const m=PM[p];return <button key={p} onClick={()=>setPhase(p)} style={{padding:"14px 16px",borderRadius:12,border:`2px solid ${phase===p?m.color:C.border}`,background:phase===p?m.bg:C.surface,cursor:"pointer",display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
         <div style={{width:12,height:12,borderRadius:"50%",background:m.color}}/><span style={{fontSize:15,fontWeight:700,color:C.text}}>{m.label}</span>{phase===p&&<span style={{marginLeft:"auto"}}>✓</span>}
       </button>;})}
     </div>
     {phase==="floración"&&<>
-      <FI label="Inicio floración" type="date" value={flowerStart} onChange={e=>{setFlowerStart(e.target.value);setEstimatedHarvest(addDays(e.target.value,65));}}/>
+      <FI label="Inicio floración" type="date" value={flowerStart} onChange={e=>{setFlowerStart(e.target.value);setEstimatedHarvest(addDays(e.target.value,fdays));}}/>
       <FI label="Cosecha estimada" type="date" value={estimatedHarvest} onChange={e=>setEstimatedHarvest(e.target.value)}/>
-      <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:12}}>⚡ Se generan tareas de poda y Zoil automáticamente</div>
+      <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:12}}>⚡ Se generan tareas de poda y Zoil automáticamente · {fdays} días de floración</div>
     </>}
     <div style={{display:"flex",gap:10}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Confirmar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
   </Modal>;
@@ -803,7 +832,7 @@ function TimerModal({onClose}){
 }
 
 // TAREAS PAGE
-function TareasPage({user}){
+function TareasPage({user,rooms}){
   const [tasks,setTasks]=useState([]);
   const [view,setView]=useState("hoy");
   const [loading,setLoading]=useState(true);
@@ -859,7 +888,7 @@ function TareasPage({user}){
       <SL>Nueva tarea</SL>
       <FI label="Título *" value={newT.title} onChange={e=>setNewT(p=>({...p,title:e.target.value}))} placeholder="Ej: Fumigación S1"/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <FS label="Sala" value={newT.room_id} onChange={e=>setNewT(p=>({...p,room_id:e.target.value}))} options={["S1","S2"]}/>
+        <FS label="Sala" value={newT.room_id} onChange={e=>setNewT(p=>({...p,room_id:e.target.value}))} options={rooms||["S1","S2"]}/>
         <FS label="Tipo" value={newT.type} onChange={e=>setNewT(p=>({...p,type:e.target.value}))} options={Object.keys(TM)}/>
         <FS label="Responsable" value={newT.assignee} onChange={e=>setNewT(p=>({...p,assignee:e.target.value}))} options={["Lucas","Alex","Gustavo","Alexis"]}/>
         <FS label="Prioridad" value={newT.priority} onChange={e=>setNewT(p=>({...p,priority:e.target.value}))} options={["normal","alta"]}/>
@@ -1118,7 +1147,7 @@ function GeneticasPage({genetics,setGenetics,user}){
 }
 
 // ESTADÍSTICAS
-function EstadisticasPage(){
+function EstadisticasPage({rooms}){
   const [stats,setStats]=useState(null);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
@@ -1131,11 +1160,11 @@ function EstadisticasPage(){
       tasks.forEach(t=>{if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
       const byType={};
       tasks.forEach(t=>{byType[t.type]=(byType[t.type]||0)+1;});
-      const wByRoom={S1:0,S2:0};
+      const wByRoom={};(rooms||["S1","S2"]).forEach(r=>{wByRoom[r]=0;});
       wl.forEach(w=>{if(wByRoom[w.room_id]!==undefined)wByRoom[w.room_id]++;});
       setStats({byUser,byType,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length});
     }).finally(()=>setLoading(false));
-  },[]);
+  },[rooms]);
   if(loading)return <Spin/>;
   if(!stats)return null;
   const pct=(d,t)=>t>0?Math.round(d/t*100):0;
@@ -1192,7 +1221,7 @@ function EstadisticasPage(){
 }
 
 // PLAGAS
-function PlagasPage({user}){
+function PlagasPage({user,rooms}){
   const [records,setRecords]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showForm,setShowForm]=useState(false);
@@ -1218,7 +1247,7 @@ function PlagasPage({user}){
     </div>
     {showForm&&<Card>
       <SL>Nuevo registro</SL>
-      <FS label="Sala" value={newR.room_id} onChange={e=>setNewR(p=>({...p,room_id:e.target.value}))} options={["S1","S2","Vegetativo"]}/>
+      <FS label="Sala" value={newR.room_id} onChange={e=>setNewR(p=>({...p,room_id:e.target.value}))} options={[...(rooms||["S1","S2"]),"Vegetativo"]}/>
       <FI label="Tipo de plaga / problema *" value={newR.pest_type} onChange={e=>setNewR(p=>({...p,pest_type:e.target.value}))} placeholder="Ej: Araña roja, Trips, Oídio"/>
       <FI label="Producto usado" value={newR.product} onChange={e=>setNewR(p=>({...p,product:e.target.value}))} placeholder="Ej: Aceite de Neem"/>
       <FI label="Fecha de detección" type="date" value={newR.detected_at} onChange={e=>setNewR(p=>({...p,detected_at:e.target.value}))}/>
@@ -1248,24 +1277,206 @@ function PlagasPage({user}){
   </div>;
 }
 
+// CONFIGURACIÓN (solo admins)
+function ConfigPage({user,roomConfig,onChanged}){
+  const [tab,setTab]=useState("salas");
+  const [rows,setRows]=useState([]);
+  const [cloners,setCloners]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [toast,setToast]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [showAddRoom,setShowAddRoom]=useState(false);
+  const [showAddCloner,setShowAddCloner]=useState(false);
+  const [newRoom,setNewRoom]=useState({room_id:"",display_name:"",irrigation_type:"manual"});
+  const [newCloner,setNewCloner]=useState({label:"",capacity:48});
+
+  const load=useCallback(()=>{
+    setLoading(true);
+    Promise.all([db.get("room_config"),db.get("cloners")])
+      .then(([rc,cl])=>{setRows(rc.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)));setCloners(cl);})
+      .finally(()=>setLoading(false));
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  if(user.role!=="admin")return <div style={{textAlign:"center",padding:"40px 20px",color:C.textSoft}}>Solo administradores</div>;
+
+  const setField=(id,field,val)=>setRows(prev=>prev.map(r=>r.id===id?{...r,[field]:val}:r));
+  const saveRoom=async(r)=>{
+    setSaving(true);
+    try{
+      await db.update("room_config",r.id,{
+        display_name:r.display_name,
+        flower_days:+r.flower_days||65,flush_days:+r.flush_days||20,
+        harvest_days:+r.harvest_days||5,veg_days:+r.veg_days||0,
+        temp_min:r.temp_min===""||r.temp_min==null?null:+r.temp_min,
+        temp_max:r.temp_max===""||r.temp_max==null?null:+r.temp_max,
+        hum_min:r.hum_min===""||r.hum_min==null?null:+r.hum_min,
+        hum_max:r.hum_max===""||r.hum_max==null?null:+r.hum_max,
+        irrigation_type:r.irrigation_type||"manual",
+      });
+      await logA(user.name,`Configuró sala ${r.room_id}`,"config");
+      setToast({msg:"Guardado ✓",type:"success"});
+      onChanged&&onChanged();
+    }catch{setToast({msg:"Error al guardar",type:"error"});}
+    finally{setSaving(false);}
+  };
+  const addRoom=async()=>{
+    if(!newRoom.room_id.trim())return;
+    setSaving(true);
+    try{
+      await db.insert("room_config",{room_id:newRoom.room_id.trim(),display_name:newRoom.display_name.trim()||newRoom.room_id.trim(),irrigation_type:newRoom.irrigation_type,sort_order:rows.length,...RC_DEFAULTS});
+      await logA(user.name,`Creó sala ${newRoom.room_id}`,"config");
+      setNewRoom({room_id:"",display_name:"",irrigation_type:"manual"});
+      setShowAddRoom(false);setToast({msg:"Sala creada ✓",type:"success"});
+      load();onChanged&&onChanged();
+    }catch{setToast({msg:"Error — ¿room_id repetido?",type:"error"});}
+    finally{setSaving(false);}
+  };
+  const delRoom=async(r)=>{
+    if(!window.confirm(`¿Eliminar la sala ${r.room_id}? Esto borra su configuración (no los ciclos ni registros).`))return;
+    await db.delete("room_config",r.id);
+    await logA(user.name,`Eliminó sala ${r.room_id}`,"config");
+    setRows(prev=>prev.filter(x=>x.id!==r.id));setToast({msg:"Sala eliminada",type:"success"});
+    onChanged&&onChanged();
+  };
+  const saveCloner=async(cl)=>{
+    setSaving(true);
+    try{await db.update("cloners",cl.id,{label:cl.label,capacity:+cl.capacity||48});setToast({msg:"Espejera guardada ✓",type:"success"});}
+    catch{setToast({msg:"Error",type:"error"});}
+    finally{setSaving(false);}
+  };
+  const setClonerField=(id,field,val)=>setCloners(prev=>prev.map(c=>c.id===id?{...c,[field]:val}:c));
+  const addCloner=async()=>{
+    if(!newCloner.label.trim())return;
+    setSaving(true);
+    try{
+      await db.insert("cloners",{label:newCloner.label.trim(),capacity:+newCloner.capacity||48});
+      setNewCloner({label:"",capacity:48});setShowAddCloner(false);setToast({msg:"Espejera creada ✓",type:"success"});load();
+    }catch{setToast({msg:"Error",type:"error"});}
+    finally{setSaving(false);}
+  };
+  const delCloner=async(cl)=>{
+    if(!window.confirm(`¿Eliminar ${cl.label}? Se borran sus slots.`))return;
+    await db.deleteWhere("cloner_slots","cloner_id",cl.id);
+    await db.delete("cloners",cl.id);
+    setCloners(prev=>prev.filter(c=>c.id!==cl.id));setToast({msg:"Espejera eliminada",type:"success"});
+  };
+
+  const numField=(r,field,label,suffix="d")=>(
+    <label style={{display:"flex",flexDirection:"column",gap:4,fontSize:11,color:C.textSoft}}>
+      {label}
+      <input type="number" value={r[field]??""} onChange={e=>setField(r.id,field,e.target.value)}
+        style={{width:"100%",padding:"9px 10px",borderRadius:9,border:`1.5px solid ${C.border}`,fontSize:14,color:C.text,background:C.surface,outline:"none"}}/>
+    </label>
+  );
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:"'Georgia',serif",paddingTop:8}}>Configuración</div>
+    <div style={{display:"flex",gap:8}}>
+      {[{id:"salas",l:"🏠 Salas"},{id:"clima",l:"🌡 Clima"},{id:"espejeras",l:"🌿 Espejeras"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"11px 6px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700,background:tab===t.id?C.green:C.surface,color:tab===t.id?"#fff":C.textMid,border:`1.5px solid ${tab===t.id?C.green:C.border}`}}>{t.l}</button>)}
+    </div>
+
+    {loading?<Spin/>:<>
+      {/* SALAS Y FASES */}
+      {tab==="salas"&&<>
+        <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={()=>setShowAddRoom(!showAddRoom)} v="secondary" style={{fontSize:13}}>+ Agregar sala</Btn></div>
+        {showAddRoom&&<Card>
+          <SL>Nueva sala</SL>
+          <FI label="ID corto * (ej: S3)" value={newRoom.room_id} onChange={e=>setNewRoom(p=>({...p,room_id:e.target.value}))} placeholder="S3"/>
+          <FI label="Nombre visible" value={newRoom.display_name} onChange={e=>setNewRoom(p=>({...p,display_name:e.target.value}))} placeholder="Sala 3"/>
+          <FS label="Riego" value={newRoom.irrigation_type} onChange={e=>setNewRoom(p=>({...p,irrigation_type:e.target.value}))} options={["manual","automático"]}/>
+          <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={addRoom} disabled={saving||!newRoom.room_id.trim()} style={{flex:1}}>{saving?"...":"Crear sala"}</Btn><Btn onClick={()=>setShowAddRoom(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
+        </Card>}
+        {rows.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Sin salas configuradas — agregá una</div>}
+        {rows.map(r=><Card key={r.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <Badge label={r.room_id} color={C.green} bg={C.greenLight}/>
+              <input value={r.display_name||""} onChange={e=>setField(r.id,"display_name",e.target.value)} placeholder="Nombre" style={{fontSize:16,fontWeight:800,color:C.text,border:"none",borderBottom:`1.5px solid ${C.border}`,background:"transparent",outline:"none",padding:"2px 0",maxWidth:140}}/>
+            </div>
+            <button onClick={()=>delRoom(r)} style={{fontSize:11,color:C.red,background:"transparent",border:"none",cursor:"pointer"}}>Eliminar</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            {numField(r,"flower_days","Días floración")}
+            {numField(r,"flush_days","Días lavado (antes cosecha)")}
+            {numField(r,"harvest_days","Días cosechando")}
+            {numField(r,"veg_days","Días vegetativo post-cosecha")}
+          </div>
+          <FS label="Tipo de riego" value={r.irrigation_type||"manual"} onChange={e=>setField(r.id,"irrigation_type",e.target.value)} options={["manual","automático"]}/>
+          <Btn onClick={()=>saveRoom(r)} disabled={saving} full style={{marginTop:4}}>{saving?"Guardando...":"Guardar sala"}</Btn>
+        </Card>)}
+      </>}
+
+      {/* CLIMA — rangos ideales */}
+      {tab==="clima"&&<>
+        <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Definí los rangos ideales de temperatura (°C) y humedad (%) por sala. Se usarán como referencia visual cuando cargues mediciones.</div>
+        {rows.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Configurá una sala primero en la pestaña Salas</div>}
+        {rows.map(r=><Card key={r.id}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <Badge label={r.room_id} color={C.blue} bg={C.blueLight}/>
+            <span style={{fontSize:16,fontWeight:800,color:C.text}}>{r.display_name||r.room_id}</span>
+          </div>
+          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,marginBottom:8}}>🌡 Temperatura (°C)</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {numField(r,"temp_min","Mínima")}
+            {numField(r,"temp_max","Máxima")}
+          </div>
+          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,marginBottom:8}}>💧 Humedad (%)</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {numField(r,"hum_min","Mínima")}
+            {numField(r,"hum_max","Máxima")}
+          </div>
+          <Btn onClick={()=>saveRoom(r)} disabled={saving} full>{saving?"Guardando...":"Guardar rangos"}</Btn>
+        </Card>)}
+      </>}
+
+      {/* ESPEJERAS */}
+      {tab==="espejeras"&&<>
+        <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={()=>setShowAddCloner(!showAddCloner)} v="secondary" style={{fontSize:13}}>+ Agregar espejera</Btn></div>
+        {showAddCloner&&<Card>
+          <SL>Nueva espejera</SL>
+          <FI label="Nombre *" value={newCloner.label} onChange={e=>setNewCloner(p=>({...p,label:e.target.value}))} placeholder="Ej: Espejera 4"/>
+          <FI label="Capacidad" type="number" value={newCloner.capacity} onChange={e=>setNewCloner(p=>({...p,capacity:e.target.value}))}/>
+          <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={addCloner} disabled={saving||!newCloner.label.trim()} style={{flex:1}}>{saving?"...":"Crear"}</Btn><Btn onClick={()=>setShowAddCloner(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
+        </Card>}
+        {cloners.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Sin espejeras</div>}
+        {cloners.map(cl=><Card key={cl.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{fontSize:15,fontWeight:800,color:C.text}}>🌿</span>
+            <button onClick={()=>delCloner(cl)} style={{fontSize:11,color:C.red,background:"transparent",border:"none",cursor:"pointer"}}>Eliminar</button>
+          </div>
+          <FI label="Nombre" value={cl.label||""} onChange={e=>setClonerField(cl.id,"label",e.target.value)}/>
+          <FI label="Capacidad (slots)" type="number" value={cl.capacity??48} onChange={e=>setClonerField(cl.id,"capacity",e.target.value)}/>
+          <Btn onClick={()=>saveCloner(cl)} disabled={saving} full style={{marginTop:4}}>{saving?"Guardando...":"Guardar espejera"}</Btn>
+        </Card>)}
+      </>}
+    </>}
+  </div>;
+}
+
 // APP
 export default function App(){
   const [user,setUser]=useState(null);
   const [page,setPage]=useState("dashboard");
   const [genetics,setGenetics]=useState([]);
-  useEffect(()=>{if(user){db.get("genetics").then(setGenetics);logA(user.name,"Inició sesión","auth");}},[user]);
+  const [roomConfig,setRoomConfig]=useState([]);
+  const loadConfig=useCallback(()=>{db.get("room_config").then(setRoomConfig).catch(()=>setRoomConfig([]));},[]);
+  useEffect(()=>{if(user){db.get("genetics").then(setGenetics);loadConfig();logA(user.name,"Inició sesión","auth");}},[user,loadConfig]);
   if(!user)return <LoginScreen onLogin={u=>{setUser(u);setPage(u.role==="admin"?"dashboard":"mi_turno");}}/>;
+  const rooms=roomConfig.length>0?roomConfig.map(r=>r.room_id):["S1","S2"];
   const render=()=>{
     switch(page){
       case "mi_turno":     return <MiTurno user={user}/>;
-      case "sala_S1":      return <SalaPage roomId="S1" setPage={setPage} user={user} genetics={genetics}/>;
-      case "sala_S2":      return <SalaPage roomId="S2" setPage={setPage} user={user} genetics={genetics}/>;
       case "vegetativo":   return <VegetativoPage genetics={genetics} user={user}/>;
-      case "tareas":       return <TareasPage user={user}/>;
+      case "tareas":       return <TareasPage user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
-      case "estadisticas": return <EstadisticasPage/>;
-      case "plagas":       return <PlagasPage user={user}/>;
-      default:             return user.role==="admin"?<Dashboard setPage={setPage} user={user}/>:<MiTurno user={user}/>;
+      case "estadisticas": return <EstadisticasPage rooms={rooms}/>;
+      case "plagas":       return <PlagasPage user={user} rooms={rooms}/>;
+      case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig}/>;
+      default:
+        if(page.startsWith("sala_")){const rid=page.slice(5);return <SalaPage roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)}/>;}
+        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms}/>:<MiTurno user={user}/>;
     }
   };
   return <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Segoe UI','Helvetica Neue',sans-serif",color:C.text,maxWidth:480,margin:"0 auto"}}>
