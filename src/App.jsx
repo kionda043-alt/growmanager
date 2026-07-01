@@ -451,7 +451,7 @@ function NavBar({user,page,setPage,wide}){
     ?[{id:"dashboard",l:"Inicio",i:"⌂"},{id:"sala_S1",l:"S1",i:"🌿"},{id:"sala_S2",l:"S2",i:"🌿"},{id:"tareas",l:"Tareas",i:"✓"},{id:"guia",l:"Guía",i:"📖"}]
     :[{id:"mi_turno",l:"Mi turno",i:"🌿"},{id:"tareas",l:"Tareas",i:"✓"},{id:"guia",l:"Guía",i:"📖"},{id:"sala_S1",l:"S1",i:"🏠"},{id:"sala_S2",l:"S2",i:"🏠"}];
   const secondary=isAdmin
-    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
+    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"bitacora",l:"Bitácora",i:"📓"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
     :[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"bot",l:"Asistente",i:"🤖"}];
 
   // ----- SIDEBAR (PC) -----
@@ -488,7 +488,7 @@ function NavBar({user,page,setPage,wide}){
 function MorePage({user,setPage,textScale,setTextScale}){
   const isAdmin=user.role==="admin";
   const items=isAdmin
-    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
+    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"bitacora",l:"Bitácora",i:"📓"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"plagas",l:"Plagas",i:"🔬"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
     :[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"bot",l:"Asistente",i:"🤖"}];
   return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Más</div>
@@ -2440,6 +2440,141 @@ function ConfigPage({user,roomConfig,onChanged,textScale,setTextScale}){
 // BOT (Groq vía Edge Function) — chat reutilizable (página + panel flotante)
 // currentPage: contexto de la pantalla actual para el bot.
 // Maneja el patrón de confirmación (pendingAction) para acciones de Nivel 2.
+// BITÁCORA — notas libres del día que la IA traduce a tareas/avisos
+function BitacoraPage({user}){
+  const [entries,setEntries]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [draft,setDraft]=useState("");
+  const [entryDate,setEntryDate]=useState(todayISO());
+  const [saving,setSaving]=useState(false);
+  const [proc,setProc]=useState(null);
+  const [plan,setPlan]=useState(null);
+  const [planEntry,setPlanEntry]=useState(null);
+  const [applying,setApplying]=useState(false);
+  const [toast,setToast]=useState(null);
+
+  const load=()=>{setLoading(true);db.query("bitacora","order=created_at.desc").then(setEntries).catch(()=>setEntries([])).finally(()=>setLoading(false));};
+  useEffect(load,[]);
+
+  const save=async()=>{
+    if(!draft.trim()||saving)return;
+    setSaving(true);
+    try{
+      await db.insert("bitacora",{entry_date:entryDate,author:user.name,content:draft.trim(),processed:false});
+      await logA(user.name,"Anotó en la bitácora","bitacora");
+      setDraft("");load();setToast({msg:"Nota guardada ✓",type:"success"});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}
+    finally{setSaving(false);}
+  };
+
+  const process=async(entry)=>{
+    setProc(entry.id);
+    try{
+      const r=await fetch(`${SUPA_URL}/functions/v1/grow-bot`,{
+        method:"POST",headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},
+        body:JSON.stringify({user_name:user.name,mode:"bitacora",texto:entry.content,fecha:entry.entry_date}),
+      });
+      const data=await r.json();
+      if(data.error){setToast({msg:data.error,type:"error"});}
+      else if(data.plan){setPlan(data.plan);setPlanEntry(entry);}
+    }catch(e){setToast({msg:"No me pude conectar con el asistente.",type:"error"});}
+    finally{setProc(null);}
+  };
+
+  const applyPlan=async()=>{
+    if(!plan||!planEntry||applying)return;
+    setApplying(true);
+    const now=new Date().toISOString();
+    let nH=0,nN=0;
+    try{
+      // Tareas hechas: buscar pendiente que matchee sala+tipo y marcarla; si no hay, crearla ya hecha.
+      let pend=[];
+      try{pend=await db.query("tasks","status=eq.pendiente");}catch{pend=[];}
+      for(const h of (plan.hechas||[])){
+        const sala=h.sala||"S1";
+        const idx=pend.findIndex(t=>t.room_id===sala&&(t.type===h.tipo||(h.titulo&&t.title&&t.title.toLowerCase().includes(String(h.titulo).toLowerCase().slice(0,6)))));
+        if(idx>=0){await db.update("tasks",pend[idx].id,{status:"completada",completed_at:now});pend.splice(idx,1);}
+        else{await db.insert("tasks",{title:h.titulo||"Tarea",room_id:sala,rooms:sala,type:h.tipo||"revision",assignee:user.name,due_date:planEntry.entry_date,priority:"normal",status:"completada",completed_at:now,source:"bitacora",created_by:`bitácora (${user.name})`});}
+        nH++;
+      }
+      // Tareas nuevas: crear pendientes (con dedupe por título+sala+fecha).
+      for(const t of (plan.nuevas||[])){
+        const sala=t.sala||"S1";const due=t.fecha||planEntry.entry_date;const titulo=t.titulo||"Tarea";
+        let dup=[];try{dup=await db.query("tasks",`room_id=eq.${sala}&due_date=eq.${due}&title=eq.${encodeURIComponent(titulo)}`);}catch{}
+        if(dup&&dup.length)continue;
+        await db.insert("tasks",{title:titulo,room_id:sala,rooms:sala,type:t.tipo||"revision",assignee:user.name,due_date:due,priority:t.prioridad==="alta"?"alta":"normal",status:"pendiente",instructions:t.instrucciones||null,source:"bitacora",created_by:`bitácora (${user.name})`});
+        nN++;
+      }
+      const obs=(plan.observaciones||[]).filter(Boolean);
+      const resumen=`${nH} hecha(s), ${nN} nueva(s)${obs.length?` · ${obs.length} obs.`:""}`;
+      await db.update("bitacora",planEntry.id,{processed:true,processed_at:now,result:resumen+(obs.length?` — ${obs.join(" | ")}`:"")});
+      await logA(user.name,`Procesó bitácora: ${resumen}`,"bitacora");
+      setPlan(null);setPlanEntry(null);load();setToast({msg:`Aplicado: ${resumen} ✓`,type:"success"});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}
+    finally{setApplying(false);}
+  };
+
+  const TM_={riego:"💧",nutricion:"🌱",poda:"✂️",fumigacion:"🔬",limpieza:"🧹",revision:"👁",cosecha:"🌾"};
+  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    <div style={{paddingTop:8}}>
+      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>📓 Bitácora</div>
+      <div style={{fontSize:14,color:C.textSoft,marginTop:4,lineHeight:1.5}}>Anotá libre lo que hiciste y viste hoy. Después la IA lo ordena: marca hechas las tareas y crea las nuevas.</div>
+    </div>
+
+    {/* Modal de confirmación del plan */}
+    {plan&&<Modal title="🤖 Plan propuesto" onClose={()=>{setPlan(null);setPlanEntry(null);}}>
+      <div style={{fontSize:13,color:C.textSoft,marginBottom:14,lineHeight:1.5}}>Revisá antes de aplicar. Se marcarán hechas las tareas que ya hiciste y se crearán las nuevas.</div>
+      {(plan.hechas||[]).length>0&&<div style={{marginBottom:14}}>
+        <SL style={{color:C.green}}>✓ Marcar como hechas</SL>
+        {plan.hechas.map((h,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",background:C.greenLight,borderRadius:10,padding:"9px 12px",marginBottom:6}}>
+          <span>{TM_[h.tipo]||"✓"}</span><span style={{flex:1,fontSize:13.5,fontWeight:600,color:C.text}}>{h.titulo}</span>
+          {h.sala&&<Badge label={h.sala} color={C.green} bg={C.surface}/>}
+        </div>)}
+      </div>}
+      {(plan.nuevas||[]).length>0&&<div style={{marginBottom:14}}>
+        <SL style={{color:C.blue}}>+ Tareas nuevas</SL>
+        {plan.nuevas.map((t,i)=><div key={i} style={{background:C.blueLight,borderRadius:10,padding:"9px 12px",marginBottom:6}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}><span>{TM_[t.tipo]||"•"}</span><span style={{flex:1,fontSize:13.5,fontWeight:700,color:C.text}}>{t.titulo}</span>{t.sala&&<Badge label={t.sala} color={C.blue} bg={C.surface}/>}</div>
+          <div style={{fontSize:11.5,color:C.textSoft,marginTop:3}}>{t.fecha||planEntry?.entry_date}{t.prioridad==="alta"?" · alta":""}{t.instrucciones?` · ${t.instrucciones}`:""}</div>
+        </div>)}
+      </div>}
+      {(plan.observaciones||[]).length>0&&<div style={{marginBottom:14}}>
+        <SL>📝 Observaciones (se guardan)</SL>
+        {plan.observaciones.map((o,i)=><div key={i} style={{fontSize:13,color:C.textMid,background:C.bg,borderRadius:10,padding:"9px 12px",marginBottom:6,lineHeight:1.5}}>{o}</div>)}
+      </div>}
+      {!(plan.hechas||[]).length&&!(plan.nuevas||[]).length&&!(plan.observaciones||[]).length&&<div style={{fontSize:13.5,color:C.textSoft,fontStyle:"italic",marginBottom:14}}>La IA no encontró tareas ni observaciones para registrar en esta nota.</div>}
+      <div style={{display:"flex",gap:10}}>
+        <Btn onClick={applyPlan} disabled={applying} full>{applying?"Aplicando...":"Confirmar y aplicar"}</Btn>
+        <Btn onClick={()=>{setPlan(null);setPlanEntry(null);}} v="secondary">Cancelar</Btn>
+      </div>
+    </Modal>}
+
+    {/* Editor de nota nueva */}
+    <Card>
+      <SL>Nueva entrada</SL>
+      <FI label="Fecha" value={entryDate} onChange={e=>setEntryDate(e.target.value)} type="date"/>
+      <FT label="Notas del día" value={draft} onChange={e=>setDraft(e.target.value)} rows={5} placeholder="Ej: Regué S1 y S2. Podé la sala 2. Vi cochinillas en el macetón D. Falta comprar melaza. Mañana trasplantar esquejes."/>
+      <Btn onClick={save} disabled={saving||!draft.trim()} full>{saving?"Guardando...":"Guardar nota"}</Btn>
+    </Card>
+
+    {/* Historial */}
+    {loading?<Spin/>:entries.length===0?<Card><div style={{fontSize:14,color:C.textSoft,textAlign:"center",padding:"12px 0"}}>Todavía no hay entradas. Escribí la primera arriba.</div></Card>
+      :<div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <SL>Historial</SL>
+        {entries.map(e=><Card key={e.id} style={{padding:"14px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8}}>
+            <div style={{fontSize:12.5,fontWeight:700,color:C.textMid}}>{fmtDate(e.entry_date)} · {e.author}</div>
+            {e.processed?<Badge label="Procesada ✓" color={C.green} bg={C.greenLight}/>:<Badge label="Sin procesar" color={C.amber} bg={C.amberLight}/>}
+          </div>
+          <div style={{fontSize:14,color:C.text,lineHeight:1.55,whiteSpace:"pre-wrap"}}>{e.content}</div>
+          {e.processed&&e.result&&<div style={{fontSize:12,color:C.textSoft,marginTop:8,fontStyle:"italic",background:C.bg,borderRadius:8,padding:"8px 10px"}}>🤖 {e.result}</div>}
+          {!e.processed&&<Btn onClick={()=>process(e)} disabled={proc===e.id} v="secondary" full style={{marginTop:10,fontSize:13.5}}>{proc===e.id?"Interpretando...":"🤖 Procesar con IA"}</Btn>}
+        </Card>)}
+      </div>}
+  </div>;
+}
+
 function BotChat({user,currentPage,compact=false}){
   const [msgs,setMsgs]=useState([{role:"assistant",content:`¡Hola ${user.name}! Soy el asistente de GrowManager. Puedo registrar riegos, nutrición y clima, completar tareas, anotar madres y crear tareas o compras. Para crear/editar genéticas o cambiar de fase te voy a pedir confirmación. Probá: "regué 15 min en S1" o "¿qué tareas hay hoy?".`}]);
   const [input,setInput]=useState("");
@@ -2945,6 +3080,7 @@ export default function App(){
       case "compras":      return <ComprasPage user={user}/>;
       case "guia":         return <GuiaPage user={user} roomConfig={roomConfig} rooms={rooms}/>;
       case "bot":          return <BotPage user={user}/>;
+      case "bitacora":     return <BitacoraPage user={user}/>;
       case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} textScale={textScale} setTextScale={setTextScale}/>;
       case "__more__":     return <MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale}/>;
       default:
