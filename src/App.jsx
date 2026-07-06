@@ -526,10 +526,10 @@ function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"]}){
     Promise.all([
       db.query("tasks",`due_date=eq.${todayISO}&assignee=eq.${encodeURIComponent(user.name)}&order=priority.desc,created_at.asc`),
       db.query("cycles","active=eq.true"),
-      db.query("climate_logs",`logged_at=gte.${addDays(todayISO,-2)}&order=logged_at.desc`),
+      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-2)}&order=recorded_at.desc`),
     ]).then(([t,c,cl])=>{setTasks(t);setCycles(c);setClimate(cl);}).finally(()=>setLoading(false));
   },[user.name]);
-  const lastClimate=rid=>{const x=climate.find(c=>c.room_id===rid);return x?{temp:x.temp,humidity:x.humidity}:{temp:null,humidity:null};};
+  const lastClimate=rid=>{const x=climate.find(c=>c.room_id===rid);return x?{temp:x.temperature,humidity:x.humidity}:{temp:null,humidity:null};
   const toggle=async task=>{
     const ns=task.status==="completada"?"pendiente":"completada";
     await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
@@ -614,7 +614,7 @@ function Dashboard({setPage,user,roomConfig,rooms,wide}){
       db.query("tasks",`due_date=eq.${todayISO}`),
       db.get("veg_stock"),
       db.query("tasks",`due_date=gte.${todayISO}&due_date=lte.${addDays(todayISO,6)}&order=due_date.asc`),
-      db.query("climate_logs",`logged_at=gte.${addDays(todayISO,-2)}&order=logged_at.desc`),
+      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-2)}&order=recorded_at.desc`),
     ]).then(([c,t,v,w,cl])=>{setCycles(c);setTasks(t);setVegStock(v);setWeekTasks(w);setClimate(cl);}).finally(()=>setLoading(false));
   },[]);
   if(loading)return <Spin/>;
@@ -624,7 +624,7 @@ function Dashboard({setPage,user,roomConfig,rooms,wide}){
   const guideTasks=pending.filter(t=>t.source==="guia");
   const myPending=pending.filter(t=>t.assignee===user.name).length;
   const renewM=vegStock.filter(v=>v.type==="madre"&&v.status==="renovar").length;
-  const lastClimate=(rid)=>climate.find(c=>c.room_id===rid);
+  const lastClimate=(rid)=>{const c=climate.find(c=>c.room_id===rid);return c?{...c,temp:c.temperature}:null;};
   const next7=Array.from({length:7},(_,i)=>addDays(todayISO,i));
   const advStage=cycles.map(c=>({c,rc:getRC(roomConfig,c.room_id),sk:stageKey(c,getRC(roomConfig,c.room_id))})).filter(x=>x.sk);
   const tip=advStage[0];
@@ -804,7 +804,7 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
       const c=cycles[0]||null;
       setCycle(c);setTasks(allT);setWLog(wL);setNLog(nL);
       db.query("room_equipment",`room_id=eq.${roomId}`).then(setEquipment).catch(()=>setEquipment([]));
-      db.query("climate_logs",`room_id=eq.${roomId}&logged_at=gte.${addDays(todayISO,-7)}&order=logged_at.asc`).then(setClimate).catch(()=>setClimate([]));
+      db.query("climate_logs",`room_id=eq.${roomId}&recorded_at=gte.${addDays(todayISO,-7)}&order=recorded_at.asc`)
       if(c){
         const cgData=await db.query("cycle_genetics",`cycle_id=eq.${c.id}`);
         setCg(cgData);
@@ -929,17 +929,17 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
       {(()=>{
         const tRange=(rc?.temp_min!=null&&rc?.temp_max!=null)?{min:rc.temp_min,max:rc.temp_max}:null;
         const hRange=(rc?.hum_min!=null&&rc?.hum_max!=null)?{min:rc.hum_min,max:rc.hum_max}:null;
-        const tPts=climate.filter(c=>c.temp!=null).map(c=>({x:new Date(c.logged_at).getTime(),y:+c.temp}));
-        const hPts=climate.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.logged_at).getTime(),y:+c.humidity}));
+        const tPts=climate.filter(c=>c.temperature!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.temperature}));
+        const hPts=climate.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.humidity}));
         const last=climate[climate.length-1];
-        const outT=last&&tRange&&(last.temp<tRange.min||last.temp>tRange.max);
+        const outT=last&&tRange&&(last.temperature<tRange.min||last.temperature>tRange.max);
         const outH=last&&hRange&&(last.humidity<hRange.min||last.humidity>hRange.max);
         if(climate.length===0)return <div style={{textAlign:"center",color:C.textSoft,fontSize:13,fontStyle:"italic",padding:"16px 0"}}>Sin mediciones — tocá "+ Medición"</div>;
         return <>
           {last&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
             <div style={{background:outT?C.redLight:C.greenLight,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
               <div style={{fontSize:11,color:C.textSoft}}>🌡 Temp actual</div>
-              <div style={{fontSize:24,fontWeight:900,fontFamily:H,color:outT?C.red:C.green}}>{last.temp}°</div>
+              <div style={{fontSize:24,fontWeight:900,fontFamily:H,color:outT?C.red:C.green}}>{last.temperature}°</div>
               {tRange&&<div style={{fontSize:10,color:C.textSoft}}>ideal {tRange.min}–{tRange.max}°{outT?" ⚠":" ✓"}</div>}
             </div>
             <div style={{background:outH?C.redLight:C.greenLight,borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
@@ -1384,7 +1384,7 @@ function ClimateModal({roomId,user,onClose,onSaved}){
     if(temp===""&&hum===""){setErr("Cargá al menos temperatura o humedad");return;}
     setSaving(true);setErr(null);
     try{
-      await db.insert("climate_logs",{room_id:roomId,temp:temp===""?null:+temp,humidity:hum===""?null:+hum,logged_by:user.name,logged_at:new Date().toISOString()});
+      await db.insert("clawait db.insert("climate_logs",{room_id:roomId,temperature:temp===""?null:+temp,humidity:hum===""?null:+hum,source:"manual",recorded_by:user.name,recorded_at:new Date().toISOString()});
       await logA(user.name,`Midió clima en ${roomId}`,"clima");
       onSaved();
     }catch(e){setErr(errMsg(e));setSaving(false);}
