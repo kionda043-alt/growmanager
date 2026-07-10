@@ -529,7 +529,7 @@ function TextScaleControl({textScale,setTextScale}){
 }
 
 // MI TURNO
-function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"]}){
+function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"],targets}){
   const [tasks,setTasks]=useState([]);
   const [cycles,setCycles]=useState([]);
   const [climate,setClimate]=useState([]);
@@ -588,8 +588,9 @@ function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"]}){
           const rc=getRC(roomConfig,rid);
           const cl=lastClimate(rid);
           const sk=stageKey(c,rc);
-          const outT=cl.temp!=null&&(rc.temp_min!=null&&cl.temp<rc.temp_min||rc.temp_max!=null&&cl.temp>rc.temp_max);
-          const outH=cl.humidity!=null&&(rc.hum_min!=null&&cl.humidity<rc.hum_min||rc.hum_max!=null&&cl.humidity>rc.hum_max);
+          const tg=getTargets(targets,rid,c,rc);
+          const outT=cl.temp!=null&&(cl.temp<tg.temp.min||cl.temp>tg.temp.max);
+          const outH=cl.humidity!=null&&(cl.humidity<tg.hum.min||cl.humidity>tg.hum.max);
           return <div key={rid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.bg,borderRadius:12,border:`1px solid ${C.border}`}}>
             <div style={{flex:1}}>
               <div style={{fontSize:14,fontWeight:800,color:C.text}}>{rc.display_name}</div>
@@ -632,18 +633,19 @@ function Metric({icon,val,color,g,out}){
     <Gauge {...g} color={color} out={out}/>
   </div>;
 }
-function ClimateMetrics({climate,tR,hR}){
+function ClimateMetrics({climate,tR,hR,vR}){
   if(!climate||(climate.temperature==null&&climate.humidity==null))return <div style={{padding:"12px 20px 0",fontSize:12.5,color:C.textSoft,fontStyle:"italic"}}>Sin lectura de sensor</div>;
   const t=climate.temperature,h=climate.humidity,v=climate.vpd;
+  const vB={min:vR?.min??0.8,max:vR?.max??1.4};
   const outT=t!=null&&(t<tR.min||t>tR.max),outH=h!=null&&(h<hR.min||h>hR.max);
   return <div style={{display:"flex",flexDirection:"column",gap:11,padding:"14px 20px 0"}}>
     {t!=null&&<Metric icon="🌡" val={`${t}°C`} color={C.amber} out={outT} g={{value:t,sMin:14,sMax:34,bMin:tR.min,bMax:tR.max}}/>}
     {h!=null&&<Metric icon="💧" val={`${h}%`} color={C.blue} out={outH} g={{value:h,sMin:0,sMax:100,bMin:hR.min,bMax:hR.max}}/>}
-    {v!=null&&<Metric icon="🍃" val={v} color={C.purple} out={false} g={{value:v,sMin:0,sMax:2,bMin:0.8,bMax:1.4}}/>}
+    {v!=null&&<Metric icon="🍃" val={v} color={C.purple} out={false} g={{value:v,sMin:0,sMax:2,bMin:vB.min,bMax:vB.max}}/>}
   </div>;
 }
 
-function Dashboard({setPage,user,roomConfig,rooms,wide}){
+function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [cycles,setCycles]=useState([]);
   const [tasks,setTasks]=useState([]);
   const [vegStock,setVegStock]=useState([]);
@@ -679,10 +681,12 @@ function Dashboard({setPage,user,roomConfig,rooms,wide}){
   const alerts=[];
   rooms.forEach(rid=>{
     const rc=getRC(roomConfig,rid),cl=lastClimate(rid);
-    const tR={min:rc.temp_min??20,max:rc.temp_max??26},hR={min:rc.hum_min??55,max:rc.hum_max??65};
+    const cyc=cycles.find(c=>c.room_id===rid);
+    const tg=getTargets(targets,rid,cyc,rc);
+    const tR=tg.temp,hR=tg.hum;
     if(cl){
-      if(cl.temperature!=null&&(cl.temperature<tR.min||cl.temperature>tR.max))alerts.push({k:"red",ic:"🌡",t:`${rc.display_name}: temp ${cl.temperature}°C`,s:`Fuera del rango ideal (${tR.min}–${tR.max}°C)`});
-      if(cl.humidity!=null&&(cl.humidity<hR.min||cl.humidity>hR.max))alerts.push({k:"red",ic:"💧",t:`${rc.display_name}: humedad ${cl.humidity}%`,s:`Fuera del rango ideal (${hR.min}–${hR.max}%)`});
+      if(cl.temperature!=null&&(cl.temperature<tR.min||cl.temperature>tR.max))alerts.push({k:"red",ic:"🌡",t:`${rc.display_name}: temp ${cl.temperature}°C`,s:`Fuera del rango de ${tg.label} (${tR.min}–${tR.max}°C)`});
+      if(cl.humidity!=null&&(cl.humidity<hR.min||cl.humidity>hR.max))alerts.push({k:"red",ic:"💧",t:`${rc.display_name}: humedad ${cl.humidity}%`,s:`Fuera del rango de ${tg.label} (${hR.min}–${hR.max}%)`});
     }
   });
   cycles.forEach(c=>{const dL=daysTo(c.estimated_harvest);if(dL>=0&&dL<=7)alerts.push({k:"amber",ic:"🌾",t:`Cosecha próxima · ${getRC(roomConfig,c.room_id).display_name}`,s:`Estimada en ${dL} día${dL===1?"":"s"}`});});
@@ -710,8 +714,8 @@ function Dashboard({setPage,user,roomConfig,rooms,wide}){
 
     {eyebrow("Espacios")}
     <div style={{display:"grid",gridTemplateColumns:wide?"repeat(3,1fr)":"1fr",gap:14}}>
-      {rooms.map(rid=><RoomCard key={rid} roomId={rid} rc={getRC(roomConfig,rid)} cycle={cycles.find(c=>c.room_id===rid)} climate={lastClimate(rid)} onClick={()=>setPage(`sala_${rid}`)}/>)}
-      <VegeCard madres={madres} postEsq={postEsq} climate={vegeClim} onClick={()=>setPage("vegetativo")}/>
+      {rooms.map(rid=><RoomCard key={rid} roomId={rid} rc={getRC(roomConfig,rid)} cycle={cycles.find(c=>c.room_id===rid)} climate={lastClimate(rid)} targets={targets} onClick={()=>setPage(`sala_${rid}`)}/>)}
+      <VegeCard madres={madres} postEsq={postEsq} climate={vegeClim} targets={targets} onClick={()=>setPage("vegetativo")}/>
     </div>
 
     {eyebrow("Accesos")}
@@ -751,8 +755,8 @@ function Dashboard({setPage,user,roomConfig,rooms,wide}){
   </div>;
 }
 
-function VegeCard({madres,postEsq,climate,onClick}){
-  const tR={min:22,max:28},hR={min:60,max:70};
+function VegeCard({madres,postEsq,climate,onClick,targets}){
+  const tg=getTargets(targets,"Vegetativo",null,null);const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
   return <Card onClick={onClick} style={{padding:0,overflow:"hidden",position:"relative"}}>
     <div style={{position:"absolute",left:0,top:0,bottom:0,width:5,background:C.green}}/>
     <div style={{padding:"18px 20px 16px"}}>
@@ -765,14 +769,14 @@ function VegeCard({madres,postEsq,climate,onClick}){
         <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:30,color:C.text}}>{postEsq}</span><span style={{fontSize:12.5,color:C.textSoft,marginLeft:6}}>post-esq.</span></div>
       </div>
     </div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR}/></div>
+    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
   </Card>;
 }
 
-function RoomCard({roomId,rc,cycle,climate,onClick}){
+function RoomCard({roomId,rc,cycle,climate,onClick,targets}){
   const name=rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId);
   const fdays=rc?.flower_days||65;
-  const tR={min:rc?.temp_min??20,max:rc?.temp_max??26},hR={min:rc?.hum_min??55,max:rc?.hum_max??65};
+  const tg=getTargets(targets,roomId,cycle,rc);const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
   const phase=cycle?.phase||"floración";
   const accent=phase==="floración"?C.amber:C.green;
   const header=<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -782,7 +786,7 @@ function RoomCard({roomId,rc,cycle,climate,onClick}){
   if(!cycle)return <Card onClick={onClick} style={{padding:0,overflow:"hidden",position:"relative"}}>
     <div style={{position:"absolute",left:0,top:0,bottom:0,width:5,background:accent}}/>
     <div style={{padding:"18px 20px 16px"}}>{header}<div style={{fontSize:14,color:C.textSoft,marginTop:12}}>Sin ciclo activo</div></div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR}/></div>
+    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
   </Card>;
   const dayIn=daysFrom(cycle.flower_start);
   const dLeft=daysTo(cycle.estimated_harvest);
@@ -795,12 +799,12 @@ function RoomCard({roomId,rc,cycle,climate,onClick}){
       <div style={{fontSize:12.5,color:C.textSoft,marginTop:8}}>Cosecha en <b style={{color:dLeft<=7?C.red:dLeft<=20?C.amber:C.text}}>{dLeft} días</b> · {fmtDate(cycle.estimated_harvest)}</div>
       <div style={{marginTop:12}}><Bar value={pct} max={100} color={accent} h={7}/></div>
     </div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR}/></div>
+    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
   </Card>;
 }
 
 // SALA PAGE
-function SalaPage({roomId,setPage,user,genetics,rc}){
+function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [cycle,setCycle]=useState(null);
   const [tasks,setTasks]=useState([]);
   const [cg,setCg]=useState([]);
@@ -822,6 +826,7 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
   const [showClimate,setShowClimate]=useState(false);
   const [showClose,setShowClose]=useState(false);
   const [showDoneT,setShowDoneT]=useState(false);
+  const [showTargets,setShowTargets]=useState(false);
   const [infoTask,setInfoTask]=useState(null);
 
   const fdays=rc?.flower_days||65;
@@ -936,6 +941,7 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
     {showFoliar&&<FoliarModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowFoliar(false)} onSaved={()=>{setShowFoliar(false);load();setToast({msg:"Aplicación foliar registrada ✓",type:"success"});}}/>}
     {showClimate&&<ClimateModal roomId={roomId} user={user} onClose={()=>setShowClimate(false)} onSaved={()=>{setShowClimate(false);load();setToast({msg:"Medición registrada ✓",type:"success"});}}/>}
     {showClose&&<CloseCycleModal cycle={cycle} roomId={roomId} rc={rc} cg={cg} potCounts={potCounts} wLog={wLog} nLog={nLog} user={user} onClose={()=>setShowClose(false)} onSaved={()=>{setShowClose(false);load();setToast({msg:"Ciclo cerrado y archivado ✓",type:"success"});}}/>}
+    {showTargets&&<TargetsModal roomId={roomId} rc={rc} cycle={cycle} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
 
     {/* Hero — cosecha protagonista */}
     <div style={{background:cycle.phase==="floración"?"linear-gradient(135deg,#241D12,#1C1710)":"linear-gradient(135deg,#16211A,#121B14)",borderRadius:20,padding:"22px 20px 18px",border:`1px solid ${C.border}`}}>
@@ -962,7 +968,13 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
     </div>
 
     {/* Clima en vivo */}
-    {(()=>{const last=climate.length?climate[climate.length-1]:null;const tR={min:rc?.temp_min??20,max:rc?.temp_max??26},hR={min:rc?.hum_min??55,max:rc?.hum_max??65};return <Card style={{padding:"14px 18px 16px"}}><ClimateMetrics climate={last} tR={tR} hR={hR}/></Card>;})()}
+    {(()=>{const last=climate.length?climate[climate.length-1]:null;const tg=getTargets(targets,roomId,cycle,rc);return <Card style={{padding:"14px 18px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
+        <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em"}}>Objetivo · {tg.label}</div>
+        {user.role==="admin"&&<button onClick={()=>setShowTargets(true)} style={{fontSize:11,color:C.textMid,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 9px",cursor:"pointer"}}>✎ Editar</button>}
+      </div>
+      <ClimateMetrics climate={last} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
+    </Card>;})()}
 
     {/* Acciones compactas */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
@@ -990,19 +1002,20 @@ function SalaPage({roomId,setPage,user,genetics,rc}){
         <button onClick={()=>setShowClimate(true)} style={{fontSize:12.5,fontWeight:700,padding:"8px 12px",borderRadius:9,cursor:"pointer",border:`1px solid ${C.border}`,background:"transparent",color:C.textMid}}>+ Med.</button>
       </div>
       {(()=>{
-        const tR=(rc?.temp_min!=null&&rc?.temp_max!=null)?{min:rc.temp_min,max:rc.temp_max}:{min:20,max:26};
-        const hR=(rc?.hum_min!=null&&rc?.hum_max!=null)?{min:rc.hum_min,max:rc.hum_max}:{min:55,max:65};
+        const tg=getTargets(targets,roomId,cycle,rc);
+        const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
         const tPts=climate.filter(c=>c.temperature!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.temperature}));
         const hPts=climate.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.humidity}));
         const vPts=climate.filter(c=>c.vpd!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.vpd}));
         if(climate.length===0)return <div style={{textAlign:"center",color:C.textSoft,fontSize:13,fontStyle:"italic",padding:"16px 0"}}>Sin datos en este rango todavía</div>;
         return <>
+          <div style={{fontSize:11,color:C.textSoft,marginBottom:8,fontStyle:"italic"}}>Franja sombreada = rango objetivo de {tg.label}</div>
           <div style={{fontSize:11,fontWeight:700,color:C.textSoft,marginBottom:4}}>🌡 Temperatura (°C)</div>
           <LineChart series={[{points:tPts,color:C.amber}]} bands={[{min:tR.min,max:tR.max,color:C.amber}]}/>
           <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>💧 Humedad (%)</div>
           <LineChart series={[{points:hPts,color:C.blue}]} bands={[{min:hR.min,max:hR.max,color:C.blue}]}/>
           <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>🍃 VPD (kPa)</div>
-          <LineChart series={[{points:vPts,color:C.purple}]} bands={[{min:0.8,max:1.4,color:C.purple}]}/>
+          <LineChart series={[{points:vPts,color:C.purple}]} bands={[{min:vR.min,max:vR.max,color:C.purple}]}/>
         </>;
       })()}
     </Accordion>
@@ -1262,6 +1275,81 @@ function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
       <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:12}}>⚡ Se generan tareas de poda y Zoil automáticamente · {fdays} días de floración</div>
     </>}
     <div style={{display:"flex",gap:10}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Confirmar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
+  </Modal>;
+}
+// Editor de objetivos de clima por etapa (temp y humedad, por sala). VPD fijo.
+function TargetsModal({roomId,rc,cycle,user,onClose,onSaved}){
+  const stages=roomId==="Vegetativo"?["vege"]:CLIMA_FLOWER_STAGES;
+  const activeStage=climaStageFor(roomId,cycle,rc);
+  const roomName=rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId);
+  const [vals,setVals]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    let alive=true;
+    db.query("climate_targets",`room_id=eq.${encodeURIComponent(roomId)}`).then(rows=>{
+      if(!alive)return;
+      const v={};
+      stages.forEach(s=>{
+        const row=(rows||[]).find(r=>r.stage===s);
+        const def=TARGET_DEFAULTS[s]||TARGET_DEFAULTS.veg;
+        v[s]={
+          _id:row?.id??null,
+          temp_min:row?.temp_min!=null?+row.temp_min:def.temp_min,
+          temp_max:row?.temp_max!=null?+row.temp_max:def.temp_max,
+          hum_min:row?.hum_min!=null?+row.hum_min:def.hum_min,
+          hum_max:row?.hum_max!=null?+row.hum_max:def.hum_max,
+        };
+      });
+      setVals(v);
+    }).catch(()=>{
+      // Si la tabla todavía no existe, arrancamos con los defaults igual.
+      const v={};stages.forEach(s=>{const def=TARGET_DEFAULTS[s]||TARGET_DEFAULTS.veg;v[s]={_id:null,...def};});
+      setVals(v);setErr("No pude leer los objetivos guardados. ¿Corriste el SQL? Se muestran los valores por defecto.");
+    }).finally(()=>{if(alive)setLoading(false);});
+    return ()=>{alive=false;};
+  },[roomId]);
+  const setField=(s,k,n)=>setVals(v=>({...v,[s]:{...v[s],[k]:n===""?null:n}}));
+  const save=async()=>{
+    setSaving(true);setErr(null);
+    try{
+      for(const s of stages){
+        const d=vals[s];
+        const payload={room_id:roomId,stage:s,temp_min:d.temp_min,temp_max:d.temp_max,hum_min:d.hum_min,hum_max:d.hum_max,updated_at:new Date().toISOString(),updated_by:user?.name||null};
+        if(d._id)await db.update("climate_targets",d._id,payload);
+        else await db.insert("climate_targets",payload);
+      }
+      await logA(user?.name||"?",`Objetivos de clima ${roomName}`,"config");
+      onSaved();
+    }catch(e){setErr(errMsg(e));}
+    finally{setSaving(false);}
+  };
+  return <Modal title={`Objetivos de clima — ${roomName}`} onClose={onClose}>
+    <div style={{fontSize:12.5,color:C.textMid,marginBottom:14,lineHeight:1.5}}>Definí el rango ideal de <b>temperatura</b> y <b>humedad</b> para cada etapa. La app usa el objetivo de la etapa en la que está la sala. El <b>VPD</b> es fijo por etapa.</div>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
+    {loading||!vals?<Spin/>:<>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {stages.map(s=>{const d=vals[s];const vpd=VPD_BY_STAGE[s];const isActive=s===activeStage;return <div key={s} style={{background:C.bg,borderRadius:14,padding:"12px 14px",border:`1.5px solid ${isActive?C.green:C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <span style={{fontSize:13.5,fontWeight:800,color:C.text}}>{CLIMA_STAGE_LABEL[s]}</span>
+            {isActive&&<Badge label="Etapa actual" color={C.green} bg={C.greenLight}/>}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"58px 1fr 1fr",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:12.5,color:C.textMid}}>🌡 Temp</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>min</span><NumField compact value={d.temp_min} onCommit={n=>setField(s,"temp_min",n)} min={5} max={40}/></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>max</span><NumField compact value={d.temp_max} onCommit={n=>setField(s,"temp_max",n)} min={5} max={40}/><span style={{fontSize:12,color:C.textSoft}}>°C</span></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"58px 1fr 1fr",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12.5,color:C.textMid}}>💧 Hum</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>min</span><NumField compact value={d.hum_min} onCommit={n=>setField(s,"hum_min",n)} min={0} max={100}/></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>max</span><NumField compact value={d.hum_max} onCommit={n=>setField(s,"hum_max",n)} min={0} max={100}/><span style={{fontSize:12,color:C.textSoft}}>%</span></div>
+          </div>
+          <div style={{fontSize:11.5,color:C.purple,marginTop:9,fontFamily:MONO}}>🍃 VPD {vpd.min}–{vpd.max} kPa <span style={{color:C.textSoft,fontFamily:H}}>· fijo</span></div>
+        </div>;})}
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:16}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar objetivos"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
+    </>}
   </Modal>;
 }
 function AddGenModal({cycleId,genetics,existing,counts,onClose,onSaved}){
@@ -1617,7 +1705,7 @@ function TareasPage({user,rooms}){
 }
 
 // VEGETATIVO PAGE
-function VegetativoPage({genetics,user}){
+function VegetativoPage({genetics,user,targets,onTargetsChanged}){
   const [stock,setStock]=useState([]);
   const [cloners,setCloners]=useState([]);
   const [clSlots,setClSlots]=useState([]);
@@ -1628,6 +1716,7 @@ function VegetativoPage({genetics,user}){
   const [showAddP,setShowAddP]=useState(false);
   const [showEsp,setShowEsp]=useState(null);
   const [editItem,setEditItem]=useState(null);
+  const [showTargets,setShowTargets]=useState(false);
   const [climate,setClimate]=useState(null);
 
   const load=useCallback(()=>{
@@ -1653,9 +1742,16 @@ function VegetativoPage({genetics,user}){
     {showAddP&&<VegModal type="post_esqueje" genetics={genetics} onClose={()=>setShowAddP(false)} onSaved={()=>{setShowAddP(false);load();setToast({msg:"Guardado ✓",type:"success"});}}/>}
     {showEsp!==null&&<EsquejeraModal cloner={cloners.find(c=>c.id===showEsp)} slots={clSlots.filter(s=>s.cloner_id===showEsp)} genetics={genetics} onClose={()=>setShowEsp(null)} onSaved={()=>{setShowEsp(null);load();setToast({msg:"Esquejera guardada ✓",type:"success"});}}/>}
     {editItem&&<VegModal type={editItem.type} item={editItem} genetics={genetics} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load();setToast({msg:"Guardado ✓",type:"success"});}}/>}
+    {showTargets&&<TargetsModal roomId="Vegetativo" rc={null} cycle={null} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
 
     <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Vegetativo</div>
-    <Card style={{padding:"14px 18px 16px"}}><ClimateMetrics climate={climate} tR={{min:22,max:28}} hR={{min:60,max:70}}/></Card>
+    {(()=>{const tg=getTargets(targets,"Vegetativo",null,null);return <Card style={{padding:"14px 18px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
+        <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em"}}>Objetivo · madres/esquejes</div>
+        {user?.role==="admin"&&<button onClick={()=>setShowTargets(true)} style={{fontSize:11,color:C.textMid,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 9px",cursor:"pointer"}}>✎ Editar</button>}
+      </div>
+      <ClimateMetrics climate={climate} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
+    </Card>;})()}
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
       {[{l:"Madres",v:mothers.filter(m=>m.status==="activa").reduce((a,m)=>a+m.count,0),w:mothers.filter(m=>m.status==="renovar").length,i:"🌳"},
         {l:"Esquejes",v:clSlots.filter(s=>s.genetic_name).length,sub:`/${cloners.reduce((a,c)=>a+c.capacity,0)}`,i:"🌿"},
@@ -1917,7 +2013,7 @@ function GeneticasPage({genetics,setGenetics,user}){
 }
 
 // ESTADÍSTICAS
-function EstadisticasPage({rooms,roomConfig}){
+function EstadisticasPage({rooms,roomConfig,targets}){
   const [stats,setStats]=useState(null);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
@@ -1928,8 +2024,10 @@ function EstadisticasPage({rooms,roomConfig}){
       db.query("cycles","active=eq.false&order=closed_at.desc&limit=40"),
       db.query("cycle_genetics","order=id.desc&limit=400"),
       db.query("climate_logs",`recorded_at=gte.${new Date(Date.now()-24*3600*1000).toISOString()}&order=recorded_at.desc`),
-    ]).then(([tasks,wl,nl,closed,cgAll,climate])=>{
+      db.query("cycles","active=eq.true"),
+    ]).then(([tasks,wl,nl,closed,cgAll,climate,active])=>{
       const climByRoom={};(climate||[]).forEach(c=>{if(!climByRoom[c.room_id])climByRoom[c.room_id]=c;});
+      const activeByRoom={};(active||[]).forEach(c=>{if(!activeByRoom[c.room_id])activeByRoom[c.room_id]=c;});
       const byUser={};
       tasks.forEach(t=>{if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
       const byType={};
@@ -1961,7 +2059,7 @@ function EstadisticasPage({rooms,roomConfig}){
         const resetPending=!!lastClosed&&(!lr||lr<new Date(lastClosed.closed_at));
         return {room:r,name:rcR.display_name,lastReset:rcR.last_reset_at||null,closedCount:rcClosed.length,since,resetPending};
       });
-      setStats({byUser,byType,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length,cycleStats,genStats,soil,climByRoom});
+      setStats({byUser,byType,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length,cycleStats,genStats,soil,climByRoom,activeByRoom});
     }).finally(()=>setLoading(false));
   },[rooms,roomConfig]);
   useEffect(()=>{
@@ -1982,7 +2080,7 @@ function EstadisticasPage({rooms,roomConfig}){
     {stats.climByRoom&&<Card>
       <SL>🌡 Clima en vivo</SL>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-        {[...(rooms||["S1","S2"]),"Vegetativo"].map(r=>{const cl=stats.climByRoom[r];const rc=getRC(roomConfig,r);const tR={min:rc.temp_min??20,max:rc.temp_max??26},hR={min:rc.hum_min??55,max:rc.hum_max??65};return <div key={r} style={{background:C.bg,borderRadius:14,padding:"12px 12px",border:`1px solid ${C.border}`}}>
+        {[...(rooms||["S1","S2"]),"Vegetativo"].map(r=>{const cl=stats.climByRoom[r];const rc=getRC(roomConfig,r);const tg=getTargets(targets,r,stats.activeByRoom?.[r]||null,rc);const tR=tg.temp,hR=tg.hum;return <div key={r} style={{background:C.bg,borderRadius:14,padding:"12px 12px",border:`1px solid ${C.border}`}}>
           <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,textAlign:"center"}}>{rc.display_name}</div>
           {[["🌡",cl&&cl.temperature!=null?`${cl.temperature}°C`:"—",C.amber,cl&&cl.temperature!=null&&(cl.temperature<tR.min||cl.temperature>tR.max)],["💧",cl&&cl.humidity!=null?`${cl.humidity}%`:"—",C.blue,cl&&cl.humidity!=null&&(cl.humidity<hR.min||cl.humidity>hR.max)],["🍃",cl&&cl.vpd!=null?cl.vpd:"—",C.purple,false]].map((row,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<2?`1px solid ${C.border}`:"none"}}><span style={{fontSize:13}}>{row[0]}</span><span style={{fontFamily:MONO,fontWeight:700,fontSize:14,color:row[3]?C.red:row[2]}}>{row[1]}</span></div>)}
         </div>;})}
@@ -2458,17 +2556,9 @@ function ConfigPage({user,roomConfig,onChanged,textScale,setTextScale}){
             <Badge label={r.room_id} color={C.blue} bg={C.blueLight}/>
             <span style={{fontSize:16,fontWeight:800,color:C.text}}>{r.display_name||r.room_id}</span>
           </div>
-          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,marginBottom:8}}>🌡 Temperatura (°C)</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            {numField(r,"temp_min","Mínima")}
-            {numField(r,"temp_max","Máxima")}
+          <div style={{fontSize:13,color:C.textMid,lineHeight:1.55,background:C.bg,borderRadius:12,padding:"12px 14px",border:`1px solid ${C.border}`}}>
+            Los objetivos de temperatura y humedad ahora se definen <b>por etapa</b> (vega, flora temprana/media/tardía) y se editan desde cada sala: entrá a <b>{r.display_name||r.room_id}</b> → tarjeta de clima → <b>✎ Editar</b>. Estos rangos únicos por sala quedaron obsoletos.
           </div>
-          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,marginBottom:8}}>💧 Humedad (%)</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            {numField(r,"hum_min","Mínima")}
-            {numField(r,"hum_max","Máxima")}
-          </div>
-          <Btn onClick={()=>saveRoom(r)} disabled={saving} full>{saving?"Guardando...":"Guardar rangos"}</Btn>
         </Card>)}
       </>}
 
@@ -2748,6 +2838,62 @@ function stageKey(cycle,rc){
     return "flora_tardia";
   }
   return null;
+}
+
+// ── OBJETIVOS DE CLIMA POR ETAPA ────────────────────────────────────────────
+// Temp y humedad son EDITABLES desde la app (se guardan en la tabla climate_targets,
+// por sala + etapa). El VPD es fijo por etapa (derivado, no se edita).
+// Etapas climáticas: la sala Vegetativo usa "vege" (madres/esquejes). Las salas de
+// floración usan veg / flora_temprana / flora_media / flora_tardia. Lavado y cosecha
+// reusan el perfil de flora tardía (mismo clima: fresco y seco).
+const CLIMA_FLOWER_STAGES=["veg","flora_temprana","flora_media","flora_tardia"];
+const CLIMA_STAGE_LABEL={
+  vege:"Vegetativo (madres/esquejes)",
+  veg:"Vegetativo",
+  flora_temprana:"Flora temprana",
+  flora_media:"Flora media",
+  flora_tardia:"Flora tardía / lavado",
+};
+// VPD fijo por etapa (kPa). No editable.
+const VPD_BY_STAGE={
+  vege:{min:0.6,max:0.9},
+  veg:{min:0.8,max:1.0},
+  flora_temprana:{min:1.0,max:1.2},
+  flora_media:{min:1.2,max:1.4},
+  flora_tardia:{min:1.4,max:1.6},
+};
+// Valores por defecto de temp/humedad (semilla; se pueden editar en la app).
+// Coinciden con lo sembrado por el SQL. Sirven de respaldo si falta la fila en DB.
+const TARGET_DEFAULTS={
+  vege:{temp_min:22,temp_max:26,hum_min:65,hum_max:75},
+  veg:{temp_min:22,temp_max:26,hum_min:60,hum_max:70},
+  flora_temprana:{temp_min:24,temp_max:26,hum_min:55,hum_max:65},
+  flora_media:{temp_min:22,temp_max:25,hum_min:50,hum_max:55},
+  flora_tardia:{temp_min:20,temp_max:24,hum_min:40,hum_max:50},
+};
+// Traduce la etapa real (stageKey) a la etapa climática. Lavado/cosecha → flora tardía.
+function climaStageFor(roomId,cycle,rc){
+  if(roomId==="Vegetativo")return "vege";
+  const sk=stageKey(cycle,rc);
+  if(sk==="lavado"||sk==="cosecha")return "flora_tardia";
+  if(sk==="veg"||sk==="flora_temprana"||sk==="flora_media"||sk==="flora_tardia")return sk;
+  return "veg"; // sin ciclo o desconocido → objetivo neutro de vegetativo
+}
+// Resuelve los rangos objetivo de una sala según el momento del cultivo.
+// Temp/hum salen de climate_targets (editables); si falta la fila, usa TARGET_DEFAULTS.
+// Devuelve {stage,label,temp:{min,max},hum:{min,max},vpd:{min,max}}.
+function getTargets(targetsArr,roomId,cycle,rc){
+  const cs=climaStageFor(roomId,cycle,rc);
+  const row=(targetsArr||[]).find(t=>t.room_id===roomId&&t.stage===cs);
+  const def=TARGET_DEFAULTS[cs]||TARGET_DEFAULTS.veg;
+  const num=(a,b)=>a==null?b:+a;
+  return {
+    stage:cs,
+    label:CLIMA_STAGE_LABEL[cs]||cs,
+    temp:{min:num(row?.temp_min,def.temp_min),max:num(row?.temp_max,def.temp_max)},
+    hum:{min:num(row?.hum_min,def.hum_min),max:num(row?.hum_max,def.hum_max)},
+    vpd:VPD_BY_STAGE[cs]||VPD_BY_STAGE.veg,
+  };
 }
 
 const GUIDE={
@@ -3118,22 +3264,24 @@ export default function App(){
   const [page,setPage]=useState("dashboard");
   const [genetics,setGenetics]=useState([]);
   const [roomConfig,setRoomConfig]=useState([]);
+  const [targets,setTargets]=useState([]);
   const [textScale,setTextScaleState]=useState(1);
   const loadConfig=useCallback(()=>{db.get("room_config").then(setRoomConfig).catch(()=>setRoomConfig([]));},[]);
+  const loadTargets=useCallback(()=>{db.query("climate_targets","select=*").then(setTargets).catch(()=>setTargets([]));},[]);
   const wide=useIsWide(820);
   // Preferencia de tamaño de texto (por dispositivo)
   useEffect(()=>{try{const v=parseFloat(localStorage.getItem("gm_textscale"));if(v>=1&&v<=1.3)setTextScaleState(v);}catch{}},[]);
   const setTextScale=(v)=>{setTextScaleState(v);try{localStorage.setItem("gm_textscale",String(v));}catch{}};
-  useEffect(()=>{if(user){db.get("genetics").then(setGenetics);loadConfig();logA(user.name,"Inició sesión","auth");}},[user,loadConfig]);
+  useEffect(()=>{if(user){db.get("genetics").then(setGenetics);loadConfig();loadTargets();logA(user.name,"Inició sesión","auth");}},[user,loadConfig,loadTargets]);
   if(!user)return <LoginScreen onLogin={u=>{setUser(u);setPage(u.role==="admin"?"dashboard":"mi_turno");}}/>;
   const rooms=["S1","S2"];
   const render=()=>{
     switch(page){
-      case "mi_turno":     return <MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms}/>;
-      case "vegetativo":   return <VegetativoPage genetics={genetics} user={user}/>;
+      case "mi_turno":     return <MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
+      case "vegetativo":   return <VegetativoPage genetics={genetics} user={user} targets={targets} onTargetsChanged={loadTargets}/>;
       case "tareas":       return <TareasPage user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
-      case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig}/>;
+      case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets}/>;
       case "plagas":       return <PlagasPage user={user} rooms={rooms}/>;
       case "calendario":   return <CalendarioPage user={user}/>;
       case "compras":      return <ComprasPage user={user}/>;
@@ -3143,8 +3291,8 @@ export default function App(){
       case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} textScale={textScale} setTextScale={setTextScale}/>;
       case "__more__":     return <MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale}/>;
       default:
-        if(page.startsWith("sala_")){const rid=page.slice(5);return <SalaPage roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)}/>;}
-        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms}/>;
+        if(page.startsWith("sala_")){const rid=page.slice(5);return <SalaPage roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)} targets={targets} onTargetsChanged={loadTargets}/>;}
+        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
     }
   };
   const globalCSS=`*{box-sizing:border-box;margin:0;padding:0;}::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}input,select,button,textarea{font-family:inherit;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.page{animation:fadeUp 0.2s ease;}`;
