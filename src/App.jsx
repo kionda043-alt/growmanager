@@ -204,44 +204,37 @@ const clonerRows = (cap) => Math.max(1, Math.ceil((cap||0)/CLONER_COLS));
 const slotCoord = (i) => `${COL_LETTERS[i%CLONER_COLS]||"?"}${Math.floor(i/CLONER_COLS)+1}`;
 
 // ── BÚSQUEDA DE FENOS ────────────────────────────────────────────────────────
-// Cada planta/esqueje trackeado es un "feno": una fila en la tabla `phenos` con
-// un código corto congelado (CHO-A3) que NO cambia aunque después se repinte o
-// se mueva de lugar. Esa etiqueta es la que permite, al catar, volver al esqueje.
+// Un FENO es una planta nacida de semilla, no un esqueje. De una misma planta
+// salen varios clones, y todos siguen siendo el mismo feno: DS-1 puede estar en
+// dos slots de la esquejera y en tres celdas de una mesa de producción.
 //
-// Coordenada tipo batalla naval dentro de un macetón: letra = columna, número = fila.
-// Misma convención que la esquejera (letras a lo ancho).
+// Una BÚSQUEDA (`pheno_hunts`) agrupa los N fenos de una tanda de semillas.
+// Ej: 28 semillas de Dos y Choc → DS-1 ... DS-28, todos de la búsqueda.
+//
+// Numeración de la mesa de semillas: se cuenta desde ABAJO A LA IZQUIERDA
+// hacia arriba, igual que en el cuaderno. En una grilla 4×7: A7=1, D7=4,
+// A6=5 ... A1=25, D1=28.
+const seedNum = (i,w,h) => (h-1-Math.floor(i/w))*w + (i%w) + 1;
+// Índice de celda que le corresponde a un número dado (la inversa de seedNum).
+const seedIndex = (n,w,h) => { const k=n-1; return (h-1-Math.floor(k/w))*w + (k%w); };
+// Coordenada tipo batalla naval, se sigue usando en la esquejera.
 const potCoord = (i,w) => `${COL_LETTERS[i%w]||"?"}${Math.floor(i/w)+1}`;
-// Abreviatura corta y estable de la genética: "Chocorock" → CHO, "Blue Dream" → BLD.
+// Prefijo sugerido a partir del nombre. Es solo una sugerencia: el usuario lo edita
+// (en el cuaderno "Dos y Choc" se anota DS, no DYC).
 const genAbbr = (name) => {
   const clean=(name||"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
   if(!clean)return "GEN";
   const w=clean.split(" ").filter(Boolean);
-  if(w.length===1)return w[0].slice(0,3).padEnd(3,"X");
-  if(w.length===2)return (w[0].slice(0,2)+w[1].slice(0,1));
-  return w.slice(0,3).map(x=>x[0]).join("");
+  if(w.length===1)return w[0].slice(0,3).padEnd(2,"X");
+  return w.slice(0,2).map(x=>x[0]).join("");
 };
-// Código único y corto: CHO-A3. Si ese ya existe (otra bandeja, otra mesa),
-// se desambigua con letra: CHO-A3b, CHO-A3c...
-const phenoCode = (geneticName,coord,taken) => {
-  const base=`${genAbbr(geneticName)}-${coord}`;
-  if(!taken.has(base))return base;
-  for(const s of "bcdefghijklmnopqrstuvwxyz"){ if(!taken.has(base+s))return base+s; }
-  return `${base}-${String(Date.now()).slice(-4)}`;
-};
+const phenoCode = (prefix,n) => `${prefix||"F"}-${n}`;
 const PHENO_ST = {
-  esquejera:   {label:"En esquejera", color:C.blue,   bg:C.blueLight},
-  muerto:      {label:"Perdido",      color:C.textSoft,bg:C.surfaceAlt},
-  trasplante:  {label:"Sin ubicar",   color:C.amber,  bg:C.amberLight},
-  cultivo:     {label:"En cultivo",   color:C.green,  bg:C.greenLight},
-  cosechado:   {label:"Cosechado",    color:C.teal,   bg:C.tealLight},
+  activo:      {label:"En búsqueda",  color:C.blue,   bg:C.blueLight},
   candidato:   {label:"Candidato",    color:C.amber,  bg:C.amberLight},
   seleccionado:{label:"Seleccionado", color:C.green,  bg:C.greenLight},
   descartado:  {label:"Descartado",   color:C.red,    bg:C.redLight},
-};
-// Todos los códigos ya usados, para no repetir etiquetas entre bandejas y mesas.
-const takenPhenoCodes = async () => {
-  try{ const r=await db.query("phenos","select=code"); return new Set(r.map(p=>p.code).filter(Boolean)); }
-  catch{ return new Set(); }
+  muerto:      {label:"Perdido",      color:C.textSoft,bg:C.surfaceAlt},
 };
 // Los ids de otras tablas pueden venir como número o texto según PostgREST.
 // Guardamos y comparamos siempre en texto para que nunca falle el match.
@@ -314,7 +307,7 @@ function PBadge({phase}){const m=PM[phase]||PM["floración"];return <Badge label
 function Bar({value,max,color=C.green,h=7}){const p=max>0?Math.min(100,Math.round(value/max*100)):0;return<div style={{background:C.border,borderRadius:99,height:h,overflow:"hidden"}}><div style={{width:`${p}%`,background:color,height:"100%",borderRadius:99,transition:"width 0.5s"}}/></div>;}
 // Grilla de esquejera con forma FIJA: 8 columnas (1-8) × N filas (a, b, c...).
 // Idéntica en la vista general y en el detalle. colorAt(i) da el color del slot i; onPaint(i) la hace interactiva.
-function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false}){
+function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false,labelAt=null,ringAt=null}){
   const rows=clonerRows(capacity);
   const interactive=!!onPaint;
   const cellSize=cell||(interactive?34:14);
@@ -325,14 +318,16 @@ function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false}){
     {Array.from({length:rows},(_,r)=>[
       <span key={"r"+r} style={{fontSize:lab,fontWeight:700,color:C.textSoft}}>{r+1}</span>,
       ...Array.from({length:CLONER_COLS},(_,c)=>{const i=r*CLONER_COLS+c;const used=i<capacity;const col=used?colorAt(i):null;
+        const lab=labelAt?labelAt(i):(showCoords&&used&&interactive?slotCoord(i):null);
+        const ring=ringAt?ringAt(i):false;
         return <div key={i} onClick={()=>used&&onPaint&&onPaint(i)} title={used?slotCoord(i)+(col?"":" · vacío"):""}
           style={{width:cellSize,height:cellSize,borderRadius:interactive?6:3,background:used?(col||C.border):"transparent",
-            border:used?`1px solid ${col?"transparent":C.borderStrong}`:"none",cursor:interactive&&used?"pointer":"default",
+            border:used?`${ring?2:1}px solid ${ring?C.purple:(col?"transparent":C.borderStrong)}`:"none",cursor:interactive&&used?"pointer":"default",
             opacity:used?1:0.25,transition:"background 0.08s",
             display:"flex",alignItems:"center",justifyContent:"center",
-            fontSize:Math.max(7,Math.round(cellSize*0.28)),fontWeight:800,letterSpacing:"-0.02em",
-            color:col?"rgba(0,0,0,0.62)":C.textSoft}}>
-          {showCoords&&used&&interactive?slotCoord(i):null}
+            fontSize:Math.max(7,Math.round(cellSize*0.32)),fontWeight:900,letterSpacing:"-0.03em",
+            color:col?"rgba(0,0,0,0.72)":C.textSoft}}>
+          {lab}
         </div>;
       }),
     ])}
@@ -1371,49 +1366,51 @@ function PotMap({roomId,genetics,cycleGenetics,selectedPot,onSelect,equipment=[]
   </div>;
 }
 
-// Elegir una tanda de esquejera para bajar sus fenos a la mesa.
-// Solo muestra fenos que siguen en bandeja: los que ya se trasplantaron no reaparecen.
-function TraerTandaModal({libres,onClose,onPick}){
-  const [cloners,setCloners]=useState([]);
-  const [phenos,setPhenos]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [sel,setSel]=useState(null);
-  useEffect(()=>{
-    Promise.all([db.get("cloners"),db.query("phenos","status=in.(esquejera,trasplante)&order=origin_coord.asc")])
-      .then(([c,p])=>{setCloners(c);setPhenos(p);})
-      .catch(()=>{setCloners([]);setPhenos([]);})
-      .finally(()=>setLoading(false));
-  },[]);
-  const porBandeja={};
-  phenos.forEach(p=>{const k=sid(p.origin_cloner_id)||"otros";(porBandeja[k]=porBandeja[k]||[]).push(p);});
-  const grupos=Object.entries(porBandeja).map(([k,list])=>({
-    key:k, label:cloners.find(c=>sid(c.id)===k)?.label||"Sin bandeja", list,
-  })).filter(g=>g.list.length>0);
-  const elegidos=sel?(porBandeja[sel]||[]):[];
-  const exceso=Math.max(0,elegidos.length-libres);
-
-  return <Modal title="⬇ Traer tanda de esquejera" onClose={onClose}>
-    {loading?<Spin/>:grupos.length===0?
-      <div style={{fontSize:13.5,color:C.textSoft,textAlign:"center",padding:"18px 0",lineHeight:1.5}}>No hay fenos esperando en ninguna esquejera.<br/>Cargá una bandeja con la búsqueda de fenos activada.</div>
-    :<>
-      <div style={{fontSize:12.5,color:C.textSoft,marginBottom:12,lineHeight:1.5}}>Los esquejes se ubican en orden en las celdas libres de la mesa. Después podés moverlos a mano.</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-        {grupos.map(g=><button key={g.key} onClick={()=>setSel(g.key)} style={{textAlign:"left",padding:"12px 14px",borderRadius:11,cursor:"pointer",background:sel===g.key?C.greenLight:C.bg,border:`1.5px solid ${sel===g.key?C.green:C.border}`}}>
-          <div style={{fontSize:14,fontWeight:800,color:C.text}}>{g.label}</div>
-          <div style={{fontSize:11.5,color:C.textSoft,marginTop:2}}>{g.list.length} feno{g.list.length>1?"s":""} · {[...new Set(g.list.map(p=>p.genetic_name))].join(", ")}</div>
-        </button>)}
+// Arrancar una búsqueda: define genética, prefijo y cuántas semillas hay.
+// Crea los N fenos de una (DS-1 ... DS-28) y los ubica en la mesa por número.
+function NuevaBusquedaModal({cycleGenetics,gridW,gridH,onClose,onCreate}){
+  const cap=gridW*gridH;
+  const [gen,setGen]=useState(cycleGenetics[0]?.genetic_name||"");
+  const [prefix,setPrefix]=useState(()=>genAbbr(cycleGenetics[0]?.genetic_name||""));
+  const [count,setCount]=useState(cap);
+  const [autofill,setAutofill]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState(null);
+  const cambiarGen=v=>{setGen(v);setPrefix(genAbbr(v));};
+  const n=Math.max(1,Math.min(999,+count||1));
+  const crear=async()=>{
+    if(!gen){setErr("Elegí una genética");return;}
+    setBusy(true);setErr(null);
+    try{ await onCreate({genetic_name:gen,prefix:prefix.trim().toUpperCase()||"F",count:n,autofill}); }
+    catch(e){setErr(errMsg(e));setBusy(false);}
+  };
+  return <Modal title="🔬 Nueva búsqueda de fenos" onClose={onClose}>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12}}>{err}</div>}
+    <div style={{fontSize:13,color:C.textSoft,marginBottom:14,lineHeight:1.55}}>
+      Cada semilla es un feno distinto. Se crean todos ahora y después les vas asignando esquejes en las bandejas.
+    </div>
+    <FS label="Genética" value={gen} onChange={e=>cambiarGen(e.target.value)} options={cycleGenetics.map(g=>({value:g.genetic_name,label:g.genetic_name}))}/>
+    <div style={{display:"flex",gap:10}}>
+      <div style={{flex:1}}><FI label="Prefijo" value={prefix} onChange={e=>setPrefix(e.target.value.slice(0,5))} placeholder="DS"/></div>
+      <div style={{width:126}}><NumField label="Cuántos fenos" value={count} onCommit={v=>setCount(Math.max(1,+v||1))} min={1} max={999}/></div>
+    </div>
+    <div style={{background:C.purpleLight,borderRadius:11,padding:"10px 13px",marginBottom:12,fontSize:12.5,color:C.purple,lineHeight:1.5}}>
+      Se van a crear <strong>{prefix.trim().toUpperCase()||"F"}-1</strong> hasta <strong>{prefix.trim().toUpperCase()||"F"}-{n}</strong>.
+    </div>
+    <div onClick={()=>setAutofill(a=>!a)} style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:C.bg,border:`1px solid ${autofill?C.green+"55":C.border}`}}>
+      <div style={{width:34,height:20,borderRadius:99,background:autofill?C.green:C.borderStrong,position:"relative",flexShrink:0}}>
+        <div style={{position:"absolute",top:3,left:autofill?17:3,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
       </div>
-      {sel&&<>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
-          {elegidos.slice(0,libres).map(p=><span key={p.id} style={{background:C.purpleLight,color:C.purple,borderRadius:7,padding:"3px 8px",fontSize:11,fontWeight:700}}>{p.code}</span>)}
-        </div>
-        {exceso>0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12,lineHeight:1.45}}>Hay {libres} celda{libres===1?"":"s"} libre{libres===1?"":"s"} y {elegidos.length} fenos. Entran los primeros {libres}; el resto queda en la bandeja.</div>}
-      </>}
-      <div style={{display:"flex",gap:10}}>
-        <Btn onClick={()=>onPick(elegidos.slice(0,libres))} disabled={!sel||libres===0} style={{flex:1}}>Ubicar en la mesa</Btn>
-        <Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn>
+      <div style={{flex:1}}>
+        <div style={{fontSize:12.5,fontWeight:800,color:autofill?C.green:C.textMid}}>Ubicar en la mesa por número</div>
+        <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>Cuenta desde abajo a la izquierda: el 1 va en A{gridH} y el {cap} en {COL_LETTERS[gridW-1]}1.</div>
       </div>
-    </>}
+    </div>
+    {n>cap&&autofill&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12,lineHeight:1.45}}>La mesa tiene {cap} lugares y pediste {n} fenos. Se ubican los primeros {cap}; el resto queda creado sin lugar.</div>}
+    <div style={{display:"flex",gap:10}}>
+      <Btn onClick={crear} disabled={busy} style={{flex:1}}>{busy?"Creando...":"Crear búsqueda"}</Btn>
+      <Btn onClick={onClose} v="secondary" disabled={busy} style={{flex:1}}>Cancelar</Btn>
+    </div>
   </Modal>;
 }
 
@@ -1433,15 +1430,27 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   // Búsqueda de fenos: el modo queda prendido en la mesa hasta que un admin lo apague.
   const [phenoMode,setPhenoMode]=useState(false);
   const [cellPhenos,setCellPhenos]=useState(()=>Array((pot?.circular?3:4)*(pot?.circular?4:6)).fill(null)); // pheno_id por celda
-  const [phenoMap,setPhenoMap]=useState({});    // id -> feno (para mostrar el código)
-  const [showTraer,setShowTraer]=useState(false);
+  const [phenoMap,setPhenoMap]=useState({});    // id -> feno
+  const [hunt,setHunt]=useState(null);          // búsqueda activa en esta mesa
+  const [huntPhenos,setHuntPhenos]=useState([]);// los N fenos de esa búsqueda, ordenados
+  const [showNueva,setShowNueva]=useState(false);
+  const [brushPheno,setBrushPheno]=useState(null); // en modo feno el pincel es un feno
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
 
-  const reloadPhenos=useCallback(()=>{
-    db.query("phenos",`cycle_id=eq.${cycle.id}`).then(list=>{
-      const m={};list.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
-    }).catch(()=>{});
-  },[cycle.id]);
+  // Carga la búsqueda de esta mesa y todos sus fenos.
+  const reloadHunt=useCallback(async(pid)=>{
+    if(!pid)return;
+    try{
+      const hs=await db.query("pheno_hunts",`pot_id=eq.${sid(pid)}&order=created_at.desc`);
+      const h=hs[0]||null;
+      setHunt(h);
+      if(!h){setHuntPhenos([]);setPhenoMap({});return;}
+      const ps=await db.query("phenos",`hunt_id=eq.${sid(h.id)}&order=number.asc`);
+      setHuntPhenos(ps);
+      const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
+      setBrushPheno(prev=>prev&&ps.some(p=>sid(p.id)===prev)?prev:(ps[0]?sid(ps[0].id):null));
+    }catch{ setHunt(null);setHuntPhenos([]); }
+  },[]);
 
   useEffect(()=>{
     db.query("pots",`room_id=eq.${roomId}&pot_label=eq.${potLabel}`).then(async pots=>{
@@ -1460,9 +1469,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
         existingCells.forEach(c=>{if(c.cell_index<arr.length){arr[c.cell_index]=c.genetic_name;ph[c.cell_index]=sid(c.pheno_id);}});
         setCells(arr);setCellPhenos(ph);
       }).catch(()=>{});
+      reloadHunt(p.id);
     }).catch(e=>setToastLocal(errMsg(e)));
-    reloadPhenos();
-  },[roomId,potLabel,cycle.id,reloadPhenos]);
+  },[roomId,potLabel,cycle.id,reloadHunt]);
 
   // Al cambiar el tamaño de la grilla, conservamos lo que ya estaba cargado (recorta o agrega vacías).
   const updateGrid=(w,h)=>{
@@ -1472,23 +1481,50 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   };
   const paint=i=>{
     if(!editing)return;
+    if(phenoMode&&hunt){
+      // El pincel es un feno concreto. Volver a tocar la misma celda la vacía.
+      const ya=cellPhenos[i]===brushPheno;
+      const p=phenoMap[brushPheno];
+      setCells(prev=>{const n=[...prev];n[i]=ya?null:(p?.genetic_name||hunt.genetic_name);return n;});
+      setCellPhenos(prev=>{const n=[...prev];n[i]=ya?null:brushPheno;return n;});
+      return;
+    }
     const borrando=cells[i]===brush;
     setCells(prev=>{const n=[...prev];n[i]=borrando?null:brush;return n;});
-    // Al despintar o cambiar de genética se suelta el vínculo con el feno.
-    // El feno no se borra: al guardar queda marcado como descartado y sigue en el historial.
     setCellPhenos(prev=>{const n=[...prev];n[i]=null;return n;});
   };
   // Trae una tanda de esquejera: asigna sus fenos en orden a las celdas libres de la mesa.
-  const traerTanda=(fenos)=>{
-    const nc=[...cells], np=[...cellPhenos];
-    let k=0;
-    for(let i=0;i<nc.length&&k<fenos.length;i++){
-      if(nc[i])continue;                       // no pisa lo que ya está cargado
-      nc[i]=fenos[k].genetic_name;np[i]=sid(fenos[k].id);k++;
+  // Crea la búsqueda y sus N fenos, y opcionalmente los ubica por número en la mesa.
+  const crearBusqueda=async({genetic_name,prefix,count,autofill})=>{
+    if(!potId)throw new Error("La mesa todavía no terminó de cargar");
+    const hs=await db.insert("pheno_hunts",{
+      genetic_name,prefix,total:count,room_id:roomId,pot_id:sid(potId),pot_label:potLabel,
+      cycle_id:sid(cycle.id),start_date:todayISO,created_by:user?.name||"sistema",
+    });
+    const h=hs[0];
+    const filas=Array.from({length:count},(_,k)=>({
+      hunt_id:sid(h.id), code:phenoCode(prefix,k+1), prefix, number:k+1,
+      genetic_name, status:"activo",
+      seed_room_id:roomId, seed_pot_id:sid(potId), seed_pot_label:potLabel,
+      cycle_id:sid(cycle.id), created_by:user?.name||"sistema", updated_at:new Date().toISOString(),
+    }));
+    const ps=await db.insert("phenos",filas);
+    if(autofill){
+      const nc=[...cells], np=[...cellPhenos];
+      ps.forEach(p=>{
+        const idx=seedIndex(p.number,gridW,gridH);
+        if(idx<0||idx>=nc.length)return;        // más fenos que lugares: quedan sin ubicar
+        nc[idx]=genetic_name; np[idx]=sid(p.id);
+      });
+      setCells(nc);setCellPhenos(np);
     }
-    setCells(nc);setCellPhenos(np);
-    setShowTraer(false);
-    setToastLocal(`${fenos.length} feno${fenos.length>1?"s":""} ubicado${fenos.length>1?"s":""}. Revisá y tocá Guardar.`);
+    setHunt(h);setHuntPhenos(ps);
+    const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
+    setBrushPheno(ps[0]?sid(ps[0].id):null);
+    setPhenoMode(true);
+    try{await db.update("pots",potId,{pheno_mode:true});}catch{}
+    setShowNueva(false);
+    setToastLocal(autofill?`${ps.length} fenos creados y ubicados. Tocá Guardar para confirmar.`:`${ps.length} fenos creados.`);
   };
 
   const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],gridW,gridH,phenoMode});setEditing(true);};
@@ -1499,59 +1535,18 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     setSaving(true);
     try{
       await db.update("pots",potId,{grid_w:gridW,grid_h:gridH,pheno_mode:phenoMode});
-
-      const phenoIds=[...cellPhenos];   // se completa abajo con los fenos nuevos
-      if(phenoMode){
-        // 1) Fenos nuevos: celdas con genética que todavía no tienen etiqueta.
-        const taken=await takenPhenoCodes();
-        const nuevos=[];
-        cells.forEach((g,i)=>{
-          if(!g||phenoIds[i])return;
-          const coord=potCoord(i,gridW);
-          const code=phenoCode(g,coord,taken);
-          taken.add(code);
-          nuevos.push({idx:i,row:{
-            code,genetic_name:g,status:"cultivo",
-            origin_type:"maceton",origin_label:`${roomId} · Mesa ${potLabel}`,origin_coord:coord,
-            room_id:roomId,cycle_id:sid(cycle.id),pot_id:sid(potId),pot_label:potLabel,
-            cell_index:i,cell_coord:coord,
-            created_by:user?.name||"sistema",updated_at:new Date().toISOString(),
-          }});
-        });
-        if(nuevos.length>0){
-          const ins=await db.insert("phenos",nuevos.map(n=>n.row));
-          ins.forEach((p,k)=>{ if(nuevos[k])phenoIds[nuevos[k].idx]=sid(p.id); });
-        }
-        // 2) Fenos que ya venían de la esquejera o de otra celda: actualizar ubicación.
-        const vivos=new Set(phenoIds.filter(Boolean));
-        for(let i=0;i<phenoIds.length;i++){
-          const pid=phenoIds[i];
-          if(!pid)continue;
-          const prev=phenoMap[pid];
-          if(prev&&prev.cell_index===i&&sid(prev.pot_id)===sid(potId)&&prev.status==="cultivo")continue;
-          const coord=potCoord(i,gridW);
-          try{await db.update("phenos",pid,{status:"cultivo",room_id:roomId,cycle_id:sid(cycle.id),pot_id:sid(potId),pot_label:potLabel,cell_index:i,cell_coord:coord,updated_at:new Date().toISOString()});}catch{}
-        }
-        // 3) Fenos que estaban en esta mesa y ya no: quedan descartados (no se borran).
-        Object.values(phenoMap).forEach(p=>{
-          if(sid(p.pot_id)!==sid(potId))return;
-          if(vivos.has(sid(p.id)))return;
-          if(p.status==="descartado"||p.status==="cosechado")return;
-          db.update("phenos",p.id,{status:"descartado",notes:[p.notes,"Quitado de la mesa"].filter(Boolean).join(" · "),updated_at:new Date().toISOString()}).catch(()=>{});
-        });
-      }
-
-      // Solo borra las celdas de ESTE ciclo. Antes borraba por pot_id a secas y se
-      // llevaba puesta la distribución de los ciclos anteriores (histórico perdido).
+      // Los fenos ya existen (se crean al abrir la búsqueda). Acá solo se guarda
+      // en qué celda está cada uno, así que no se crea ni se borra ningún feno.
       await db.deleteQuery("pot_cells",`pot_id=eq.${potId}&cycle_id=eq.${cycle.id}`);
-      const newCells=cells.map((g,i)=>({pot_id:potId,cycle_id:cycle.id,cell_index:i,genetic_name:g,pheno_id:phenoIds[i]||null,updated_at:new Date().toISOString()})).filter(c=>c.genetic_name);
+      const newCells=cells.map((g,i)=>({pot_id:potId,cycle_id:cycle.id,cell_index:i,genetic_name:g,pheno_id:(phenoMode?cellPhenos[i]:null)||null,updated_at:new Date().toISOString()})).filter(c=>c.genetic_name);
       if(newCells.length>0)await db.insert("pot_cells",newCells);
-      if(phenoMode)await logA(user?.name||"sistema",`Fenos actualizados en ${roomId} · Mesa ${potLabel}`,"phenos");
+      if(phenoMode&&hunt)await logA(user?.name||"sistema",`Fenos actualizados en ${roomId} · Mesa ${potLabel}`,"phenos");
       onSaved();
     }catch(e){setToastLocal(errMsg(e));setSaving(false);}
   };
 
   const togglePheno=async()=>{
+    if(!phenoMode&&!hunt){setShowNueva(true);return;}   // sin búsqueda todavía: hay que crearla
     const next=!phenoMode;
     setPhenoMode(next);
     if(potId){try{await db.update("pots",potId,{pheno_mode:next});}catch{}}
@@ -1559,11 +1554,12 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
 
   const summary=cycleGenetics.map(g=>({...g,count:cells.filter(c=>c===g.genetic_name).length})).filter(g=>g.count>0);
   const total=cells.filter(Boolean).length;
-  const sinEtiqueta=phenoMode?cells.filter((g,i)=>g&&!cellPhenos[i]).length:0;
+  const ubicados=new Set(cellPhenos.filter(Boolean)).size;
+  const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
 
   return <div style={{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16}}>
     {toastLocal&&<Toast msg={toastLocal} type="error" onClose={()=>setToastLocal(null)}/>}
-    {showTraer&&<TraerTandaModal libres={cells.filter(c=>!c).length} onClose={()=>setShowTraer(false)} onPick={traerTanda}/>}
+    {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} gridW={gridW} gridH={gridH} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <div style={{fontSize:15,fontWeight:800,color:C.text}}>Macetón {potLabel} {pot?.circular?"— circular":"— 2×1m"}{editing&&<span style={{fontSize:12,fontWeight:700,color:C.green,marginLeft:8}}>● editando</span>}</div>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1572,18 +1568,22 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       </div>
     </div>
 
-    {/* Búsqueda de fenos: numera cada planta con su coordenada para poder catarla después */}
+    {/* Búsqueda de fenos: cada semilla es un feno numerado (DS-1, DS-2...) */}
     {isAdmin&&<div onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:phenoMode?C.purpleLight:C.bg,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
       <div style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0,transition:"background 0.15s"}}>
         <div style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
       </div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:13,fontWeight:800,color:phenoMode?C.purple:C.textMid}}>🔬 Búsqueda de fenos</div>
-        <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>{phenoMode?"Cada planta queda numerada por su posición (A1, B2...) para seguirla hasta la cata.":"Apagado: la mesa funciona como siempre, solo con genéticas."}</div>
+        <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>{hunt?`${hunt.prefix}-1 a ${hunt.prefix}-${hunt.total} · ${hunt.genetic_name}`:"Tocá para arrancar una búsqueda de semillas."}</div>
       </div>
     </div>}
-    {phenoMode&&sinEtiqueta>0&&editing&&<div style={{background:C.purpleLight,color:C.purple,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12,lineHeight:1.45}}>
-      {sinEtiqueta} planta{sinEtiqueta>1?"s":""} sin etiqueta. Al guardar se les crea el código automáticamente.
+    {phenoMode&&hunt&&<div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:12,padding:"11px 13px",marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:C.textSoft,marginBottom:sinUbicar>0?7:0}}>
+        <span><strong style={{color:C.text}}>{ubicados}</strong> de {hunt.total} ubicados</span>
+        <span>{hunt.prefix}-1 … {hunt.prefix}-{hunt.total}</span>
+      </div>
+      {sinUbicar>0&&<div style={{fontSize:11.5,color:C.amber,lineHeight:1.45}}>{sinUbicar} feno{sinUbicar>1?"s":""} sin lugar en esta mesa.</div>}
     </div>}
 
     {!editing&&<div style={{fontSize:12,color:C.textSoft,marginBottom:12,fontStyle:"italic"}}>{isAdmin?"Modo lectura. Tocá “✎ Editar mesa” para cambiar la distribución.":"Solo los administradores pueden editar la distribución de las mesas."}</div>}
@@ -1596,32 +1596,59 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       <span style={{fontSize:12,color:C.textMid,fontWeight:700}}>{total}/{gridW*gridH} plantas</span>
     </div>}
 
-    {editing&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+    {/* En modo feno el pincel es un feno concreto, no una genética */}
+    {editing&&phenoMode&&hunt&&<div style={{marginBottom:12}}>
+      <div style={{fontSize:12,color:C.textSoft,marginBottom:7}}>Tocá un feno y después las celdas donde va:</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
+        {huntPhenos.map(p=>{
+          const pid=sid(p.id);
+          const n=cellPhenos.filter(x=>x===pid).length;
+          const on=brushPheno===pid;
+          return <button key={pid} onClick={()=>setBrushPheno(pid)} title={p.code}
+            style={{minWidth:38,padding:"6px 8px",borderRadius:9,fontSize:12.5,fontWeight:800,cursor:"pointer",
+              background:on?C.purple:(n>0?C.purpleLight:C.bg),color:on?"#fff":(n>0?C.purple:C.textSoft),
+              border:`1.5px solid ${on?C.purple:(n>0?C.purple+"55":C.border)}`}}>{p.number}{n>1?<sup style={{fontSize:8.5}}>×{n}</sup>:null}</button>;
+        })}
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
+        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);}});setCells(nc);setCellPhenos(np);}}
+          style={{padding:"7px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>↕ Ubicar por número</button>
+        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));}}
+          style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
+      </div>
+    </div>}
+
+    {editing&&!phenoMode&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {cycleGenetics.map(g=><button key={g.genetic_name} onClick={()=>setBrush(g.genetic_name)} style={{padding:"7px 14px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",background:brush===g.genetic_name?genMap[g.genetic_name]||C.green:`${genMap[g.genetic_name]||C.green}22`,color:brush===g.genetic_name?"#fff":genMap[g.genetic_name]||C.green,border:`2px solid ${genMap[g.genetic_name]||C.green}`}}>{g.genetic_name}</button>)}
       <button onClick={()=>setBrush(null)} style={{padding:"7px 14px",borderRadius:20,fontSize:12,cursor:"pointer",background:brush===null?C.red:C.bg,color:brush===null?"#fff":C.textSoft,border:`2px solid ${brush===null?C.red:C.borderStrong}`}}>Borrar</button>
       <button onClick={()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));}} style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Llenar</button>
       <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));}} style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
-      {phenoMode&&<button onClick={()=>setShowTraer(true)} style={{padding:"7px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>⬇ Traer tanda</button>}
     </div>}
 
     <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
       <div style={{flex:1,overflowX:"auto"}}>
-        {/* En modo feno la grilla suma los ejes tipo batalla naval: letras arriba, números al costado */}
-        <div style={{display:"inline-grid",gridTemplateColumns:phenoMode?`14px repeat(${gridW},34px)`:`repeat(${gridW},32px)`,gap:phenoMode?5:4,alignItems:"center",justifyItems:"center"}}>
+        {/* En modo feno cada celda muestra el número del feno que vive ahí, como en el cuaderno */}
+        <div style={{display:"inline-grid",gridTemplateColumns:phenoMode?`16px repeat(${gridW},36px)`:`repeat(${gridW},32px)`,gap:phenoMode?5:4,alignItems:"center",justifyItems:"center"}}>
           {phenoMode&&<span/>}
           {phenoMode&&Array.from({length:gridW},(_,c)=><span key={"ch"+c} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
           {cells.map((cell,i)=>{
             const first=phenoMode&&i%gridW===0;
             const ph=cellPhenos[i]?phenoMap[cellPhenos[i]]:null;
-            const sz=phenoMode?34:32;
-            const box=<div key={i} onClick={()=>paint(i)} title={phenoMode?(ph?.code||potCoord(i,gridW)):""}
-              style={{width:sz,height:sz,borderRadius:7,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.border,border:`1px solid ${cell?"transparent":C.borderStrong}`,transition:"background 0.08s",display:"flex",alignItems:"center",justifyContent:"center",opacity:editing||cell?1:0.85,fontSize:9.5,fontWeight:800,color:"rgba(0,0,0,0.62)",letterSpacing:"-0.02em"}}>
-              {phenoMode?(cell?potCoord(i,gridW):"") : (cell?<div style={{width:10,height:10,borderRadius:"50%",background:"rgba(255,255,255,0.4)"}}/>:null)}
+            const sz=phenoMode?36:32;
+            const sel=phenoMode&&editing&&cellPhenos[i]&&cellPhenos[i]===brushPheno;
+            const box=<div key={i} onClick={()=>paint(i)} title={phenoMode?(ph?.code||`Vacío · pos ${seedNum(i,gridW,gridH)}`):""}
+              style={{width:sz,height:sz,borderRadius:7,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.border,
+                border:`2px solid ${sel?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
+                display:"flex",alignItems:"center",justifyContent:"center",opacity:editing||cell?1:0.85,
+                fontSize:ph&&ph.number>99?10:12.5,fontWeight:900,color:ph?"rgba(0,0,0,0.72)":C.textSoft,letterSpacing:"-0.03em"}}>
+              {phenoMode
+                ? (ph?ph.number:<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>)
+                : (cell?<div style={{width:10,height:10,borderRadius:"50%",background:"rgba(255,255,255,0.4)"}}/>:null)}
             </div>;
             return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
           })}
         </div>
-        {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:8,fontStyle:"italic",lineHeight:1.45}}>Las etiquetas se congelan al guardar: aunque después repintes, cada planta conserva su código.</div>}
+        {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:8,fontStyle:"italic",lineHeight:1.45}}>Los números se cuentan desde abajo a la izquierda, igual que en el cuaderno. El gris tenue es la posición libre.</div>}
       </div>
       <div style={{minWidth:130}}>
         <div style={{fontSize:10,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Resumen</div>
@@ -2514,20 +2541,9 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
       }));
       if(filas.length>0){try{await db.insert("cloner_batches",filas);}catch{/* el archivo no bloquea la cosecha */}}
 
-      // 2) Estado de cada feno etiquetado.
-      if(phenoMode){
-        for(const x of ocupados){
-          const pid=slotPhenos[x.i];
-          if(!pid)continue;
-          const muerto=muertos.has(x.i);
-          try{await db.update("phenos",pid,{
-            status:muerto?"muerto":"trasplante",
-            transplant_date:muerto?null:todayISO,
-            updated_at:new Date().toISOString(),
-          });}catch{}
-        }
-      }
-      // 3) Se libera la bandeja.
+      // El feno NO cambia de estado acá: un feno es la planta madre de semilla y
+      // vive en su mesa. Que se muera un clon no mata al feno, solo se pierde ese esqueje.
+      // 2) Se libera la bandeja.
       await db.deleteWhere("cloner_slots","cloner_id",cloner.id);
       try{await db.update("cloners",cloner.id,{start_date:null});}catch{}
       await logA(user?.name||"sistema",`Cosechó ${cloner.label}: ${totalVivos} vivos / ${totalMuertos} perdidos`,"esquejera");
@@ -2547,7 +2563,8 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
           <div style={{overflowX:"auto",marginBottom:14}}>
             <ClonerGrid capacity={cells.length}
               colorAt={i=>cells[i]?(muertos.has(i)?C.borderStrong:(genMap[cells[i]]||C.green)):null}
-              onPaint={i=>cells[i]&&toggle(i)} showCoords/>
+              onPaint={i=>cells[i]&&toggle(i)}
+              labelAt={i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:(cells[i]?slotCoord(i):null);}}/>
           </div>
         </>
       : <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
@@ -2593,13 +2610,6 @@ function EliminarTandaModal({cloner,cells,slotPhenos,phenoMode,progress,user,onC
         outcome:"fallida", notes:motivo||null, created_by:user?.name||"sistema",
       }));
       if(filas.length>0){try{await db.insert("cloner_batches",filas);}catch{}}
-      if(phenoMode){
-        for(const x of ocupados){
-          const pid=slotPhenos[x.i];
-          if(!pid)continue;
-          try{await db.update("phenos",pid,{status:"muerto",notes:motivo||"Tanda fallida",updated_at:new Date().toISOString()});}catch{}
-        }
-      }
       await db.deleteWhere("cloner_slots","cloner_id",cloner.id);
       try{await db.update("cloners",cloner.id,{start_date:null});}catch{}
       await logA(user?.name||"sistema",`Eliminó la tanda de ${cloner.label} (${ocupados.length} esquejes)`,"esquejera");
@@ -2629,6 +2639,10 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
   const [saving,setSaving]=useState(false);
   const [phenoMode,setPhenoMode]=useState(!!cloner.pheno_mode);
   const [phenoMap,setPhenoMap]=useState({});
+  const [hunts,setHunts]=useState([]);            // búsquedas disponibles
+  const [huntId,setHuntId]=useState(null);        // la que se está usando de pincel
+  const [huntPhenos,setHuntPhenos]=useState([]);
+  const [brushPheno,setBrushPheno]=useState(null);
   const [showCosechar,setShowCosechar]=useState(false);
   const [showEliminar,setShowEliminar]=useState(false);
   // Fecha de inicio de la tanda y días hasta el corte: viven en la bandeja, no en cada esqueje.
@@ -2640,14 +2654,44 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
   // Celdas nuevas = las que ahora tienen esqueje pero antes estaban vacías: a esas les toca la fecha de hoy.
   const nuevas=cells.filter((g,i)=>g&&!prevDates[i]).length;
   const sinEtiqueta=phenoMode?cells.filter((g,i)=>g&&!slotPhenos[i]).length:0;
+  const hunt=hunts.find(h=>sid(h.id)===huntId)||null;
 
+  // Trae todas las búsquedas y sus fenos: la bandeja no crea fenos, solo les asigna esquejes.
   useEffect(()=>{
-    db.query("phenos",`origin_cloner_id=eq.${cloner.id}`).then(list=>{
-      const m={};list.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
-    }).catch(()=>{});
-  },[cloner.id]);
+    (async()=>{
+      try{
+        const hs=await db.query("pheno_hunts","order=created_at.desc");
+        setHunts(hs);
+        const ps=await db.query("phenos","order=number.asc");
+        const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
+        // Si la bandeja ya tenía esquejes asignados, arranca en esa búsqueda.
+        const usados=slots.map(x=>sid(x.pheno_id)).filter(Boolean);
+        const actual=usados.length?sid(ps.find(p=>sid(p.id)===usados[0])?.hunt_id):null;
+        const h=actual||(hs[0]?sid(hs[0].id):null);
+        setHuntId(h);
+        const mios=ps.filter(p=>sid(p.hunt_id)===h);
+        setHuntPhenos(mios);
+        setBrushPheno(mios[0]?sid(mios[0].id):null);
+      }catch{ setHunts([]); }
+    })();
+  },[cloner.id,slots]);
+
+  const cambiarHunt=(hid)=>{
+    setHuntId(hid);
+    const mios=Object.values(phenoMap).filter(p=>sid(p.hunt_id)===hid).sort((a,b)=>a.number-b.number);
+    setHuntPhenos(mios);
+    setBrushPheno(mios[0]?sid(mios[0].id):null);
+  };
 
   const paint=i=>{
+    if(phenoMode&&hunt&&brushPheno){
+      // El pincel es un feno: DS-1 puede ocupar A1 y A2, son dos clones del mismo.
+      const ya=slotPhenos[i]===brushPheno;
+      const p=phenoMap[brushPheno];
+      setCells(prev=>{const n=[...prev];n[i]=ya?null:(p?.genetic_name||hunt.genetic_name);return n;});
+      setSlotPhenos(prev=>{const n=[...prev];n[i]=ya?null:brushPheno;return n;});
+      return;
+    }
     const borrando=cells[i]===brush;
     setCells(prev=>{const n=[...prev];n[i]=borrando?null:brush;return n;});
     setSlotPhenos(prev=>{const n=[...prev];n[i]=null;return n;});
@@ -2660,35 +2704,8 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
   const save=async()=>{
     setSaving(true);
     try{
+      // Los fenos ya existen: la bandeja solo guarda qué feno hay en cada slot.
       const ids=[...slotPhenos];
-      if(phenoMode){
-        // Etiquetas nuevas para los esquejes que todavía no tienen código.
-        const taken=await takenPhenoCodes();
-        const nuevosF=[];
-        cells.forEach((g,i)=>{
-          if(!g||ids[i])return;
-          const coord=slotCoord(i);
-          const code=phenoCode(g,coord,taken);
-          taken.add(code);
-          nuevosF.push({idx:i,row:{
-            code,genetic_name:g,status:"esquejera",
-            origin_type:"esquejera",origin_cloner_id:sid(cloner.id),origin_label:cloner.label,origin_coord:coord,
-            cut_date:prevDates[i]||startDate,
-            created_by:user?.name||"sistema",updated_at:new Date().toISOString(),
-          }});
-        });
-        if(nuevosF.length>0){
-          const ins=await db.insert("phenos",nuevosF.map(n=>n.row));
-          ins.forEach((p,k)=>{ if(nuevosF[k])ids[nuevosF[k].idx]=sid(p.id); });
-        }
-        // Los que se sacaron de la bandeja quedan descartados, no se borran.
-        const vivos=new Set(ids.filter(Boolean));
-        Object.values(phenoMap).forEach(p=>{
-          if(p.status!=="esquejera")return;
-          if(vivos.has(sid(p.id)))return;
-          db.update("phenos",p.id,{status:"descartado",updated_at:new Date().toISOString()}).catch(()=>{});
-        });
-      }
       // La fecha de inicio y los días de la tanda son de la bandeja entera.
       try{await db.update("cloners",cloner.id,{start_date:startDate||null,ready_days:readyDays||CLONER_READY_DAYS});}catch{}
       await db.deleteWhere("cloner_slots","cloner_id",cloner.id);
@@ -2717,8 +2734,25 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
         <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>{phenoMode?"Cada esqueje queda numerado por su posición (A1, B2...).":"Apagado: la bandeja funciona como siempre."}</div>
       </div>
     </div>}
-    {phenoMode&&sinEtiqueta>0&&<div style={{background:C.purpleLight,color:C.purple,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12,lineHeight:1.45}}>
-      {sinEtiqueta} esqueje{sinEtiqueta>1?"s":""} sin etiqueta. Al guardar se le{sinEtiqueta>1?"s":""} crea el código automáticamente.
+    {phenoMode&&hunts.length===0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12,lineHeight:1.5}}>
+      Todavía no hay ninguna búsqueda creada. Arrancala desde la mesa donde están las semillas y después volvé acá a asignar los esquejes.
+    </div>}
+    {phenoMode&&hunts.length>0&&<div style={{marginBottom:12}}>
+      <FS label="Búsqueda" value={huntId||""} onChange={e=>cambiarHunt(e.target.value)}
+        options={hunts.map(h=>({value:sid(h.id),label:`${h.genetic_name} · ${h.prefix}-1 a ${h.prefix}-${h.total}`}))}/>
+      <div style={{fontSize:12,color:C.textSoft,marginBottom:7}}>Elegí un feno y tocá los slots donde pusiste sus esquejes. Un mismo feno puede ir en varios.</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
+        {huntPhenos.map(p=>{
+          const pid=sid(p.id);
+          const n=slotPhenos.filter(x=>x===pid).length;
+          const on=brushPheno===pid;
+          return <button key={pid} onClick={()=>setBrushPheno(pid)} title={p.code}
+            style={{minWidth:38,padding:"6px 8px",borderRadius:9,fontSize:12.5,fontWeight:800,cursor:"pointer",
+              background:on?C.purple:(n>0?C.purpleLight:C.bg),color:on?"#fff":(n>0?C.purple:C.textSoft),
+              border:`1.5px solid ${on?C.purple:(n>0?C.purple+"55":C.border)}`}}>{p.number}{n>0?<sup style={{fontSize:8.5}}>×{n}</sup>:null}</button>;
+        })}
+      </div>
+      {brushPheno&&phenoMap[brushPheno]&&<div style={{fontSize:12,color:C.purple,fontWeight:700,marginTop:8}}>Pincel: {phenoMap[brushPheno].code}</div>}
     </div>}
 
     {/* Contador de la tanda: desde el corte hasta que están listos para tierra */}
@@ -2740,14 +2774,16 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
       <Btn onClick={()=>setShowCosechar(true)} style={{flex:1,fontSize:12.5}}>🌱 Cosechar tanda</Btn>
       <Btn onClick={()=>setShowEliminar(true)} v="secondary" style={{flex:1,fontSize:12.5,color:C.red,borderColor:`${C.red}55`}}>🗑 Eliminar tanda</Btn>
     </div>}
-    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+    {!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {genetics.map(g=><button key={g.name} onClick={()=>setBrush(g.name)} style={{padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",background:brush===g.name?genMap[g.name]||C.green:`${genMap[g.name]||C.green}22`,color:brush===g.name?"#fff":genMap[g.name]||C.green,border:`2px solid ${genMap[g.name]||C.green}`}}>{g.name}</button>)}
       <button onClick={()=>setBrush(null)} style={{padding:"6px 12px",borderRadius:20,fontSize:11,cursor:"pointer",background:brush===null?C.red:C.bg,color:brush===null?"#fff":C.textSoft,border:`2px solid ${brush===null?C.red:C.borderStrong}`}}>Borrar</button>
-    </div>
+    </div>}
     <div style={{overflowX:"auto",marginBottom:14}}>
-      <ClonerGrid capacity={cells.length} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint} showCoords={phenoMode}/>
+      <ClonerGrid capacity={cells.length} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint}
+        labelAt={phenoMode?(i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}):null}
+        ringAt={phenoMode?(i=>slotPhenos[i]&&slotPhenos[i]===brushPheno):null}/>
     </div>
-    {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:-8,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>Las etiquetas se congelan al guardar y viajan con el esqueje hasta la mesa.</div>}
+    {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:-8,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>El número de cada slot es el feno que le corresponde, igual que en el cuaderno.</div>}
     <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
       {Object.entries(gC).map(([g,n])=><span key={g} style={{background:`${genMap[g]||C.green}22`,color:genMap[g]||C.green,borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:700}}>{g}: {n}</span>)}
     </div>
@@ -2760,7 +2796,7 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
 // Acá se cierra el círculo: la flor cosechada vuelve al esqueje que la originó.
 // ══════════════════════════════════════════════════════════════════════════════
 function PhenoBadge({status}){
-  const m=PHENO_ST[status]||PHENO_ST.cultivo;
+  const m=PHENO_ST[status]||PHENO_ST.activo;
   return <Badge label={m.label} color={m.color} bg={m.bg}/>;
 }
 // Estrellas de 1 a 10, táctiles. Se usan para el puntaje de cata.
@@ -2809,10 +2845,23 @@ function PhenoDetail({pheno,user,onClose,onSaved}){
   };
   const delNote=async(id)=>{try{await db.delete("pheno_notes",id);setNotes(prev=>prev.filter(n=>n.id!==id));}catch{}};
 
+  // Dónde está este feno hoy: puede estar en varias celdas y en varias bandejas a la vez.
+  const [ubicac,setUbicac]=useState({celdas:[],slots:[]});
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const [cs,ss]=await Promise.all([
+          db.query("pot_cells",`pheno_id=eq.${sid(pheno.id)}`),
+          db.query("cloner_slots",`pheno_id=eq.${sid(pheno.id)}`),
+        ]);
+        setUbicac({celdas:cs,slots:ss});
+      }catch{}
+    })();
+  },[pheno.id]);
   const linea=[
-    p.cut_date&&{ic:"✂️",l:"Cortado",d:p.cut_date,extra:p.origin_label?`${p.origin_label} · ${p.origin_coord}`:null},
-    p.transplant_date&&{ic:"🌱",l:"A tierra",d:p.transplant_date},
-    p.pot_label&&{ic:"🪴",l:"Ubicado",d:null,extra:`${p.room_id||""} · Mesa ${p.pot_label} · ${p.cell_coord||""}`},
+    {ic:"🌰",l:"Semilla",d:null,extra:p.seed_pot_label?`${p.seed_room_id||""} · Mesa ${p.seed_pot_label}`:"Origen sin registrar"},
+    ubicac.slots.length>0&&{ic:"✂️",l:`${ubicac.slots.length} esqueje${ubicac.slots.length>1?"s":""} en bandeja`,d:null},
+    ubicac.celdas.length>0&&{ic:"🪴",l:`${ubicac.celdas.length} planta${ubicac.celdas.length>1?"s":""} en mesa`,d:null},
   ].filter(Boolean);
 
   return <Modal title={`🔬 ${p.code}`} onClose={onClose}>
@@ -2838,7 +2887,7 @@ function PhenoDetail({pheno,user,onClose,onSaved}){
       <SL>Cata</SL>
       <div style={{display:"flex",gap:10,marginBottom:12}}>
         <div style={{flex:1}}><NumField label="Gramos" value={p.grams??""} onCommit={v=>setF("grams",v)} min={0} max={9999} placeholder="Ej: 62"/></div>
-        <div style={{flex:1}}><FS label="Estado" value={p.status||"cultivo"} onChange={e=>setF("status",e.target.value)} options={["cultivo","cosechado","candidato","seleccionado","descartado"].map(k=>({value:k,label:PHENO_ST[k]?.label||k}))}/></div>
+        <div style={{flex:1}}><FS label="Estado" value={p.status||"activo"} onChange={e=>setF("status",e.target.value)} options={["activo","candidato","seleccionado","descartado","muerto"].map(k=>({value:k,label:PHENO_ST[k]?.label||k}))}/></div>
       </div>
       <div style={{marginBottom:12}}>
         <div style={{fontSize:12.5,color:C.textMid,marginBottom:7,fontWeight:600}}>Puntaje</div>
@@ -2879,6 +2928,7 @@ function FenosPage({user,genetics}){
   const [phenos,setPhenos]=useState([]);
   const [loading,setLoading]=useState(true);
   const [gen,setGen]=useState("__todas__");
+  const [hunts,setHunts]=useState([]);
   const [estado,setEstado]=useState("__activos__");
   const [sel,setSel]=useState(null);
   const [toast,setToast]=useState(null);
@@ -2886,7 +2936,11 @@ function FenosPage({user,genetics}){
 
   const load=useCallback(()=>{
     setLoading(true);
-    db.query("phenos","order=created_at.desc").then(setPhenos).catch(()=>setPhenos([])).finally(()=>setLoading(false));
+    Promise.all([
+      db.query("phenos","order=number.asc"),
+      db.query("pheno_hunts","order=created_at.desc").catch(()=>[]),
+    ]).then(([p,h])=>{setPhenos(p);setHunts(h);})
+      .catch(()=>setPhenos([])).finally(()=>setLoading(false));
   },[]);
   useEffect(()=>{load();},[load]);
 
@@ -2899,7 +2953,7 @@ function FenosPage({user,genetics}){
   lista=[...lista].sort((a,b)=>
     orden==="score" ? (b.score||0)-(a.score||0) || (b.grams||0)-(a.grams||0)
     : orden==="grams" ? (b.grams||0)-(a.grams||0)
-    : String(a.code||"").localeCompare(String(b.code||"")));
+    : (a.number||0)-(b.number||0));
 
   // Resumen de la genética elegida: sirve para comparar fenos entre sí.
   const catados=lista.filter(p=>p.score||p.grams);
@@ -2923,7 +2977,7 @@ function FenosPage({user,genetics}){
       ? <Card style={{textAlign:"center",padding:"28px 20px"}}>
           <div style={{fontSize:34,marginBottom:10}}>🔬</div>
           <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:6}}>Todavía no hay fenos cargados</div>
-          <div style={{fontSize:13,color:C.textSoft,lineHeight:1.55}}>Activá “Búsqueda de fenos” en una esquejera o en un macetón y cada planta va a quedar numerada automáticamente.</div>
+          <div style={{fontSize:13,color:C.textSoft,lineHeight:1.55}}>Entrá a la mesa donde están las semillas, activá “Búsqueda de fenos” y cargá cuántas semillas hay. Los fenos se crean numerados de una.</div>
         </Card>
       : <>
         <Card style={{padding:"14px 16px"}}>
@@ -2931,9 +2985,9 @@ function FenosPage({user,genetics}){
           <div style={{display:"flex",gap:10}}>
             <div style={{flex:1}}><FS label="Estado" value={estado} onChange={e=>setEstado(e.target.value)} options={[
               {value:"__activos__",label:"Activos"},{value:"__todos__",label:"Todos"},
-              ...["esquejera","trasplante","cultivo","cosechado","candidato","seleccionado","descartado","muerto"].map(k=>({value:k,label:PHENO_ST[k]?.label||k})),
+              ...["activo","candidato","seleccionado","descartado","muerto"].map(k=>({value:k,label:PHENO_ST[k]?.label||k})),
             ]}/></div>
-            <div style={{flex:1}}><FS label="Ordenar por" value={orden} onChange={e=>setOrden(e.target.value)} options={[{value:"score",label:"Puntaje"},{value:"grams",label:"Gramos"},{value:"code",label:"Código"}]}/></div>
+            <div style={{flex:1}}><FS label="Ordenar por" value={orden} onChange={e=>setOrden(e.target.value)} options={[{value:"score",label:"Puntaje"},{value:"grams",label:"Gramos"},{value:"code",label:"Número"}]}/></div>
           </div>
           <div style={{display:"flex",gap:9,marginTop:2}}>
             {[{l:"Fenos",v:lista.length},{l:"Puntaje prom.",v:avgScore||"—"},{l:"Gramos prom.",v:avgGrams?`${avgGrams} g`:"—"}].map(k=>
@@ -2948,10 +3002,10 @@ function FenosPage({user,genetics}){
           {lista.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:13.5,fontStyle:"italic",padding:"18px 0"}}>Ningún feno con ese filtro.</div>}
           {lista.map(p=>{
             const col=genMap[p.genetic_name]||C.green;
-            const ubic=p.pot_label?`${p.room_id||""} · Mesa ${p.pot_label} ${p.cell_coord||""}`:(p.origin_label?`${p.origin_label} · ${p.origin_coord||""}`:"Sin ubicar");
+            const ubic=p.seed_pot_label?`${p.seed_room_id||""} · Mesa ${p.seed_pot_label}`:"Origen sin registrar";
             return <Card key={p.id} onClick={()=>setSel(p)} style={{padding:"13px 15px",background:C.bg}}>
               <div style={{display:"flex",alignItems:"center",gap:11,marginBottom:8}}>
-                <div style={{width:40,height:40,borderRadius:11,background:`${col}22`,border:`2px solid ${col}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:col,flexShrink:0,textAlign:"center",lineHeight:1.1}}>{p.cell_coord||p.origin_coord||"—"}</div>
+                <div style={{width:40,height:40,borderRadius:11,background:`${col}22`,border:`2px solid ${col}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:col,flexShrink:0,fontFamily:H}}>{p.number??"—"}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:14.5,fontWeight:900,color:C.text,fontFamily:H}}>{p.code}</div>
                   <div style={{fontSize:11.5,color:C.textSoft,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.genetic_name} · {ubic}</div>
