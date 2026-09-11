@@ -913,6 +913,12 @@ const GI={
   sliders:'<path d="M4 7h9M18 7h2M4 17h3M11 17h9"/><circle cx="15.5" cy="7" r="2.3"/><circle cx="9" cy="17" r="2.3"/>',
   sun:'<circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M5.5 18.5l1.4-1.4M17.1 6.9l1.4-1.4"/>',
   text:'<path d="M3.5 18 8 6h1.2l4.5 12M5 14h7"/><path d="M14.5 18l2.7-7h1.1l2.7 7M15.5 15.6h4.5"/>',
+  water:'<path d="M12 3.8s5.8 6 5.8 10.2a5.8 5.8 0 0 1-11.6 0C6.2 9.8 12 3.8 12 3.8Z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>',
+  spray:'<path d="M8 10h7v10.5H8Z"/><path d="M9.5 10V7h4v3M13.5 7.5h3M18.5 5.5h.1M18.5 8h.1M18.5 10.5h.1"/>',
+  swap:'<path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"/>',
+  stop:'<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  alert:'<path d="M12 4.2 3 19.5h18L12 4.2Z"/><path d="M12 10v4.2M12 17v.2"/>',
 };
 function Icon({n,size=22,sw=1.8,color="currentColor",style}){
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
@@ -1021,7 +1027,7 @@ function MorePageAdmin({user,setPage,textScale,setTextScale,theme,setTheme,onLog
   const groups=[
     {t:"Cultivo",c:C.green,items:[["geneticas","dna","Genéticas","Colores, días de flora y notas"],["fenos","flask","Fenos","Búsquedas, cata y ranking"],["plagas","bug","Plagas","Registro de intervenciones"],["guia","book","Guía","Protocolos del cultivo"]]},
     {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"],["estadisticas","chart","Estadísticas","Rendimiento y clima"]]},
-    {t:"Club",c:C.amber,items:[["compras","cart","Compras","Lista de insumos"],["bot","chat","Asistente","Consultas de cultivo","Sin conexión"]]},
+    {t:"Club",c:C.amber,items:[["bot","chat","Asistente","Consultas de cultivo","Sin conexión"]]},
   ];
   const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
   const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
@@ -1073,6 +1079,9 @@ function parseQuickTask(text,people,rooms,me){
   if(!out.assignee&&take(/\bpara mi\b/))out.assignee=me;
   if(take(/\b(urgente|importante|ya mismo|prioridad alta)\b/))out.priority="alta";
   let m;
+  if(take(/\b(todos los dias|cada dia|diari[oa])\b/))out.recurrent_days=1;
+  else if((m=take(/\bcada (\d{1,2}) dias\b/)))out.recurrent_days=+m[1];
+  else if(take(/\b(semanal|cada semana|todas las semanas)\b/))out.recurrent_days=7;
   if(take(/\bpasado manana\b/))out.due_date=addDays(todayISO,2);
   else if(take(/\bhoy\b/))out.due_date=todayISO;
   else if(take(/\bmanana\b/))out.due_date=addDays(todayISO,1);
@@ -1089,16 +1098,16 @@ function parseQuickTask(text,people,rooms,me){
   out.title=title?title[0].toUpperCase()+title.slice(1):(out.type?QT_TYPES.find(x=>x.k===out.type).l:"");
   return out;
 }
-function QuickTaskSheet({user,rooms,onClose,onCreated}){
+function QuickTaskSheet({user,rooms,onClose,onCreated,task}){
   const [people,setPeople]=useState([user.name]);
   const [text,setText]=useState("");
-  const [manual,setManual]=useState({});
+  const [manual,setManual]=useState(()=>task?{title:task.title||"",room_id:task.room_id||"General",assignee:task.assignee||user.name,due_date:task.due_date||todayISO,priority:task.priority||"normal",type:task.type||null,recurrent_days:task.recurrent?(task.recurrent_days||null):null}:{});
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState(null);
   useEffect(()=>{db.get("users").then(us=>{const n=us.map(u=>u.name).filter(Boolean);if(n.length)setPeople(n);}).catch(()=>{});},[]);
   useEffect(()=>{const prev=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=prev;};},[]);
   const auto=text.trim()?parseQuickTask(text,people,rooms,user.name):{};
-  const defs={assignee:user.name,due_date:todayISO,priority:"normal",room_id:"General",type:null,title:""};
+  const defs={assignee:user.name,due_date:todayISO,priority:"normal",room_id:"General",type:null,title:"",recurrent_days:null};
   const val=k=>manual[k]!==undefined?manual[k]:(auto[k]!==undefined?auto[k]:defs[k]);
   const set=(k,v)=>setManual(p=>({...p,[k]:v}));
   const understood=k=>auto[k]!==undefined&&manual[k]===undefined;
@@ -1110,10 +1119,17 @@ function QuickTaskSheet({user,rooms,onClose,onCreated}){
     setSaving(true);setErr(null);
     try{
       const room=val("room_id");
-      const payload={title,room_id:room,rooms:room,type:val("type")||"revision",assignee:val("assignee"),due_date:val("due_date")||todayISO,priority:val("priority"),status:"pendiente",created_by:user.name};
-      const ins=await db.insert("tasks",payload);
-      await logA(user.name,`Creó tarea: ${title} (${room})`,"task");
-      onCreated&&onCreated(ins?.[0]||payload);
+      const rd=val("recurrent_days");
+      const payload={title,room_id:room,rooms:room,type:val("type")||"revision",assignee:val("assignee"),due_date:val("due_date")||todayISO,priority:val("priority"),recurrent:!!rd,recurrent_days:rd||null};
+      if(task){
+        await db.update("tasks",task.id,payload);
+        await logA(user.name,`Editó tarea: ${title}`,"task");
+        onCreated&&onCreated({...task,...payload});
+      }else{
+        const ins=await db.insert("tasks",{...payload,status:"pendiente",created_by:user.name});
+        await logA(user.name,`Creó tarea: ${title} (${room})`,"task");
+        onCreated&&onCreated(ins?.[0]||payload);
+      }
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
   const due=val("due_date");
@@ -1121,12 +1137,12 @@ function QuickTaskSheet({user,rooms,onClose,onCreated}){
     <div role="dialog" aria-modal="true" aria-label="Nueva tarea" style={{background:C.surface,width:"100%",maxWidth:560,borderRadius:"26px 26px 0 0",padding:"10px 18px calc(18px + env(safe-area-inset-bottom))",maxHeight:"92vh",overflowY:"auto"}}>
       <div style={{width:40,height:5,borderRadius:99,background:C.borderStrong,margin:"0 auto 12px"}}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-        <div><div style={{fontSize:21,fontWeight:800,color:C.text}}>Nueva tarea</div>
-          <div style={{fontSize:13,color:C.textSoft,marginTop:3,lineHeight:1.45}}>Escribila o dictala como la dirías. Por ejemplo: “poda S1 mañana para Alex”.</div></div>
+        <div><div style={{fontSize:21,fontWeight:800,color:C.text}}>{task?"Editar tarea":"Nueva tarea"}</div>
+          {!task&&<div style={{fontSize:13,color:C.textSoft,marginTop:3,lineHeight:1.45}}>Escribila o dictala como la dirías. Por ejemplo: “poda S1 mañana para Alex” o “riego S2 cada 2 días”.</div>}</div>
         <button onClick={onClose} aria-label="Cerrar" style={{background:"transparent",border:"none",cursor:"pointer",color:C.textSoft,padding:6}}><Icon n="x" size={22}/></button>
       </div>
-      <textarea value={text} onChange={e=>{setText(e.target.value);setManual(p=>{const {title,...r}=p;return r;});}} placeholder="¿Qué hay que hacer?" rows={2}
-        style={{width:"100%",marginTop:14,minHeight:78,resize:"none",border:"none",borderRadius:16,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1.5px ${C.borderStrong}`,padding:"14px 16px",fontSize:17,fontWeight:600,lineHeight:1.4,color:C.text,fontFamily:"inherit",outline:"none"}}/>
+      {!task&&<textarea value={text} onChange={e=>{setText(e.target.value);setManual(p=>{const {title,...r}=p;return r;});}} placeholder="¿Qué hay que hacer?" rows={2}
+        style={{width:"100%",marginTop:14,minHeight:78,resize:"none",border:"none",borderRadius:16,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1.5px ${C.borderStrong}`,padding:"14px 16px",fontSize:17,fontWeight:600,lineHeight:1.4,color:C.text,fontFamily:"inherit",outline:"none"}}/>}
       <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:14}}>
         <div>{label("Qué","title")}<input value={val("title")} onChange={e=>set("title",e.target.value)} placeholder="Título de la tarea"
           style={{width:"100%",border:"none",borderRadius:12,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1px ${C.border}`,padding:"11px 13px",fontSize:15.5,fontWeight:700,color:C.text,fontFamily:"inherit",outline:"none"}}/></div>
@@ -1138,9 +1154,11 @@ function QuickTaskSheet({user,rooms,onClose,onCreated}){
         <div>{label("Para","assignee")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{people.map(p=><button key={p} onClick={()=>set("assignee",p)} style={chip(val("assignee")===p)}>{p}</button>)}</div></div>
         <div>{label("Tipo","type")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{QT_TYPES.map(t=><button key={t.k} onClick={()=>{set("type",t.k);if(!val("title"))set("title",t.l);}} style={chip(val("type")===t.k)}>{t.l}</button>)}</div></div>
         <div>{label("Prioridad","priority")}<div style={{display:"flex",gap:7}}>{[["normal","Normal"],["alta","Alta"]].map(([k,l])=><button key={k} onClick={()=>set("priority",k)} style={chip(val("priority")===k)}>{l}</button>)}</div></div>
+        <div>{label("Repetir","recurrent_days")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{[[null,"No"],[1,"Cada día"],[2,"Cada 2 días"],[3,"Cada 3 días"],[7,"Semanal"]].map(([k,l])=><button key={l} onClick={()=>set("recurrent_days",k)} style={chip((val("recurrent_days")||null)===k)}>{l}</button>)}
+          {val("recurrent_days")&&![1,2,3,7].includes(val("recurrent_days"))&&<button style={chip(true)}>Cada {val("recurrent_days")} días</button>}</div></div>
       </div>
       {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:13,marginTop:12}}>{err}</div>}
-      <button onClick={crear} disabled={saving||!String(val("title")||"").trim()} style={{width:"100%",minHeight:54,borderRadius:16,border:"none",background:C.green,color:C.onAccent,fontWeight:800,fontSize:16.5,fontFamily:"inherit",marginTop:18,cursor:"pointer",opacity:saving||!String(val("title")||"").trim()?0.45:1}}>{saving?"Creando...":"Crear tarea"}</button>
+      <button onClick={crear} disabled={saving||!String(val("title")||"").trim()} style={{width:"100%",minHeight:54,borderRadius:16,border:"none",background:C.green,color:C.onAccent,fontWeight:800,fontSize:16.5,fontFamily:"inherit",marginTop:18,cursor:"pointer",opacity:saving||!String(val("title")||"").trim()?0.45:1}}>{saving?"Guardando...":task?"Guardar cambios":"Crear tarea"}</button>
     </div>
   </div>;
 }
@@ -1399,6 +1417,9 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [showDoneT,setShowDoneT]=useState(false);
   const [showTargets,setShowTargets]=useState(false);
   const [infoTask,setInfoTask]=useState(null);
+  const [showMenu,setShowMenu]=useState(false);
+  const [showCharts,setShowCharts]=useState(false);
+  const [potMix,setPotMix]=useState({});   // mesa → {genética: plantas}
 
   const fdays=rc?.flower_days||65;
   const flushDays=rc?.flush_days||20;
@@ -1439,7 +1460,12 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         const counts={};
         allCells.forEach(cell=>{if(cell.genetic_name)counts[cell.genetic_name]=(counts[cell.genetic_name]||0)+1;});
         setPotCounts(counts);
-      }else{setCg([]);setMsRows([]);setPotCounts({});}
+        const potsRows=await db.query("pots",`room_id=eq.${roomId}`).catch(()=>[]);
+        const lab={};potsRows.forEach(pr=>{lab[sid(pr.id)]=pr.pot_label;});
+        const mix={};
+        allCells.forEach(cell=>{if(!cell.genetic_name)return;const l=lab[sid(cell.pot_id)];if(!l)return;mix[l]=mix[l]||{};mix[l][cell.genetic_name]=(mix[l][cell.genetic_name]||0)+1;});
+        setPotMix(mix);
+      }else{setCg([]);setMsRows([]);setPotCounts({});setPotMix({});}
     }finally{setLoading(false);}
   },[roomId]);
 
@@ -1495,12 +1521,113 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {showPh&&<PhaseModal roomId={roomId} cycle={null} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Ciclo iniciado ✓",type:"success"});}}/>}
     <div style={{textAlign:"center",padding:"40px 20px"}}>
-      <div style={{fontSize:48,marginBottom:16}}>🌱</div>
+      <div style={{display:"flex",justifyContent:"center",color:C.green,marginBottom:14}}><Icon n="vege" size={46}/></div>
       <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>{roomName}</div>
       <div style={{fontSize:14,color:C.textSoft,marginBottom:24}}>Sin ciclo activo</div>
       {user.role==="admin"&&<Btn onClick={()=>setShowPh(true)} full>Iniciar ciclo</Btn>}
     </div>
   </div>;
+
+  // ── Formato nuevo (admin): cabecera clara, clima, mesas y lo demás plegado ──
+  if(user.role==="admin"){
+    const tg=getTargets(targets,roomId,cycle,rc);
+    const last=climate.length?climate[climate.length-1]:null;
+    const isVeg=cycle.phase==="vegetativo";
+    const span=(a,b)=>a&&b?Math.round((new Date(String(b).slice(0,10)+"T12:00:00")-new Date(String(a).slice(0,10)+"T12:00:00"))/86400000):null;
+    const vStart=cycle.veg_start||null,vEnd=cycle.veg_end||null;
+    const hTotal=Math.max(1,isVeg?(span(vStart,vEnd)||rc?.veg_days||6):(span(cycle.flower_start,cycle.estimated_harvest)||fdays));
+    const hDay=isVeg?(vStart?Math.max(0,daysSince(vStart)):0):(cycle.flower_start?Math.max(0,daysSince(cycle.flower_start)):0);
+    const left=isVeg?hTotal-hDay:daysTo(cycle.estimated_harvest);
+    const tone=isVeg?C.green:C.amber;
+    const light=C.onAccent==="#FFFFFF";
+    const heroBg=isVeg?(light?"linear-gradient(135deg,#E7F2EB,#DAEAE0)":"linear-gradient(135deg,#16211A,#121B14)"):(light?"linear-gradient(135deg,#FBF1DF,#F4E6CE)":"linear-gradient(135deg,#241D12,#1C1710)");
+    const marks=isVeg?[]:[{d:15,l:"Poda 1"},{d:21,l:"Poda 2"},{d:hTotal-flushDays,l:"Lavado"},{d:hTotal,l:"Cosecha"}].filter(m=>m.d>=0);
+    const pctOf=d=>Math.max(0,Math.min(100,d/hTotal*100));
+    const baseDate=isVeg?vStart:cycle.flower_start;
+    const genRows=cg.map(g=>[g.genetic_name,potCounts[g.genetic_name]||0]).sort((a,b)=>b[1]-a[1]);
+    const menu=[["water","Registrar riego",()=>setShowW(true)],["flask","Registrar nutrición",()=>setShowN(true)],["spray","Aplicación foliar",()=>setShowFoliar(true)],["thermo","Medición manual de clima",()=>setShowClimate(true)],["sliders","Editar objetivos de clima",()=>setShowTargets(true)],["swap","Cambiar fase",()=>setShowPh(true)]];
+    const pill=light?"rgba(255,255,255,0.78)":"rgba(255,255,255,0.08)";
+    return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
+    {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
+    {showW&&<WaterModal roomId={roomId} user={user} onClose={()=>setShowW(false)} onSaved={()=>{setShowW(false);load();setToast({msg:"Riego registrado ✓",type:"success"});}}/>}
+    {showN&&<NutriModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowN(false)} onSaved={()=>{setShowN(false);load();setToast({msg:"Nutrición registrada ✓",type:"success"});}}/>}
+    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Fase actualizada ✓",type:"success"});}}/>}
+    {showAG&&<AddGenModal cycleId={cycle.id} genetics={genetics} existing={cg} counts={potCounts} onClose={()=>setShowAG(false)} onSaved={()=>{setShowAG(false);load();setToast({msg:"Genéticas actualizadas ✓",type:"success"});}}/>}
+    {showFoliar&&<FoliarModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowFoliar(false)} onSaved={()=>{setShowFoliar(false);load();setToast({msg:"Aplicación foliar registrada ✓",type:"success"});}}/>}
+    {showClimate&&<ClimateModal roomId={roomId} user={user} onClose={()=>setShowClimate(false)} onSaved={()=>{setShowClimate(false);load();setToast({msg:"Medición registrada ✓",type:"success"});}}/>}
+    {showClose&&<CloseCycleModal cycle={cycle} roomId={roomId} rc={rc} cg={cg} potCounts={potCounts} wLog={wLog} nLog={nLog} user={user} onClose={()=>setShowClose(false)} onSaved={()=>{setShowClose(false);load();setToast({msg:"Ciclo cerrado y archivado ✓",type:"success"});}}/>}
+    {showTargets&&<TargetsModal roomId={roomId} rc={rc} cycle={cycle} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
+
+      {showMenu&&<Sheet title={roomName} onClose={()=>setShowMenu(false)}>
+        {menu.map(([ic,l,fn],i)=><SheetRow key={l} i={i} icon={ic} label={l} onClick={()=>{setShowMenu(false);fn();}}/>)}
+        <SheetRow i={1} icon="stop" label="Cerrar ciclo" danger onClick={()=>{setShowMenu(false);setShowClose(true);}}/>
+      </Sheet>}
+      {selPot&&<Sheet onClose={()=>setSelPot(null)}>
+        <div style={{margin:"-16px -4px 0"}}><PotEditor roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/></div>
+      </Sheet>}
+
+      <div style={{background:heroBg,borderRadius:22,padding:"16px 18px 12px",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+          <span style={{fontSize:12.5,fontWeight:800,padding:"4px 11px",borderRadius:99,background:pill,color:tone}}>{isVeg?"Vegetativo":cycle.phase==="floración"?"Floración":cycle.phase}</span>
+          <button onClick={()=>setShowMenu(true)} aria-label="Más acciones de la sala" style={{width:42,height:42,borderRadius:12,border:"none",cursor:"pointer",background:pill,color:C.textMid,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="mas" size={22}/></button>
+        </div>
+        <div style={{display:"flex",alignItems:"baseline",gap:6,marginTop:10}}>
+          <span style={{fontSize:44,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1,color:C.text,fontVariantNumeric:"tabular-nums"}}>Día {hDay}</span>
+          <span style={{fontSize:17,fontWeight:700,color:C.textSoft}}>de {hTotal}</span>
+        </div>
+        <div style={{display:"flex",gap:18,flexWrap:"wrap",marginTop:8,fontSize:14,fontWeight:700,color:C.textMid}}>
+          <span>{isVeg?(left>0?<><b style={{color:C.text,fontSize:16}}>{left}</b> días para pasar a flora</>:"Toca pasar a flora"):(left>0?<><b style={{color:left<=7?C.red:C.text,fontSize:16}}>{left}</b> días para la cosecha</>:left===0?"Cosecha hoy":"Cosecha pasada")}</span>
+          <span><b style={{color:C.text,fontSize:16}}>{totalPlants}</b> plantas</span>
+        </div>
+        <div style={{position:"relative",height:marks.length?66:26,margin:"16px 6px 0"}}>
+          <span style={{position:"absolute",left:0,right:0,top:9,height:4,borderRadius:4,background:C.borderStrong}}/>
+          <span style={{position:"absolute",left:0,top:9,height:4,borderRadius:4,width:`${pctOf(hDay)}%`,background:tone}}/>
+          {marks.map((m,i)=>{const p=pctOf(m.d);const doneM=hDay>=m.d;const edge=p>90?{right:-6}:p<10?{left:-6}:{left:0,transform:"translateX(-50%)"};
+            return <span key={m.l} style={{position:"absolute",top:2,left:`${p}%`}}>
+              <span style={{display:"block",width:12,height:12,borderRadius:"50%",margin:"3px 0 0 -6px",background:doneM?tone:C.surface,boxShadow:`0 0 0 2px ${doneM?tone:C.borderStrong}`}}/>
+              <span style={{position:"absolute",top:i%2?38:22,whiteSpace:"nowrap",fontSize:11,fontWeight:700,color:C.textMid,...edge}}>{m.l} {baseDate?fmtDM(addDays(baseDate,m.d)):""}</span>
+            </span>;})}
+          <span style={{position:"absolute",top:1,left:`${pctOf(hDay)}%`,width:20,height:20,marginLeft:-10,borderRadius:"50%",background:tone,boxShadow:`0 0 0 4px ${light?"rgba(255,255,255,0.9)":C.bg}`}}/>
+        </div>
+      </div>
+
+      <Card style={{padding:"16px 16px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+          <div><div style={{fontSize:16,fontWeight:800,color:C.text}}>Clima</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Objetivo de {String(tg.label||"").toLowerCase()}</div></div>
+          <button onClick={()=>setShowCharts(v=>!v)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:14,fontFamily:"inherit",padding:"8px 0 8px 8px"}}>{showCharts?"Ocultar":"Gráficos"}<Icon n="chev" size={16} style={{transform:showCharts?"rotate(90deg)":"none"}}/></button>
+        </div>
+        <ClimateMetrics climate={last} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
+        {showCharts&&<ChartsBlock climate={climate} clRange={clRange} setClRange={setClRange} tg={tg} onManual={()=>setShowClimate(true)}/>}
+      </Card>
+
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"10px 2px 0"}}>
+        <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesas</div>
+        <span style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Tocá una para editarla</span>
+      </div>
+      <Card style={{padding:10}}><PotMapV2 roomId={roomId} potMix={potMix} genMap={genMap} onSelect={setSelPot}/></Card>
+
+      <div style={{height:2}}/>
+      <Fold icon="dna" title="Genéticas del ciclo" count={cg.length} right={<button onClick={e=>{e.stopPropagation();setShowAG(true);}} style={{fontSize:13,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:10,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit"}}>+ Agregar</button>}>
+        {genRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin genéticas. Tocá “+ Agregar”.</div>}
+        {genRows.map(([g,n],i)=><div key={g} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+          <span style={{width:10,alignSelf:"stretch",minHeight:30,borderRadius:4,background:genMap[g]||C.green}}/>
+          <span style={{flex:1,fontSize:15,fontWeight:700,color:C.text}}>{g}</span>
+          <span style={{fontSize:20,fontWeight:800,color:C.text}}>{n}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>pl</span>
+        </div>)}
+        {genRows.length>0&&<div style={{fontSize:12,color:C.textSoft,marginTop:8}}>Las cantidades salen de lo que dibujás en las mesas.</div>}
+      </Fold>
+      <Fold icon="calendar" title="Fechas clave">
+        {milestones.map((m,i)=>{const r=msRows.find(x=>x.label===m.label);const doneM=r?r.done:false;const dL=daysTo(m.date);
+          return <button key={m.label} onClick={()=>toggleMilestone(m)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+            <span style={{width:26,height:26,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:doneM?C.green:"transparent",boxShadow:doneM?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:C.onAccent}}>{doneM&&<Icon n="check" size={16} sw={2.6}/>}</span>
+            <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15,fontWeight:700,color:doneM?C.textSoft:C.text,textDecoration:doneM?"line-through":"none"}}>{m.label}</span><span style={{fontSize:12.5,color:m.date===todayISO?C.amber:C.textSoft,fontWeight:600}}>{m.date===todayISO?"Hoy":dL>0?`En ${dL} días`:"Pasada"}</span></span>
+            <span style={{fontSize:14.5,fontWeight:800,color:C.textMid}}>{fmtDM(m.date)}</span>
+          </button>;})}
+        <div style={{fontSize:12,color:C.textSoft,marginTop:8}}>Tocá una fecha para marcarla como hecha.</div>
+      </Fold>
+    </div>;
+  }
 
   return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
@@ -2626,19 +2753,112 @@ function ConfirmModal({title,text,confirmLabel="Eliminar",busyLabel="Borrando...
   </Modal>;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// FORMATO NUEVO — piezas comunes: hoja inferior, filas de menú, plegables
+// ══════════════════════════════════════════════════════════════════════════════
+function Sheet({title,sub,onClose,children,z=240}){
+  useEffect(()=>{
+    const prev=document.body.style.overflow;document.body.style.overflow="hidden";
+    const onKey=e=>{if(e.key==="Escape")onClose();};
+    window.addEventListener("keydown",onKey);
+    return()=>{document.body.style.overflow=prev;window.removeEventListener("keydown",onKey);};
+  },[onClose]);
+  return <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,zIndex:z,background:"rgba(10,18,14,0.45)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div role="dialog" aria-modal="true" style={{background:C.surface,width:"100%",maxWidth:560,borderRadius:"24px 24px 0 0",padding:"10px 18px calc(18px + env(safe-area-inset-bottom))",maxHeight:"88vh",overflowY:"auto"}}>
+      <div style={{width:40,height:5,borderRadius:99,background:C.borderStrong,margin:"0 auto 12px"}}/>
+      {title&&<div style={{fontSize:20,fontWeight:800,color:C.text,lineHeight:1.25}}>{title}</div>}
+      {sub&&<div style={{fontSize:13.5,color:C.textSoft,fontWeight:600,marginTop:3}}>{sub}</div>}
+      <div style={{marginTop:title?10:0}}>{children}</div>
+    </div>
+  </div>;
+}
+const SheetRow=({icon,label,onClick,danger,i})=><button onClick={onClick} style={{display:"flex",alignItems:"center",gap:13,width:"100%",padding:"12px 2px",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",fontSize:15.5,fontWeight:700,color:danger?C.red:C.text,textAlign:"left"}}>
+  <span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:danger?C.redLight:C.surfaceAlt,color:danger?C.red:C.textMid}}><Icon n={icon} size={20}/></span>{label}
+</button>;
+function Fold({icon,title,count,right,children,defaultOpen=false}){
+  const [open,setOpen]=useState(defaultOpen);
+  return <Card style={{padding:0,overflow:"hidden"}}>
+    <div role="button" tabIndex={0} onClick={()=>setOpen(o=>!o)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setOpen(o=>!o);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",minHeight:62}}>
+      <span style={{width:36,height:36,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:C.surfaceAlt,color:C.textMid,flexShrink:0}}><Icon n={icon} size={20}/></span>
+      <span style={{flex:1,fontSize:15.5,fontWeight:800,color:C.text}}>{title}{count!=null&&<span style={{color:C.textSoft,fontWeight:700}}> ({count})</span>}</span>
+      {right}
+      <span style={{color:C.textSoft,transform:open?"rotate(90deg)":"none",transition:"transform .2s"}}><Icon n="chev" size={18}/></span>
+    </div>
+    {open&&<div style={{padding:"0 16px 14px"}}>{children}</div>}
+  </Card>;
+}
+const PageTitle=({children,right,sub})=><div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,padding:"4px 2px 0"}}>
+  <div><div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",lineHeight:1.1}}>{children}</div>{sub&&<div style={{fontSize:13.5,color:C.textSoft,fontWeight:600,marginTop:3}}>{sub}</div>}</div>{right}
+</div>;
+const Stripe=({mix,genMap,h=9})=><span style={{display:"flex",height:h,borderRadius:99,overflow:"hidden",gap:2,width:"100%",background:C.surfaceAlt}}>
+  {mix.map(([g,c])=><span key={g} style={{flex:c,minWidth:3,background:genMap[g]||C.green}}/>)}
+</span>;
+const ChartsBlock=({climate,clRange,setClRange,tg,onManual})=>{
+  const tPts=climate.filter(c=>c.temperature!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.temperature}));
+  const hPts=climate.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.humidity}));
+  const vPts=climate.filter(c=>c.vpd!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.vpd}));
+  const lbl=t=><div style={{fontSize:12.5,fontWeight:800,color:C.textMid,margin:"14px 0 4px"}}>{t}</div>;
+  return <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",gap:6}}>
+      {[["24h","24 h"],["7d","7 días"],["30d","30 días"]].map(([k,l])=><button key={k} onClick={()=>setClRange(k)} style={{flex:1,fontSize:13,fontWeight:800,padding:"8px 0",borderRadius:10,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${clRange===k?C.green:C.border}`,background:clRange===k?C.greenLight:"transparent",color:clRange===k?C.green:C.textSoft}}>{l}</button>)}
+      {onManual&&<button onClick={onManual} style={{fontSize:13,fontWeight:800,padding:"8px 12px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${C.border}`,background:"transparent",color:C.textMid}}>+ Medición</button>}
+    </div>
+    {climate.length===0?<div style={{textAlign:"center",color:C.textSoft,fontSize:13,padding:"18px 0"}}>Sin datos en este rango todavía</div>:<>
+      {lbl("Temperatura (°C)")}<LineChart series={[{points:tPts,color:C.amber}]} bands={[{min:tg.temp.min,max:tg.temp.max,color:C.green}]} unit="°C"/>
+      {lbl("Humedad (%)")}<LineChart series={[{points:hPts,color:C.blue}]} bands={[{min:tg.hum.min,max:tg.hum.max,color:C.green}]} unit="%"/>
+      {lbl("VPD (kPa)")}<LineChart series={[{points:vPts,color:C.purple}]} bands={[{min:tg.vpd.min,max:tg.vpd.max,color:C.green}]} unit=" kPa"/>
+      <div style={{fontSize:11.5,color:C.textSoft,marginTop:8}}>La franja verde es el óptimo. Tocá o arrastrá el dedo sobre el gráfico para ver hora y valor.</div>
+    </>}
+  </div>;
+};
+
+// Mapa de mesas con la forma real de la sala: cada mesa muestra su línea de genéticas y plantas.
+function PotMapV2({roomId,potMix,genMap,onSelect}){
+  const plan=ROOM_PLANS[roomId];
+  const pots=plan?plan.pots:(ROOM_POTS[roomId]||[]).map((p,i)=>({...p,x:4+(i%2)*48,y:4+Math.floor(i/2)*31,w:44,h:27}));
+  const ratio=plan?plan.ratio:"3 / 4";
+  return <div style={{position:"relative",width:"100%",aspectRatio:ratio,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${C.border}`}}>
+    {pots.map(p=>{
+      const mix=Object.entries(potMix[p.label]||{}).sort((a,b)=>b[1]-a[1]);const n=mix.reduce((a,[,c])=>a+c,0);
+      return <button key={p.label} onClick={()=>onSelect(p.label)} aria-label={`Mesa ${p.label}, ${n} plantas`}
+        style={{position:"absolute",left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`,borderRadius:p.circular?"50%":12,background:C.surface,border:`1px solid ${C.border}`,boxShadow:C.shadow,
+          padding:p.circular?"16% 14%":"8px 9px",display:"flex",flexDirection:"column",justifyContent:"space-between",alignItems:p.circular?"center":"stretch",cursor:"pointer",fontFamily:"inherit",color:C.text,overflow:"hidden",textAlign:p.circular?"center":"left"}}>
+        <span style={{fontSize:20,fontWeight:800,lineHeight:1}}>{p.label}</span>
+        <Stripe mix={mix} genMap={genMap}/>
+        <span style={{fontSize:12,fontWeight:700,color:C.textSoft,whiteSpace:"nowrap"}}>{n>0?`${n} plantas`:"Vacía"}</span>
+      </button>;
+    })}
+  </div>;
+}
+
+// Madres: "para renovar" a los 120 días (o marcada a mano); "próxima" 15 días antes.
+const MADRE_RENOVAR=120, MADRE_AVISO=105;
+const madreEstado=m=>{
+  if(m.status==="inactiva")return "inactiva";
+  const d=daysSince(m.entry_date);
+  if(m.status==="renovar"||d>=MADRE_RENOVAR)return "renovar";
+  if(d>=MADRE_AVISO)return "proxima";
+  return "ok";
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VEGETATIVO — todo resumido a la vista: clima, madres, esquejeras y tandas de VG
+// ══════════════════════════════════════════════════════════════════════════════
 function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
   const [madres,setMadres]=useState([]);
   const [cloners,setCloners]=useState([]);
   const [clSlots,setClSlots]=useState([]);
-  const [vg,setVg]=useState({plantas:0,tandas:0});
+  const [vgB,setVgB]=useState([]);
+  const [vgL,setVgL]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [showTargets,setShowTargets]=useState(false);
-  const [climate,setClimate]=useState(null);      // última lectura (tarjeta de arriba)
+  const [climate,setClimate]=useState(null);      // última lectura
   const [clSeries,setClSeries]=useState([]);      // serie del rango elegido (gráficos)
   const [clRange,setClRange]=useState("24h");
   const [showClimate,setShowClimate]=useState(false);
-  const [clTick,setClTick]=useState(0);   // fuerza recarga del clima al cargar una medición manual
+  const [showCharts,setShowCharts]=useState(false);
+  const [clTick,setClTick]=useState(0);
 
   useEffect(()=>{
     setLoading(true);
@@ -2646,100 +2866,114 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
       db.query("veg_stock","type=eq.madre").catch(()=>[]),
       db.get("cloners").catch(()=>[]),
       db.get("cloner_slots").catch(()=>[]),
-      db.query("vg_batches","status=eq.vg&select=id").catch(()=>[]),
-      db.query("vg_lines","select=batch_id,current_count").catch(()=>[]),
-    ]).then(([m,c,cs,vb,vl])=>{
-      setMadres(m);setCloners(c);setClSlots(cs);
-      const abiertas=new Set(vb.map(b=>sid(b.id)));
-      setVg({plantas:vl.filter(l=>abiertas.has(sid(l.batch_id))).reduce((a,l)=>a+(l.current_count||0),0),tandas:abiertas.size});
-    }).finally(()=>setLoading(false));
+      db.query("vg_batches","status=eq.vg&order=start_date.asc").catch(()=>[]),
+      db.query("vg_lines","select=batch_id,genetic_name,initial_count,current_count").catch(()=>[]),
+    ]).then(([m,c,cs,vb,vl])=>{setMadres(m);setCloners(c);setClSlots(cs);setVgB(vb);setVgL(vl);}).finally(()=>setLoading(false));
   },[]);
   useEffect(()=>{
     const loadC=()=>db.query("climate_logs","room_id=eq.Vegetativo&order=recorded_at.desc&limit=1").then(r=>setClimate(r[0]||null)).catch(()=>{});
     loadC();const id=setInterval(loadC,120000);return ()=>clearInterval(id);
   },[clTick]);
   useEffect(()=>{
+    if(!showCharts)return;
     const loadS=()=>{
       const hrs=clRange==="24h"?24:clRange==="7d"?24*7:24*30;
       const since=new Date(Date.now()-hrs*3600*1000).toISOString();
       db.query("climate_logs",`room_id=eq.Vegetativo&recorded_at=gte.${since}&order=recorded_at.asc`).then(setClSeries).catch(()=>setClSeries([]));
     };
     loadS();const id=setInterval(loadS,120000);return ()=>clearInterval(id);
-  },[clRange,clTick]);
+  },[clRange,clTick,showCharts]);
 
   if(loading)return <Spin/>;
-  const activas=madres.filter(m=>m.status==="activa").reduce((a,m)=>a+(m.count||0),0);
-  const renovar=madres.filter(m=>m.status==="renovar").length;
-  const usados=clSlots.filter(s=>s.genetic_name).length;
-  const capacidad=cloners.reduce((a,c)=>a+(c.capacity||0),0);
-  const listas=cloners.filter(cl=>{const sl=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));return sl.some(s=>s.genetic_name)&&batchProgress(cl,sl)?.ready;}).length;
+  const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
+  const tg=getTargets(targets,"Vegetativo",null,null);
+  const vivas=madres.filter(m=>madreEstado(m)!=="inactiva");
+  const totalMadres=vivas.reduce((a,m)=>a+(m.count||0),0);
+  const paraRenovar=vivas.filter(m=>madreEstado(m)==="renovar").length;
+  const proximas=vivas.filter(m=>madreEstado(m)==="proxima").length;
+  const porGen={};vivas.forEach(m=>{porGen[m.genetic_name]=(porGen[m.genetic_name]||0)+(m.count||0);});
+  const genes=Object.entries(porGen).sort((a,b)=>b[1]-a[1]);
+  const totalEsq=clSlots.filter(s=>s.genetic_name).length;
+  const plantasVG=vgL.filter(l=>vgB.some(b=>sid(b.id)===sid(l.batch_id))).reduce((a,l)=>a+(l.current_count||0),0);
   const go=p=>setPage&&setPage(p);
-  const tile=({k,ic,t,d,v,sub,warn,p})=><Card key={k} onClick={()=>go(p)} style={{padding:"16px 18px"}}>
-    <div style={{display:"flex",alignItems:"center",gap:14}}>
-      <div style={{width:52,height:52,borderRadius:14,background:C.greenLight,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={ic} size={26}/></div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:H}}>{t}</div>
-        <div style={{fontSize:13,color:C.textSoft}}>{d}</div>
-        {warn&&<div style={{fontSize:12,color:C.amber,fontWeight:700,marginTop:3}}>⚠ {warn}</div>}
-      </div>
-      <div style={{textAlign:"right",flexShrink:0}}>
-        <div style={{fontFamily:MONO,fontSize:26,fontWeight:700,color:C.text,lineHeight:1.05}}>{v}</div>
-        <div style={{fontSize:11.5,color:C.textSoft}}>{sub}</div>
-      </div>
-      <span style={{color:C.textSoft}}><Icon n="chev" size={20}/></span>
-    </div>
-  </Card>;
 
-  return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
+  const blockHead=(icon,title,sub,num,p)=><button onClick={()=>go(p)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left",padding:0}}>
+    <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.greenLight,color:C.green,flexShrink:0}}><Icon n={icon} size={22}/></span>
+    <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:17,fontWeight:800}}>{title}</span><span style={{display:"block",fontSize:13,color:C.textSoft,fontWeight:600}}>{sub}</span></span>
+    <span style={{fontSize:26,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{num}</span>
+    <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+  </button>;
+  const rowLine=(key,left,right,mix,last)=><div key={key} style={{padding:"11px 0",borderTop:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{flex:1,minWidth:0}}>{left}</div>{right}</div>
+    {mix&&mix.length>0&&<div style={{marginTop:7}}><Stripe mix={mix} genMap={genMap}/></div>}
+  </div>;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {showTargets&&<TargetsModal roomId="Vegetativo" rc={null} cycle={null} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
     {showClimate&&<ClimateModal roomId="Vegetativo" user={user} onClose={()=>setShowClimate(false)} onSaved={()=>{setShowClimate(false);setClTick(t=>t+1);setToast({msg:"Medición guardada ✓",type:"success"});}}/>}
 
-    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Vegetativo</div>
+    <PageTitle>Vegetativo</PageTitle>
 
-    {/* Clima en vivo: un solo sensor para todo el espacio */}
-    {(()=>{const tg=getTargets(targets,"Vegetativo",null,null);return <Card style={{padding:"14px 18px 16px"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
-        <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em"}}>Objetivo · madres/esquejes</div>
-        {user?.role==="admin"&&<button onClick={()=>setShowTargets(true)} style={{fontSize:11,color:C.textMid,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 9px",cursor:"pointer"}}>✎ Editar</button>}
+    <Card style={{padding:"16px 16px 14px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+        <div><div style={{fontSize:16,fontWeight:800,color:C.text}}>Clima</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Madres y esquejes</div></div>
+        <div style={{display:"flex",gap:4}}>
+          {user?.role==="admin"&&<button onClick={()=>setShowTargets(true)} aria-label="Editar objetivos" style={{background:"transparent",border:"none",cursor:"pointer",color:C.textSoft,padding:8}}><Icon n="sliders" size={20}/></button>}
+          <button onClick={()=>setShowCharts(v=>!v)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:14,fontFamily:"inherit",padding:"8px 0 8px 6px"}}>{showCharts?"Ocultar":"Gráficos"}<Icon n="chev" size={16} style={{transform:showCharts?"rotate(90deg)":"none"}}/></button>
+        </div>
       </div>
       <ClimateMetrics climate={climate} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
-    </Card>;})()}
+      {showCharts&&<ChartsBlock climate={clSeries} clRange={clRange} setClRange={setClRange} tg={tg} onManual={()=>setShowClimate(true)}/>}
+    </Card>
 
-    {tile({k:"m",ic:"tree",t:"Madres",d:"Madres y fenos en selección",v:activas,sub:"activas",warn:renovar>0?`${renovar} para renovar`:null,p:"veg_madres"})}
-    {tile({k:"e",ic:"scissors",t:"Esquejeras",d:"Bandejas de esquejes",v:usados,sub:`de ${capacidad} lugares`,warn:listas>0?`${listas} bandeja${listas===1?"":"s"} lista${listas===1?"":"s"} para cosechar`:null,p:"veg_esquejeras"})}
-    {tile({k:"v",ic:"pot",t:"VG",d:"Tandas post-esqueje",v:vg.plantas,sub:`${vg.tandas} tanda${vg.tandas===1?"":"s"}`,p:"veg_vg"})}
+    <Card style={{padding:"14px 16px"}}>
+      {blockHead("tree","Madres",`${genes.length} genética${genes.length===1?"":"s"}`,totalMadres,"veg_madres")}
+      {(paraRenovar>0||proximas>0)&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:12,padding:"9px 12px",borderRadius:12,background:C.amberLight,color:C.amber,fontSize:13.5,fontWeight:700}}>
+        <Icon n="alert" size={18}/>{paraRenovar>0?`${paraRenovar} para renovar`:""}{paraRenovar>0&&proximas>0?" y ":""}{proximas>0?`${proximas} próxima${proximas===1?"":"s"}`:""}
+      </div>}
+      {genes.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:12}}>
+        {genes.map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,padding:"5px 10px",borderRadius:99,background:C.surfaceAlt,border:`1px solid ${C.border}`,color:C.text}}>
+          <span style={{width:8,height:8,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{fontWeight:800}}>{n}</b></span>)}
+      </div>}
+    </Card>
 
-    {/* Métricas */}
-    <Accordion title="Métricas" icon="📊">
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["24h","24 h"],["7d","7 días"],["30d","30 días"]].map(([k,l])=><button key={k} onClick={()=>setClRange(k)} style={{flex:1,fontSize:12.5,fontWeight:700,padding:"8px 0",borderRadius:9,cursor:"pointer",border:`1px solid ${clRange===k?C.green:C.border}`,background:clRange===k?C.greenLight:"transparent",color:clRange===k?C.green:C.textSoft}}>{l}</button>)}
-        <button onClick={()=>setShowClimate(true)} style={{fontSize:12.5,fontWeight:700,padding:"8px 12px",borderRadius:9,cursor:"pointer",border:`1px solid ${C.border}`,background:"transparent",color:C.textMid}}>+ Med.</button>
+    <Card style={{padding:"14px 16px 4px"}}>
+      {blockHead("scissors","Esquejeras",`${cloners.filter(cl=>clSlots.some(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name)).length} con esquejes`,totalEsq,"veg_esquejeras")}
+      <div style={{marginTop:8}}>
+        {cloners.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"10px 0"}}>Sin esquejeras configuradas.</div>}
+        {cloners.map(cl=>{
+          const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));const used=slots.filter(s=>s.genetic_name);
+          const mixO={};used.forEach(s=>{mixO[s.genetic_name]=(mixO[s.genetic_name]||0)+1;});
+          const prog=used.length>0?batchProgress(cl,slots):null;
+          return rowLine(cl.id,<>
+            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{cl.label}</div>
+            <div style={{fontSize:12.5,fontWeight:700,color:prog?prog.color:C.textSoft}}>{prog?prog.label.replace(" · ",", "):"Vacía"}</div>
+          </>,used.length>0&&<span style={{whiteSpace:"nowrap"}}><span style={{fontSize:20,fontWeight:800,color:C.text}}>{used.length}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600,marginLeft:4}}>esquejes</span></span>,Object.entries(mixO).sort((a,b)=>b[1]-a[1]));
+        })}
       </div>
-      {(()=>{
-        const tg=getTargets(targets,"Vegetativo",null,null);
-        const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
-        const tPts=clSeries.filter(c=>c.temperature!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.temperature}));
-        const hPts=clSeries.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.humidity}));
-        const vPts=clSeries.filter(c=>c.vpd!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.vpd}));
-        if(clSeries.length===0)return <div style={{textAlign:"center",color:C.textSoft,fontSize:13,fontStyle:"italic",padding:"16px 0"}}>Sin datos en este rango todavía</div>;
-        return <>
-          <div style={{fontSize:11,color:C.textSoft,marginBottom:8,fontStyle:"italic"}}>Franja sombreada = rango objetivo de {tg.label} · tocá o arrastrá el dedo sobre el gráfico para ver hora y valor</div>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,marginBottom:4}}>🌡 Temperatura (°C)</div>
-          <LineChart series={[{points:tPts,color:C.amber}]} bands={[{min:tR.min,max:tR.max,color:C.amber}]} unit="°C"/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>💧 Humedad (%)</div>
-          <LineChart series={[{points:hPts,color:C.blue}]} bands={[{min:hR.min,max:hR.max,color:C.blue}]} unit="%"/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>🍃 VPD (kPa)</div>
-          <LineChart series={[{points:vPts,color:C.purple}]} bands={[{min:vR.min,max:vR.max,color:C.purple}]} unit=" kPa"/>
-        </>;
-      })()}
-    </Accordion>
+    </Card>
+
+    <Card style={{padding:"14px 16px 4px"}}>
+      {blockHead("pot","VG",`${vgB.length} tanda${vgB.length===1?"":"s"}`,plantasVG,"veg_vg")}
+      <div style={{marginTop:8}}>
+        {vgB.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"10px 0"}}>No hay tandas en VG.</div>}
+        {vgB.map(b=>{
+          const ls=vgL.filter(l=>sid(l.batch_id)===sid(b.id));
+          const viv=ls.reduce((a,l)=>a+(l.current_count||0),0),ent=ls.reduce((a,l)=>a+(l.initial_count||0),0);
+          const p=ent>0?Math.round(viv/ent*100):0;const d=daysSince(b.start_date);
+          const mixO={};ls.forEach(l=>{if(l.current_count>0)mixO[l.genetic_name]=(mixO[l.genetic_name]||0)+l.current_count;});
+          return rowLine(b.id,<>
+            <div style={{fontSize:15,fontWeight:700,color:C.text}}>Tanda del {fmtDM(b.start_date)}</div>
+            <div style={{fontSize:12.5,fontWeight:700,color:C.textSoft}}><span style={{color:C.green}}>{d<=0?"Entró hoy":`Día ${d} de vegetativo`}</span>, {p}% vivas</div>
+          </>,<span style={{whiteSpace:"nowrap"}}><span style={{fontSize:20,fontWeight:800,color:C.text}}>{viv}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600,marginLeft:4}}>pl</span></span>,Object.entries(mixO).sort((a,b)=>b[1]-a[1]));
+        })}
+      </div>
+    </Card>
   </div>;
 }
 
-// ── MADRES ───────────────────────────────────────────────────────────────────
-// Acá termina la búsqueda de fenos: cada madre puede llevar su feno (DS-7) para
-// distinguir madres de la misma genética.
+// ── MADRES: agrupadas por genética, con cantidades y días a la vista ─────────
 function MadresPage({genetics,user}){
   const isAdmin=user?.role==="admin";
   const [stock,setStock]=useState([]);
@@ -2750,7 +2984,6 @@ function MadresPage({genetics,user}){
   const [editItem,setEditItem]=useState(null);
   const [delItem,setDelItem]=useState(null);
   const [busy,setBusy]=useState(false);
-  const [gen,setGen]=useState("__todas__");
   const load=useCallback(()=>{
     setLoading(true);
     Promise.all([
@@ -2763,65 +2996,73 @@ function MadresPage({genetics,user}){
 
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
   const phenoMap={};phenos.forEach(p=>{phenoMap[sid(p.id)]=p;});
-  const conMadres=[...new Set(stock.map(m=>m.genetic_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const lista=stock.filter(m=>gen==="__todas__"||m.genetic_name===gen)
-    .sort((a,b)=>(a.genetic_name||"").localeCompare(b.genetic_name||"")||String(fenoTxt(a,phenoMap)||"").localeCompare(String(fenoTxt(b,phenoMap)||""),undefined,{numeric:true}));
-  const activas=stock.filter(m=>m.status==="activa").reduce((a,m)=>a+(m.count||0),0);
+  const activas=stock.filter(m=>madreEstado(m)!=="inactiva");
+  const inactivas=stock.filter(m=>madreEstado(m)==="inactiva");
+  const total=activas.reduce((a,m)=>a+(m.count||0),0);
+  const paraRenovar=activas.filter(m=>madreEstado(m)==="renovar").length;
+  const proximas=activas.filter(m=>madreEstado(m)==="proxima").length;
+  const groups={};activas.forEach(m=>{(groups[m.genetic_name]=groups[m.genetic_name]||[]).push(m);});
+  const order=Object.entries(groups).sort((a,b)=>b[1].reduce((x,m)=>x+(m.count||0),0)-a[1].reduce((x,m)=>x+(m.count||0),0));
   const borrar=async()=>{
     const m=delItem;if(!m)return;setBusy(true);
     try{
       await db.delete("veg_stock",m.id);
       const f=fenoTxt(m,phenoMap);
       await logA(user.name,`Eliminó madre ${m.genetic_name}${f?` ${f}`:""}`,"veg_stock");
-      setStock(prev=>prev.filter(s=>s.id!==m.id));setDelItem(null);
+      setStock(prev=>prev.filter(s=>s.id!==m.id));setDelItem(null);setEditItem(null);
       setToast({msg:"Madre eliminada",type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
   };
+  const stat=(n,l,color)=><div style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 13px"}}>
+    <div style={{fontSize:24,fontWeight:800,color:color||C.text,fontVariantNumeric:"tabular-nums"}}>{n}</div><div style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{l}</div>
+  </div>;
+  const madreRow=(m,i)=>{
+    const d=daysSince(m.entry_date);const st=madreEstado(m);const col=genMap[m.genetic_name]||C.green;const f=fenoTxt(m,phenoMap);
+    const dCol=st==="renovar"?C.red:st==="proxima"?C.amber:C.text;
+    return <button key={m.id} onClick={()=>setEditItem(m)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+      <span style={{width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:`${col}1F`,color:col,fontSize:f&&f.length>5?10.5:12.5,fontWeight:800,textAlign:"center",lineHeight:1.05,padding:2,wordBreak:"break-all"}}>{f||<Icon n="tree" size={20}/>}</span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:15,fontWeight:700}}>{m.pot_label?`Maceta ${m.pot_label}`:"Sin maceta"}{f?` · ${f}`:""}{(m.count||0)>1?` · ${m.count} pl.`:""}</span>
+        <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{m.pot_size?`${m.pot_size}, `:""}desde {fmtDM(m.entry_date)}</span>
+      </span>
+      {st==="renovar"&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red}}>Renovar</span>}
+      {st==="proxima"&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.amberLight,color:C.amber}}>Próxima</span>}
+      <span style={{textAlign:"right",minWidth:40}}><span style={{display:"block",fontSize:17,fontWeight:800,color:dCol,fontVariantNumeric:"tabular-nums"}}>{d}</span><span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}>días</span></span>
+    </button>;
+  };
 
-  return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {showAdd&&<VegModal type="madre" genetics={genetics} phenos={phenos} onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
-    {editItem&&<VegModal type="madre" item={editItem} genetics={genetics} phenos={phenos} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
+    {editItem&&!delItem&&<VegModal type="madre" item={editItem} genetics={genetics} phenos={phenos} onDelete={isAdmin?()=>setDelItem(editItem):null} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
     {delItem&&<ConfirmModal title="¿Eliminar esta madre?" busy={busy} onClose={()=>setDelItem(null)} onConfirm={borrar}
       text={`Se borra la madre ${delItem.genetic_name}${fenoTxt(delItem,phenoMap)?` ${fenoTxt(delItem,phenoMap)}`:""}${delItem.pot_label?` (maceta ${delItem.pot_label})`:""} con sus notas. No se puede deshacer.`}/>}
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:12,paddingTop:8}}>
-      <div>
-        <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Madres</div>
-        <div style={{fontSize:13.5,color:C.textSoft,marginTop:2}}>{activas} activa{activas===1?"":"s"} de {conMadres.length} genética{conMadres.length===1?"":"s"}</div>
-      </div>
-      {isAdmin&&<Btn onClick={()=>setShowAdd(true)}>+ Agregar</Btn>}
+    <PageTitle right={isAdmin&&<button onClick={()=>setShowAdd(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Madres</PageTitle>
+    <div style={{display:"flex",gap:8}}>
+      {stat(total,"madres")}{stat(order.length,`genética${order.length===1?"":"s"}`)}{stat(paraRenovar,"para renovar",paraRenovar?C.red:null)}
     </div>
+    <div style={{fontSize:13,color:C.textSoft,fontWeight:600,padding:"0 2px"}}>{proximas>0?`${proximas} más llega${proximas===1?"":"n"} a los ${MADRE_RENOVAR} días en las próximas dos semanas. `:""}Se marcan para renovar a los {MADRE_RENOVAR} días.</div>
 
-    {conMadres.length>1&&<div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:2}}>
-      {[{k:"__todas__",l:"Todas"},...conMadres.map(g=>({k:g,l:g}))].map(o=>{const on=gen===o.k;const c=o.k==="__todas__"?C.green:(genMap[o.k]||C.green);
-        return <button key={o.k} onClick={()=>setGen(o.k)} style={{flexShrink:0,padding:"8px 13px",borderRadius:20,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",background:on?c:C.surface,color:on?"#fff":C.textMid,border:`1.5px solid ${on?c:C.border}`}}>{o.l}</button>;})}
-    </div>}
-
-    {lista.map(m=>{
-      const days=daysSince(m.entry_date);const renov=m.status==="renovar";const col=genMap[m.genetic_name]||C.green;const f=fenoTxt(m,phenoMap);
-      return <Card key={m.id} onClick={()=>setEditItem(m)} style={{padding:"14px 16px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:50,height:50,borderRadius:13,background:`${col}22`,border:`2px solid ${col}66`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-            fontSize:f?(f.length>5?11:14):22,fontWeight:900,color:col,textAlign:"center",lineHeight:1.05,padding:2,wordBreak:"break-all"}}>{f||"🌳"}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:16,fontWeight:800,color:C.text}}>{m.genetic_name}{f&&f.length>5?<FenoChip txt={f}/>:null}</div>
-            <div style={{fontSize:12.5,color:C.textSoft}}>{m.pot_label?`Maceta ${m.pot_label}`:"Sin maceta"}{m.pot_size?` (${m.pot_size})`:""} · desde {fmtDM(m.entry_date)} · {m.count} pl.</div>
-            {m.notes&&<div style={{fontSize:12.5,color:C.textMid,marginTop:4,fontStyle:"italic"}}>📝 {m.notes.length>70?m.notes.slice(0,70)+"…":m.notes}</div>}
-          </div>
-          <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-            <div style={{fontSize:20,fontWeight:900,color:days>180?C.amber:C.text,fontFamily:H,lineHeight:1}}>{days}d</div>
-            <Badge label={m.status} color={renov?C.amber:C.green} bg={renov?C.amberLight:C.greenLight}/>
-            {isAdmin&&<button onClick={e=>{e.stopPropagation();setDelItem(m);}} style={{fontSize:12,color:C.red,background:"transparent",border:"none",cursor:"pointer",padding:"2px 0"}}>Eliminar</button>}
-          </div>
+    {order.map(([g,list])=>{
+      const n=list.reduce((a,m)=>a+(m.count||0),0);const r=list.filter(m=>madreEstado(m)==="renovar").length;
+      list.sort((a,b)=>String(a.entry_date||"").localeCompare(String(b.entry_date||"")));
+      return <Card key={g} style={{padding:"4px 14px 2px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0 8px"}}>
+          <span style={{width:12,height:12,borderRadius:"50%",background:genMap[g]||C.green}}/>
+          <span style={{flex:1,fontSize:16,fontWeight:800,color:C.text}}>{g}</span>
+          {r>0&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red}}>{r} renovar</span>}
+          <span style={{fontSize:22,fontWeight:800,color:C.text}}>{n}</span>
         </div>
+        {list.map(madreRow)}
       </Card>;
     })}
-    {lista.length===0&&<Card style={{textAlign:"center",padding:"26px 18px"}}>
-      <div style={{fontSize:30}}>🌳</div>
+    {order.length===0&&<Card style={{textAlign:"center",padding:"26px 18px"}}>
+      <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="tree" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Sin madres cargadas</div>
-      <div style={{fontSize:13,color:C.textSoft}}>{isAdmin?"Tocá “+ Agregar” para cargar la primera.":"Un administrador tiene que cargarlas."}</div>
+      <div style={{fontSize:13,color:C.textSoft}}>{isAdmin?"Tocá “Agregar” para cargar la primera.":"Un administrador tiene que cargarlas."}</div>
     </Card>}
+    {inactivas.length>0&&<Fold icon="tree" title="Inactivas" count={inactivas.length}>{inactivas.map(madreRow)}</Fold>}
   </div>;
 }
 
@@ -2843,40 +3084,183 @@ function EsquejerasPage({genetics,user}){
   const usados=clSlots.filter(s=>s.genetic_name).length;
   const espC=showEsp!==null?cloners.find(c=>sid(c.id)===sid(showEsp)):null;
 
-  return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {espC&&<EsquejeraModal cloner={espC} slots={clSlots.filter(s=>sid(s.cloner_id)===sid(espC.id))} genetics={genetics} user={user} onClose={()=>setShowEsp(null)} onSaved={(msg)=>{setShowEsp(null);load();setToast({msg:typeof msg==="string"?msg:"Esquejera guardada ✓",type:"success"});}}/>}
 
-    <div style={{paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Esquejeras</div>
-      <div style={{fontSize:13.5,color:C.textSoft,marginTop:2}}>{usados} esqueje{usados===1?"":"s"} en {cloners.length} bandeja{cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.</div>
-    </div>
+    <PageTitle sub={`${usados} esqueje${usados===1?"":"s"} en ${cloners.length} bandeja${cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.`}>Esquejeras</PageTitle>
 
     {cloners.map(cl=>{
       const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));
-      const used=slots.filter(s=>s.genetic_name).length;
-      const gC={};slots.forEach(s=>{if(s.genetic_name)gC[s.genetic_name]=(gC[s.genetic_name]||0)+1;});
-      const prog=used>0?batchProgress(cl,slots):null;
-      return <Card key={cl.id} style={{padding:"14px 16px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div><div style={{fontSize:16,fontWeight:800,color:C.text}}>{cl.label}</div><div style={{fontSize:12,color:C.textSoft}}>{used}/{cl.capacity}</div></div>
-          <Btn onClick={()=>setShowEsp(cl.id)} v="secondary" style={{padding:"8px 14px",fontSize:12.5}}>Abrir</Btn>
+      const used=slots.filter(s=>s.genetic_name);
+      const gC={};used.forEach(s=>{gC[s.genetic_name]=(gC[s.genetic_name]||0)+1;});
+      const mix=Object.entries(gC).sort((a,b)=>b[1]-a[1]);
+      const prog=used.length>0?batchProgress(cl,slots):null;
+      return <Card key={cl.id} onClick={()=>setShowEsp(cl.id)} style={{padding:"14px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.greenLight,color:C.green,flexShrink:0}}><Icon n="scissors" size={22}/></span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:16,fontWeight:800,color:C.text}}>{cl.label}</div>
+            <div style={{fontSize:13,fontWeight:700,color:prog?prog.color:C.textSoft}}>{prog?prog.label.replace(" · ",", "):"Vacía, tocá para cargar"}</div>
+          </div>
+          <span style={{textAlign:"right"}}><span style={{display:"block",fontSize:22,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{used.length}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>de {cl.capacity}</span></span>
+          <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
         </div>
-        {prog&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7,gap:8}}>
-          <span style={{fontSize:12.5,fontWeight:800,color:prog.color}}>{prog.label}</span>
-          <span style={{fontSize:11,color:C.textSoft,whiteSpace:"nowrap"}}>desde {fmtDM(prog.start)}</span>
-        </div>}
-        <Bar value={used} max={cl.capacity} h={8}/>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
-          {Object.entries(gC).map(([g,n])=><span key={g} style={{background:`${genMap[g]||C.green}22`,color:genMap[g]||C.green,border:`1px solid ${genMap[g]||C.green}44`,borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:700}}>{g}: {n}</span>)}
-          {used===0&&<span style={{color:C.textSoft,fontSize:12,fontStyle:"italic"}}>Vacía — tocá Abrir</span>}
-        </div>
-        {used>0&&<div style={{marginTop:12,overflowX:"auto"}}>
-          <ClonerGrid capacity={cl.capacity} colorAt={(i)=>{const s=slots.find(sl=>sl.slot_index===i);return s?.genetic_name?(genMap[s.genetic_name]||C.green):null;}}/>
-        </div>}
+        {mix.length>0&&<>
+          <div style={{marginTop:12}}><Stripe mix={mix} genMap={genMap}/></div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:8}}>
+            {mix.map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontWeight:700,color:C.textMid}}><span style={{width:8,height:8,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
+          </div>
+        </>}
       </Card>;
     })}
-    {cloners.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Sin esquejeras configuradas. Se crean en Configuración.</Card>}
+    {cloners.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,padding:"20px 0"}}>Sin esquejeras configuradas. Se crean en Configuración.</Card>}
+  </div>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAREAS — un solo lugar: vencidas, hoy, mañana, esta semana y más adelante
+// ══════════════════════════════════════════════════════════════════════════════
+function TareasPageV2({user,rooms}){
+  const [tasks,setTasks]=useState([]);
+  const [done,setDone]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [who,setWho]=useState("todas");
+  const [place,setPlace]=useState("Todos");
+  const [sel,setSel]=useState(null);
+  const [editT,setEditT]=useState(null);
+  const [delT,setDelT]=useState(null);
+  const [info,setInfo]=useState(null);
+  const [showQuick,setShowQuick]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [toast,setToast]=useState(null);
+
+  const load=useCallback(async()=>{
+    try{
+      const [p,d]=await Promise.all([
+        db.query("tasks","status=eq.pendiente&order=due_date.asc,priority.desc,created_at.asc"),
+        db.query("tasks","status=eq.completada&order=completed_at.desc&limit=40"),
+      ]);
+      setTasks(p);setDone(d);
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}
+    finally{setLoading(false);}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  if(loading)return <Spin/>;
+
+  const places=["Todos",...rooms,"Vegetativo","General"];
+  const inPlace=t=>place==="Todos"?true:place==="General"?!(rooms.includes(t.room_id)||t.room_id==="Vegetativo"):t.room_id===place;
+  const mine=t=>who==="mias"?t.assignee===user.name:true;
+  const list=tasks.filter(t=>mine(t)&&inPlace(t));
+  const hechas=done.filter(t=>mine(t)&&inPlace(t));
+  const groupOf=t=>{const d=daysTo(t.due_date);if(d<0)return "Vencidas";if(d===0)return "Hoy";if(d===1)return "Mañana";if(d<=7)return "Esta semana";return "Más adelante";};
+  const ORDER=["Vencidas","Hoy","Mañana","Esta semana","Más adelante"];
+  const groups={};list.forEach(t=>{(groups[groupOf(t)]=groups[groupOf(t)]||[]).push(t);});
+  const whenTxt=d=>{const n=daysTo(d);if(n===0)return "hoy";if(n===1)return "mañana";if(n===-1)return "ayer";return fmtDM(d);};
+  const tone=r=>r==="S1"?C.amber:r==="S2"?C.blue:r==="Vegetativo"?C.green:C.textSoft;
+  const roomShort=r=>r==="Vegetativo"?"Vege":(r||"General");
+
+  const completar=async t=>{
+    setTasks(prev=>prev.filter(x=>x.id!==t.id));
+    const doneT={...t,status:"completada",completed_at:new Date().toISOString()};
+    setDone(prev=>[doneT,...prev]);setSel(null);
+    try{
+      await db.update("tasks",t.id,{status:"completada",completed_at:doneT.completed_at});
+      let next=null;
+      if(t.recurrent&&t.recurrent_days){
+        const ins=await db.insert("tasks",{title:t.title,room_id:t.room_id,rooms:t.rooms||t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,instructions:t.instructions||null,created_by:"sistema"});
+        next=ins?.[0]||null;if(next)setTasks(prev=>[...prev,next].sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))));
+      }
+      await logA(user.name,`Completó: ${t.title}`,"task");
+      setToast({msg:next?`${t.title}: hecha. La próxima queda para el ${fmtDM(next.due_date)}`:`${t.title}: hecha`,type:"success",undo:async()=>{
+        try{
+          await db.update("tasks",t.id,{status:"pendiente",completed_at:null});
+          if(next)await db.delete("tasks",next.id);
+        }catch{}
+        load();
+      }});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});load();}
+  };
+  const reabrir=async t=>{
+    try{await db.update("tasks",t.id,{status:"pendiente",completed_at:null});await logA(user.name,`Reabrió: ${t.title}`,"task");load();setToast({msg:`${t.title}: reabierta`,type:"success"});}
+    catch(e){setToast({msg:errMsg(e),type:"error"});}
+  };
+  const posponer=async(t,dias)=>{
+    const nd=addDays(todayISO,dias);setSel(null);
+    try{await db.update("tasks",t.id,{due_date:nd});setTasks(prev=>prev.map(x=>x.id===t.id?{...x,due_date:nd}:x));setToast({msg:`Pasada a ${whenTxt(nd)}`,type:"success"});}
+    catch(e){setToast({msg:errMsg(e),type:"error"});}
+  };
+  const borrar=async()=>{
+    const t=delT;if(!t)return;setBusy(true);
+    try{await db.delete("tasks",t.id);await logA(user.name,`Borró tarea: ${t.title}`,"task");setTasks(prev=>prev.filter(x=>x.id!==t.id));setDone(prev=>prev.filter(x=>x.id!==t.id));setDelT(null);setToast({msg:"Tarea borrada",type:"success"});}
+    catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
+  };
+
+  const row=(t,i,g)=>{
+    const late=g==="Vencidas";
+    const meta=[g==="Hoy"?null:<span key="w" style={{color:late?C.red:C.textSoft}}>{late?`Vencida ${fmtDM(t.due_date)}`:whenTxt(t.due_date)}</span>,t.assignee&&<span key="a">{t.assignee}</span>,t.priority==="alta"&&<span key="p" style={{color:C.amber}}>alta</span>,t.recurrent&&t.recurrent_days&&<span key="r">cada {t.recurrent_days===1?"día":t.recurrent_days===7?"semana":`${t.recurrent_days} días`}</span>].filter(Boolean);
+    return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",minHeight:62,borderTop:i?`1px solid ${C.border}`:"none"}}>
+      <button onClick={()=>completar(t)} aria-label="Marcar hecha" style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",flexShrink:0,background:"transparent",boxShadow:`inset 0 0 0 2px ${C.borderStrong}`,color:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="check" size={18} sw={2.4}/></button>
+      <button onClick={()=>setSel(t)} style={{flex:1,minWidth:0,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",padding:0,color:C.text}}>
+        <span style={{display:"block",fontSize:15,fontWeight:700}}>{t.title}</span>
+        {meta.length>0&&<span style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:1}}>{meta}</span>}
+      </button>
+      <span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,color:tone(t.room_id),background:`${tone(t.room_id)}1F`,flexShrink:0}}>{roomShort(t.room_id)}</span>
+    </div>;
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
+    {info&&<TaskDetailModal task={info} onClose={()=>setInfo(null)}/>}
+    {showQuick&&<QuickTaskSheet user={user} rooms={rooms} onClose={()=>setShowQuick(false)} onCreated={t=>{setShowQuick(false);load();setToast({msg:`Tarea creada para ${t.assignee===user.name?"vos":t.assignee}, ${whenTxt(t.due_date)}`,type:"success"});}}/>}
+    {editT&&<QuickTaskSheet user={user} rooms={rooms} task={editT} onClose={()=>setEditT(null)} onCreated={()=>{setEditT(null);load();setToast({msg:"Tarea guardada",type:"success"});}}/>}
+    {delT&&<ConfirmModal title={`¿Borrar "${delT.title}"?`} text="No se puede deshacer." busy={busy} onClose={()=>setDelT(null)} onConfirm={borrar}/>}
+    {sel&&<Sheet title={sel.title} sub={`${roomShort(sel.room_id)}, ${whenTxt(sel.due_date)}${sel.assignee?`, para ${sel.assignee}`:""}`} onClose={()=>setSel(null)}>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
+        <Btn full onClick={()=>completar(sel)} style={{minHeight:50}}>Marcar hecha</Btn>
+        <div style={{display:"flex",gap:8}}>
+          <Btn v="secondary" onClick={()=>posponer(sel,1)} style={{flex:1,minHeight:48}}>Pasar a mañana</Btn>
+          <Btn v="secondary" onClick={()=>posponer(sel,3)} style={{flex:1,minHeight:48}}>En 3 días</Btn>
+        </div>
+        {sel.instructions&&<Btn v="secondary" full onClick={()=>{setInfo(sel);setSel(null);}} style={{minHeight:48}}>Ver instrucciones</Btn>}
+        <Btn v="secondary" full onClick={()=>{setEditT(sel);setSel(null);}} style={{minHeight:48}}>Editar</Btn>
+        <Btn v="danger" full onClick={()=>{setDelT(sel);setSel(null);}} style={{minHeight:48}}>Borrar</Btn>
+      </div>
+    </Sheet>}
+
+    <PageTitle right={<button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva</button>}>Tareas</PageTitle>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"12px 2px 0"}}>
+      <span style={{fontSize:13.5,color:C.textSoft,fontWeight:600}}>{list.length} pendiente{list.length===1?"":"s"}</span>
+      <div style={{display:"inline-flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
+        {[["todas","Todas"],["mias","Mías"]].map(([k,l])=>{const on=who===k;return <button key={k} onClick={()=>setWho(k)} style={{padding:"6px 13px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:7,overflowX:"auto",margin:"12px 0 0",paddingBottom:2,scrollbarWidth:"none"}} className="gm-rail">
+      {places.map(p=>{const on=place===p;return <button key={p} onClick={()=>setPlace(p)} style={{flexShrink:0,padding:"8px 13px",borderRadius:99,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:on?"none":`1px solid ${C.border}`,background:on?C.text:C.surface,color:on?C.bg:C.textMid}}>{p==="Vegetativo"?"Vege":p}</button>;})}
+    </div>
+
+    {ORDER.filter(g=>groups[g]).map(g=><div key={g}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"22px 2px 10px"}}>
+        <div style={{fontSize:18,fontWeight:800,color:g==="Vencidas"?C.red:C.text}}>{g}</div>
+        <span style={{fontSize:13.5,color:C.textSoft,fontWeight:700}}>{groups[g].length}</span>
+      </div>
+      <Card style={{padding:0,overflow:"hidden"}}>{groups[g].map((t,i)=>row(t,i,g))}</Card>
+    </div>)}
+    {list.length===0&&<Card style={{padding:"26px 18px",textAlign:"center",marginTop:18}}>
+      <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="ok" size={30}/></div>
+      <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 2px"}}>Nada pendiente acá</div>
+      <div style={{fontSize:13,color:C.textSoft}}>{place!=="Todos"||who!=="todas"?"Probá con otro filtro.":"Creá una con “Nueva”."}</div>
+    </Card>}
+
+    {hechas.length>0&&<div style={{marginTop:22}}>
+      <Fold icon="check" title="Hechas recientes" count={hechas.length}>
+        {hechas.map((t,i)=><div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+          <span style={{color:C.green}}><Icon n="check" size={18} sw={2.4}/></span>
+          <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:14.5,fontWeight:700,color:C.textMid}}>{t.title}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>{roomShort(t.room_id)}{t.completed_at?`, ${fmtDM(String(t.completed_at).slice(0,10))}`:""}</span></span>
+          <button onClick={()=>reabrir(t)} style={{fontSize:13,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:10,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit"}}>Reabrir</button>
+        </div>)}
+      </Fold>
+    </div>}
   </div>;
 }
 
@@ -3307,7 +3691,7 @@ function VGPage({genetics,user}){
         </div>)}
       </Card>
 
-      {isAdmin&&<Btn v="danger" full onClick={()=>setShowDel(true)} style={{minHeight:48}}>🗑 Eliminar tanda</Btn>}
+      {isAdmin&&<Btn v="danger" full onClick={()=>setShowDel(true)} style={{minHeight:48}}>Eliminar tanda</Btn>}
     </div>;
   }
 
@@ -3323,7 +3707,7 @@ function VGPage({genetics,user}){
     </div>
 
     {abiertas.length===0&&<Card style={{textAlign:"center",padding:"26px 18px"}}>
-      <div style={{fontSize:30}}>🪴</div>
+      <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="pot" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>No hay tandas en VG</div>
       <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Entran solas cuando cosechás una esquejera{isAdmin?", o creá una con “+ Nueva tanda”.":"."}</div>
     </Card>}
@@ -3363,7 +3747,7 @@ function VGPage({genetics,user}){
 }
 
 // Alta / edición de una madre. El color NO se elige acá: sale de la página Genéticas.
-function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved}){
+function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved,onDelete}){
   const [gn,setGn]=useState(item?.genetic_name||genetics[0]?.name||"");
   const [cnt,setCnt]=useState(item?.count?.toString()||"1");
   const [pot,setPot]=useState(item?.pot_label||"");
@@ -3423,6 +3807,7 @@ function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved}){
       :<FS label="Etapa" value={status} onChange={e=>setStatus(e.target.value)} options={["post-esqueje","vegetativo","lista"]}/>}
     <FT label="Notas / anotaciones (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones, podas, plagas, riego, etc." rows={3}/>
     <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
+    {item&&onDelete&&<Btn v="danger" full onClick={onDelete} style={{marginTop:10}}>Eliminar madre</Btn>}
   </Modal>;
 }
 
@@ -5687,7 +6072,7 @@ export default function App(){
       case "veg_madres":   return <MadresPage genetics={genetics} user={user}/>;
       case "veg_esquejeras":return <EsquejerasPage genetics={genetics} user={user}/>;
       case "veg_vg":       return <VGPage genetics={genetics} user={user}/>;
-      case "tareas":       return <TareasPage user={user} rooms={rooms}/>;
+      case "tareas":       return isAdmin?<TareasPageV2 user={user} rooms={rooms}/>:<TareasPage user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
       case "fenos":        return <FenosPage user={user} genetics={genetics}/>;
       case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets}/>;
