@@ -990,13 +990,14 @@ function AdminNav({page,setPage,wide}){
   </nav>;
 }
 
-// Barra superior solo en páginas internas: una flecha que vuelve a su sección.
-function AdminTopBar({page,setPage}){
-  if(MAIN_PAGES.includes(page)||page.startsWith("sala_"))return null;
-  const parent=page.startsWith("veg_")?{p:"vegetativo",l:"Vege"}:{p:"__more__",l:"Más"};
-  return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",height:52,padding:"0 8px"}}>
-    <button onClick={()=>setPage(parent.p)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
-      <Icon n="back" size={22}/>{parent.l}
+// Flecha "Volver" en todas las pantallas menos Inicio. Vuelve a la pantalla anterior;
+// si se entró directo, va a la sección que corresponde.
+function AdminTopBar({page,onBack}){
+  if(page==="dashboard")return null;
+  const fallback=page.startsWith("veg_")?"vegetativo":(MAIN_PAGES.includes(page)||page.startsWith("sala_"))?"dashboard":"__more__";
+  return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",height:50,padding:"0 8px"}}>
+    <button onClick={()=>onBack(fallback)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
+      <Icon n="back" size={22}/>Volver
     </button>
   </header>;
 }
@@ -1154,7 +1155,8 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [cloners,setCloners]=useState([]);
   const [clSlots,setClSlots]=useState([]);
   const [drying,setDrying]=useState([]);   // ciclos cosechados que esperan el peso del secado
-  const [vgPlantas,setVgPlantas]=useState(0);   // plantas vivas en tandas abiertas de VG
+  const [vgTandas,setVgTandas]=useState([]);   // tandas abiertas de VG: fecha y plantas vivas
+  const [vgErr,setVgErr]=useState(false);
   const [loading,setLoading]=useState(true);
   const [who,setWho]=useState("mias");
   const [railIdx,setRailIdx]=useState(0);
@@ -1175,12 +1177,15 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
       db.get("cloners").catch(()=>[]),
       db.get("cloner_slots").catch(()=>[]),
       db.query("cycles","active=eq.false&harvest_status=eq.secando&order=closed_at.desc").catch(()=>[]),
-      db.query("vg_batches","status=eq.vg&select=id").catch(()=>[]),
-      db.query("vg_lines","select=batch_id,current_count").catch(()=>[]),
-    ]).then(([,c,v,cl,co,cs,dry,vb,vl])=>{
+      Promise.all([
+        db.query("vg_batches","status=eq.vg&select=id,start_date&order=start_date.asc"),
+        db.query("vg_lines","select=batch_id,current_count"),
+      ]).catch(()=>null),
+    ]).then(([,c,v,cl,co,cs,dry,vg])=>{
       setCycles(c);setVegStock(v);setClimate(cl);setCloners(co);setClSlots(cs);setDrying(dry||[]);
-      const abiertas=new Set((vb||[]).map(b=>sid(b.id)));
-      setVgPlantas((vl||[]).filter(l=>abiertas.has(sid(l.batch_id))).reduce((a,l)=>a+(l.current_count||0),0));
+      if(!vg){setVgErr(true);return;}
+      const [vb,vl]=vg;
+      setVgTandas(vb.map(b=>({id:sid(b.id),start_date:b.start_date,plantas:vl.filter(l=>sid(l.batch_id)===sid(b.id)).reduce((a,l)=>a+(l.current_count||0),0)})));
     }).finally(()=>setLoading(false));
   },[loadTasks]);
   useEffect(()=>{
@@ -1240,7 +1245,9 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
 
   // ── Tareas de hoy ──
   const mine=t=>who==="mias"?t.assignee===user.name:true;
-  const hoy=[...overdue.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="completada")];
+  const pendHoy=[...overdue.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"&&t.priority==="alta"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"&&t.priority!=="alta")];
+  const hechasHoy=tasks.filter(t=>mine(t)&&t.status==="completada").length;
+  const hoy=pendHoy.slice(0,3);
   const myPending=[...overdue,...tasks].filter(t=>t.assignee===user.name&&t.status==="pendiente").length;
   const resumen=`${myPending>0?`Tenés ${myPending} tarea${myPending===1?"":"s"} para hoy`:"Tus tareas de hoy están hechas"}, ${alerts.length>0?`${alerts.length} alerta${alerts.length===1?"":"s"} para revisar`:"todo en rango"}`;
   const fecha=(()=>{const s=fmtFull(TODAY);return s.charAt(0).toUpperCase()+s.slice(1);})();
@@ -1295,7 +1302,13 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
     const fdays=rc?.flower_days||65;const day=Math.max(0,daysFrom(cyc.flower_start));const left=daysTo(cyc.estimated_harvest);
     return {...base,big:`Día ${day}`,sub:left>0?`Flora, faltan ${left} días`:left===0?"Flora, cosecha hoy":"Flora, cosecha pasada",trackEl:track(Math.min(100,day/fdays*100),[15,21].filter(m=>m<fdays).map(m=>m/fdays*100),tone)};
   });
-  cols.push({name:"Vege",tone:C.green,big:vgPlantas,sub:`en VG y ${madres} madre${madres===1?"":"s"}`,cl:lastClimate("Vegetativo"),tg:getTargets(targets,"Vegetativo",null,null),go:"vegetativo"});
+  const vgPlantas=vgTandas.reduce((a,t)=>a+t.plantas,0);
+  const tandasEl=vgTandas.length>0&&<span style={{display:"flex",flexDirection:"column",gap:2,margin:"6px 0 2px"}}>
+    {vgTandas.slice(0,3).map(t=>{const d=daysSince(t.start_date);return <span key={t.id} style={{fontSize:12,fontWeight:700,color:C.textMid,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+      <span style={{color:C.green}}>{d<=0?"Entró hoy":`Día ${d}`}</span> · {t.plantas} pl</span>;})}
+    {vgTandas.length>3&&<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}>y {vgTandas.length-3} más</span>}
+  </span>;
+  cols.push({name:"Vege",tone:C.green,big:vgErr?"—":vgPlantas,sub:vgErr?"No pude leer VG":`en VG y ${madres} madre${madres===1?"":"s"}`,trackEl:tandasEl,cl:lastClimate("Vegetativo"),tg:getTargets(targets,"Vegetativo",null,null),go:"vegetativo"});
 
   const onRail=e=>{const el=e.currentTarget;const first=el.firstElementChild;if(!first)return;const w=first.offsetWidth+10;setRailIdx(Math.min(alerts.length-1,Math.max(0,Math.round(el.scrollLeft/w))));};
   const alertTone=k=>k==="red"?{c:C.red,bg:C.redLight}:{c:C.amber,bg:C.amberLight};
@@ -1330,9 +1343,12 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const tasksBlock=<div>
     {secHead("Hoy",whoSeg)}
     <Card style={{padding:0,overflow:"hidden"}}>
-      {hoy.length===0&&<div style={{padding:"20px 16px",textAlign:"center",color:C.textSoft,fontSize:14}}>{who==="mias"?"No tenés tareas para hoy.":"No hay tareas para hoy."}</div>}
+      {hoy.length===0&&<div style={{padding:"20px 16px",textAlign:"center",color:C.textSoft,fontSize:14}}>{hechasHoy>0?"Todo hecho por hoy.":who==="mias"?"No tenés tareas para hoy.":"No hay tareas para hoy."}</div>}
       {hoy.map((t,i)=>taskRow(t,i))}
-      <button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:12,padding:14,width:"100%",background:"transparent",border:"none",borderTop:hoy.length?`1px solid ${C.border}`:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,fontFamily:"inherit"}}>
+      <button onClick={()=>setPage("tareas")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"13px 14px",width:"100%",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",color:C.textMid,fontWeight:800,fontSize:14.5,fontFamily:"inherit"}}>
+        <span>Ver todas{pendHoy.length>3?` (${pendHoy.length})`:""}</span><span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+      </button>
+      <button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:12,padding:14,width:"100%",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,fontFamily:"inherit"}}>
         <span style={{width:32,height:32,borderRadius:"50%",background:C.greenLight,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="plus" size={18} sw={2.2}/></span>Agregar tarea
       </button>
     </Card>
@@ -1499,7 +1515,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     {showTargets&&<TargetsModal roomId={roomId} rc={rc} cycle={cycle} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
 
     {/* Hero — cosecha protagonista */}
-    <div style={{background:cycle.phase==="floración"?"linear-gradient(135deg,#241D12,#1C1710)":"linear-gradient(135deg,#16211A,#121B14)",borderRadius:20,padding:"22px 20px 18px",border:`1px solid ${C.border}`}}>
+    <div style={{background:C.onAccent==="#FFFFFF"?(cycle.phase==="floración"?"linear-gradient(135deg,#FBF1DF,#F4E6CE)":"linear-gradient(135deg,#E7F2EB,#DAEAE0)"):(cycle.phase==="floración"?"linear-gradient(135deg,#241D12,#1C1710)":"linear-gradient(135deg,#16211A,#121B14)"),borderRadius:20,padding:"22px 20px 18px",border:`1px solid ${C.border}`}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
         <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>{roomName}</div></div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
@@ -5625,7 +5641,12 @@ function GuiaPage({user,roomConfig,rooms}){
 // APP
 export default function App(){
   const [user,setUser]=useState(null);
-  const [page,setPage]=useState("dashboard");
+  const [page,setPageState]=useState("dashboard");
+  // Cada cambio de pantalla queda en el historial del navegador: así el gesto o botón
+  // "atrás" del celu vuelve a la pantalla anterior en vez de salir de la app.
+  const navFromPop=useRef(false);
+  const navDepth=useRef(0);
+  const setPage=useCallback(p=>setPageState(p),[]);
   const [genetics,setGenetics]=useState([]);
   const [roomConfig,setRoomConfig]=useState([]);
   const [targets,setTargets]=useState([]);
@@ -5635,6 +5656,21 @@ export default function App(){
   const loadConfig=useCallback(()=>{db.get("room_config").then(setRoomConfig).catch(()=>setRoomConfig([]));},[]);
   const loadTargets=useCallback(()=>{db.query("climate_targets","select=*").then(setTargets).catch(()=>setTargets([]));},[]);
   const wide=useIsWide(820);
+  useEffect(()=>{
+    const onPop=e=>{const p=e.state&&e.state.gm;if(!p)return;navFromPop.current=true;navDepth.current=Math.max(0,navDepth.current-1);setPageState(p);};
+    window.addEventListener("popstate",onPop);
+    return ()=>window.removeEventListener("popstate",onPop);
+  },[]);
+  useEffect(()=>{
+    if(!user)return;
+    try{
+      if(navFromPop.current){navFromPop.current=false;return;}
+      const cur=window.history.state&&window.history.state.gm;
+      if(!cur){window.history.replaceState({gm:page},"");return;}
+      if(cur!==page){window.history.pushState({gm:page},"");navDepth.current++;}
+    }catch{/* navegador sin historial: se sigue usando la flecha */}
+  },[page,user]);
+  const goBack=useCallback(fallback=>{if(navDepth.current>0)window.history.back();else setPageState(fallback);},[]);
   // Preferencia de tamaño de texto (por dispositivo)
   useEffect(()=>{try{const v=parseFloat(localStorage.getItem("gm_textscale"));if(v>=1&&v<=1.3)setTextScaleState(v);}catch{}},[]);
   const setTextScale=(v)=>{setTextScaleState(v);try{localStorage.setItem("gm_textscale",String(v));}catch{}};
@@ -5680,7 +5716,7 @@ export default function App(){
       <style>{globalCSS}</style>
       {isAdmin?<AdminNav page={page} setPage={setPage} wide/>:<NavBar user={user} page={page} setPage={setPage} wide/>}
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-        {isAdmin?<AdminTopBar page={page} setPage={setPage}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout} wide/>}
+        {isAdmin?<AdminTopBar page={page} onBack={goBack}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout} wide/>}
         <div className="page" style={{padding:isAdmin?"18px 32px 32px":"6px 28px 28px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
       </div>
       {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide/>}
@@ -5688,7 +5724,7 @@ export default function App(){
   }
   return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
     <style>{globalCSS}</style>
-    {isAdmin?<AdminTopBar page={page} setPage={setPage}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout}/>}
+    {isAdmin?<AdminTopBar page={page} onBack={goBack}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout}/>}
     <div className="page" style={{padding:isAdmin?"14px 16px 104px":"16px 16px 88px"}}>{render()}</div>
     {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide={false}/>}
     {isAdmin?<AdminNav page={page} setPage={setPage}/>:<NavBar user={user} page={page} setPage={setPage}/>}
