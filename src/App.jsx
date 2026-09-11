@@ -85,35 +85,36 @@ const addDays = (ds,n) => { const d=new Date(ds); d.setDate(d.getDate()+n); retu
 // se le sobrescriben los valores y todo el árbol vuelve a leerlos en el próximo
 // render. Así no hay que tocar los miles de `C.algo` repartidos por el archivo.
 const THEMES = {
+  // Oscuro: para trabajar con luz baja.
   dark: {
-    bg:"#0E130D", surface:"#161D14", surfaceAlt:"#1D261A",
-    border:"rgba(150,180,140,0.12)", borderStrong:"rgba(150,180,140,0.24)",
-    text:"#E9F0E6", textMid:"#B7C4B0", textSoft:"#93A48C",
-    green:"#6FCB86", greenLight:"rgba(111,203,134,0.14)",
-    amber:"#E7B24A", amberLight:"rgba(231,178,74,0.14)",
-    red:"#EA6A4E", redLight:"rgba(234,106,78,0.14)",
-    blue:"#57B7CE", blueLight:"rgba(87,183,206,0.14)",
-    purple:"#A38BEF", purpleLight:"rgba(163,139,239,0.14)",
-    teal:"#57C9B0", tealLight:"rgba(87,201,176,0.14)",
-    onAccent:"#0E130D",
-    shadow:"0 1px 2px rgba(0,0,0,0.30),0 1px 3px rgba(0,0,0,0.35)",
-    shadowUp:"0 10px 30px rgba(0,0,0,0.45)",
+    bg:"#0F1513", surface:"#18211D", surfaceAlt:"#1F2925",
+    border:"rgba(232,239,234,0.08)", borderStrong:"rgba(232,239,234,0.18)",
+    text:"#E8EFEA", textMid:"#B4C0B9", textSoft:"#8E9A94",
+    green:"#5CC497", greenLight:"rgba(92,196,151,0.15)",
+    amber:"#F2B24E", amberLight:"rgba(242,178,78,0.15)",
+    red:"#EE7059", redLight:"rgba(238,112,89,0.15)",
+    blue:"#7FA6F2", blueLight:"rgba(127,166,242,0.15)",
+    purple:"#A992F2", purpleLight:"rgba(169,146,242,0.15)",
+    teal:"#5CC9B5", tealLight:"rgba(92,201,181,0.15)",
+    onAccent:"#0F1513",
+    shadow:"none",
+    shadowUp:"0 12px 32px rgba(0,0,0,0.45)",
   },
-  // Tema claro: pensado para sala con todas las luces prendidas.
-  // Los acentos son más oscuros que los del tema oscuro para que contrasten sobre blanco.
+  // Claro: para sala con todas las luces prendidas.
+  // Verde hoja profundo, ámbar tipo luz de sodio para lo que pide atención y rojo para lo urgente.
   light: {
-    bg:"#F2F6EF", surface:"#FFFFFF", surfaceAlt:"#E9F0E4",
-    border:"rgba(46,80,36,0.16)", borderStrong:"rgba(46,80,36,0.30)",
-    text:"#16210E", textMid:"#44543B", textSoft:"#67775D",
-    green:"#2C7A45", greenLight:"rgba(44,122,69,0.13)",
-    amber:"#9A6407", amberLight:"rgba(154,100,7,0.14)",
-    red:"#B93A22", redLight:"rgba(185,58,34,0.13)",
-    blue:"#136C87", blueLight:"rgba(19,108,135,0.13)",
-    purple:"#5B3FBB", purpleLight:"rgba(91,63,187,0.13)",
-    teal:"#0E6E5B", tealLight:"rgba(14,110,91,0.13)",
+    bg:"#ECEFEA", surface:"#FFFFFF", surfaceAlt:"#F3F5F2",
+    border:"rgba(23,32,28,0.10)", borderStrong:"rgba(23,32,28,0.20)",
+    text:"#17201C", textMid:"#4A5750", textSoft:"#6F7B75",
+    green:"#1D6B4E", greenLight:"rgba(29,107,78,0.12)",
+    amber:"#A8640A", amberLight:"rgba(201,122,18,0.15)",
+    red:"#BF3F2B", redLight:"rgba(196,67,46,0.13)",
+    blue:"#3767C9", blueLight:"rgba(55,103,201,0.12)",
+    purple:"#6A4FC2", purpleLight:"rgba(106,79,194,0.12)",
+    teal:"#14786A", tealLight:"rgba(20,120,106,0.12)",
     onAccent:"#FFFFFF",
-    shadow:"0 1px 2px rgba(30,50,20,0.07),0 1px 3px rgba(30,50,20,0.09)",
-    shadowUp:"0 10px 26px rgba(30,50,20,0.16)",
+    shadow:"0 1px 2px rgba(23,32,28,0.06)",
+    shadowUp:"0 12px 32px rgba(23,32,28,0.16)",
   },
 };
 const C = { ...THEMES.dark };
@@ -122,7 +123,7 @@ const applyTheme = (name) => { Object.assign(C, THEMES[name]||THEMES.dark); };
 try { const t = localStorage.getItem("gm_theme"); if (t === "light") applyTheme("light"); } catch { /* SSR o storage bloqueado */ }
 
 // Fuente de títulos: sans moderna y sobria (antes era Georgia serif).
-const H = "system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif";
+const H = "Manrope,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif";
 const MONO = "ui-monospace,'SF Mono',Menlo,Consolas,monospace";
 const GP = ["#2A6E35","#1E5FAD","#B87318","#6B4FA0","#B83228","#0E7A6E","#8B4513","#1A6B8A","#6B6B10","#8B2252","#2E6B8B","#5A7A2A","#8B4A00","#3A3A8B","#7A2A5A"];
 const TM = {
@@ -320,7 +321,7 @@ const generateResetTasks = async (roomId, startISO, assignee, createdBy="sistema
 };
 
 // BASE UI
-function Card({children,style={},onClick}){ const[h,sH]=useState(false); return <div onClick={onClick} onMouseEnter={()=>onClick&&sH(true)} onMouseLeave={()=>sH(false)} style={{background:C.surface,borderRadius:14,border:`1px solid ${C.border}`,boxShadow:h&&onClick?C.shadowUp:C.shadow,padding:18,cursor:onClick?"pointer":"default",transform:h&&onClick?"translateY(-2px)":"none",transition:"all 0.15s",...style}}>{children}</div>; }
+function Card({children,style={},onClick}){ const[h,sH]=useState(false); return <div onClick={onClick} onMouseEnter={()=>onClick&&sH(true)} onMouseLeave={()=>sH(false)} style={{background:C.surface,borderRadius:18,border:`1px solid ${C.border}`,boxShadow:h&&onClick?C.shadowUp:C.shadow,padding:18,cursor:onClick?"pointer":"default",transform:h&&onClick?"translateY(-2px)":"none",transition:"all 0.15s",...style}}>{children}</div>; }
 function Badge({label,color,bg}){return <span style={{background:bg,color,borderRadius:20,padding:"3px 11px",fontSize:12.5,fontWeight:700,whiteSpace:"nowrap"}}>{label}</span>;}
 function PBadge({phase}){const m=PM[phase]||PM["floración"];return <Badge label={m.label} color={m.color} bg={m.bg}/>;}
 function Bar({value,max,color=C.green,h=7}){const p=max>0?Math.min(100,Math.round(value/max*100)):0;return<div style={{background:C.border,borderRadius:99,height:h,overflow:"hidden"}}><div style={{width:`${p}%`,background:color,height:"100%",borderRadius:99,transition:"width 0.5s"}}/></div>;}
@@ -487,7 +488,7 @@ function LineChart({series,height=150,yMin,yMax,bands,unit=""}){
     {chart}
   </div>;
 }
-function SL({children,style={}}){return <div style={{fontSize:12,fontWeight:800,color:C.textMid,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12,...style}}>{children}</div>;}
+function SL({children,style={}}){return <div style={{fontSize:14,fontWeight:800,color:C.textMid,marginBottom:12,...style}}>{children}</div>;}
 function Accordion({title,icon,children,right}){
   const [open,setOpen]=useState(false);
   return <Card style={{padding:0,overflow:"hidden"}}>
@@ -876,38 +877,278 @@ function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"],targets}){
   </div>;
 }
 
-// DASHBOARD
-function Gauge({value,sMin,sMax,bMin,bMax,color,out}){
+// ══════════════════════════════════════════════════════════════════════════════
+// REDISEÑO (admin) — íconos de línea, menú Inicio / Salas / Vege / Tareas / Más,
+// Inicio en orden alertas → espacios → hoy, "Más" por carpetas y tarea rápida.
+// ══════════════════════════════════════════════════════════════════════════════
+const GI={
+  home:'<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h4.5v-6h4v6h4.5V9"/>',
+  salas:'<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 12h17M12 4.5v15"/>',
+  vege:'<path d="M12 20.5V12"/><path d="M12 12.5c0-4.2-2.8-6.5-7.2-6.5 0 4.2 2.8 6.5 7.2 6.5Z"/><path d="M12 10.5c0-3.8 2.6-6 7-6 0 3.8-2.6 6-7 6Z"/>',
+  tareas:'<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="m3.8 6.4 1.3 1.3 2.4-2.5M3.8 11.9l1.3 1.3 2.4-2.5M3.8 17.4l1.3 1.3 2.4-2.5"/>',
+  mas:'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  check:'<path d="m5.5 12.5 4 4L18.5 7.5"/>',
+  ok:'<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.8-5"/>',
+  back:'<path d="M14.5 5.5 8 12l6.5 6.5"/>',
+  chev:'<path d="m9.5 6 6 6-6 6"/>',
+  x:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  thermo:'<path d="M14 14.6V5.5a2 2 0 1 0-4 0v9.1a3.8 3.8 0 1 0 4 0Z"/>',
+  drop:'<path d="M12 3.8s5.8 6 5.8 10.2a5.8 5.8 0 0 1-11.6 0C6.2 9.8 12 3.8 12 3.8Z"/>',
+  leaf:'<path d="M5 19.5C5 11 10 5 19.5 4.5 19.5 14 13.5 19.5 5 19.5Z"/><path d="M5 19.5 13 11.5"/>',
+  scissors:'<circle cx="6.5" cy="6.5" r="2.5"/><circle cx="6.5" cy="17.5" r="2.5"/><path d="M8.6 7.9 20 18M8.6 16.1 20 6"/>',
+  tree:'<path d="M12 21v-6"/><path d="M12 15c-3.8 0-6.3-2.4-6.3-5.6S8.3 3 12 3s6.3 3.2 6.3 6.4S15.8 15 12 15Z"/>',
+  pot:'<path d="M6 11.5h12l-1.6 8.5H7.6L6 11.5Z"/><path d="M12 11.5V8M12 8c0-2.2 1.5-3.8 4.2-3.8 0 2.2-1.5 3.8-4.2 3.8Z"/>',
+  harvest:'<path d="M12 21V8"/><path d="M12 8C9.6 8 8 6.4 8 4c2.4 0 4 1.6 4 4Zm0 0c2.4 0 4-1.6 4-4-2.4 0-4 1.6-4 4Zm0 5c-2.4 0-4-1.6-4-4 2.4 0 4 1.6 4 4Zm0 0c2.4 0 4-1.6 4-4-2.4 0-4 1.6-4 4Z"/>',
+  dna:'<path d="M7.5 3c0 5.5 9 6.5 9 12 0 2.6-1.5 4.6-1.5 6"/><path d="M16.5 3c0 5.5-9 6.5-9 12 0 2.6 1.5 4.6 1.5 6"/><path d="M9 7.5h6M9 16.5h6"/>',
+  flask:'<path d="M9 3.5h6M10 3.5V9l-5.2 9.2A1.8 1.8 0 0 0 6.4 21h11.2a1.8 1.8 0 0 0 1.6-2.8L14 9V3.5"/><path d="M7.6 15h8.8"/>',
+  bug:'<rect x="8" y="7.5" width="8" height="12.5" rx="4"/><path d="M12 7.5V4.5M9.2 4.8l1.3 2.4M14.8 4.8l-1.3 2.4M8 11.5H4.5M19.5 11.5H16M8 16H5M19 16h-3"/>',
+  book:'<path d="M3.5 5h6a2.5 2.5 0 0 1 2.5 2.5V20a2 2 0 0 0-2-2H3.5Z"/><path d="M20.5 5h-6A2.5 2.5 0 0 0 12 7.5V20a2 2 0 0 1 2-2h6.5Z"/>',
+  notebook:'<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 3.5v17M12.5 8.5H16M12.5 12H16"/>',
+  calendar:'<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  history:'<path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5V8h3.5"/><path d="M12 8v4.3l2.8 1.8"/>',
+  chart:'<path d="M5 19.5v-8M10.5 19.5V5M16 19.5v-5.5M3 19.5h18"/>',
+  cart:'<path d="M3 4.5h2.4l2.1 10h10.8L20.5 7.5H6.4"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
+  chat:'<path d="M4.5 5.5h15v10h-9.5L4.5 19.5v-14Z"/>',
+  sliders:'<path d="M4 7h9M18 7h2M4 17h3M11 17h9"/><circle cx="15.5" cy="7" r="2.3"/><circle cx="9" cy="17" r="2.3"/>',
+  sun:'<circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M5.5 18.5l1.4-1.4M17.1 6.9l1.4-1.4"/>',
+  text:'<path d="M3.5 18 8 6h1.2l4.5 12M5 14h7"/><path d="M14.5 18l2.7-7h1.1l2.7 7M15.5 15.6h4.5"/>',
+};
+function Icon({n,size=22,sw=1.8,color="currentColor",style}){
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+    aria-hidden="true" style={{display:"block",flexShrink:0,...style}} dangerouslySetInnerHTML={{__html:GI[n]||""}}/>;
+}
+
+// ── Clima: qué tan lejos está del óptimo ─────────────────────────────────────
+// Dentro del rango = verde. Fuera pero cerca (dentro de la tolerancia) = naranja. Lejos = rojo.
+const CLIM_TOL={temp:2,hum:6,vpd:0.2};
+const climLevel=(v,r,tol)=>{
+  if(v==null||v===""||isNaN(+v)||!r)return null;
+  const x=+v;
+  if(x>=r.min&&x<=r.max)return {k:"ok",off:0};
+  const off=x<r.min?x-r.min:x-r.max;
+  return {k:Math.abs(off)<=tol?"near":"far",off};
+};
+const levelColor=k=>k==="ok"?C.green:k==="near"?C.amber:k==="far"?C.red:C.textSoft;
+const fmtNum=(x,d=1)=>{if(x==null||isNaN(+x))return "—";if(d>=2)return (+x).toFixed(d).replace(".",",");const p=Math.pow(10,d);return String(Math.round(+x*p)/p).replace(".",",");};
+
+function Gauge({value,sMin,sMax,bMin,bMax,level}){
   const clamp=x=>Math.max(0,Math.min(100,x));
   const pos=v=>clamp((v-sMin)/(sMax-sMin)*100);
-  const l=pos(bMin),r=pos(bMax);
-  return <div style={{height:7,background:C.surfaceAlt,borderRadius:6,position:"relative",overflow:"hidden"}}>
-    <div style={{position:"absolute",top:0,bottom:0,left:`${l}%`,width:`${Math.max(0,r-l)}%`,background:color,opacity:0.5,borderRadius:6}}/>
-    <div style={{position:"absolute",top:"50%",left:`${pos(value)}%`,width:11,height:11,borderRadius:"50%",transform:"translate(-50%,-50%)",background:out?C.red:color,border:`2px solid ${C.bg}`,boxShadow:out?`0 0 8px ${C.red}`:"none"}}/>
+  const l=pos(bMin),r=pos(bMax);const col=levelColor(level);
+  return <div style={{height:8,background:C.surfaceAlt,borderRadius:8,position:"relative",margin:"0 6px"}}>
+    <div style={{position:"absolute",top:0,bottom:0,left:`${l}%`,width:`${Math.max(0,r-l)}%`,background:C.green,opacity:0.3,borderRadius:8}}/>
+    <div style={{position:"absolute",top:"50%",left:`${pos(+value)}%`,width:15,height:15,borderRadius:"50%",transform:"translate(-50%,-50%)",background:col,border:`3px solid ${C.surface}`,boxShadow:`0 0 0 1px ${col}66`}}/>
   </div>;
 }
-function Metric({icon,val,color,g,out}){
-  return <div style={{display:"grid",gridTemplateColumns:"20px 68px 1fr",alignItems:"center",gap:9}}>
-    <span style={{fontSize:14,textAlign:"center"}}>{icon}</span>
-    <span style={{fontFamily:MONO,fontWeight:700,fontSize:13.5,color:out?C.red:color}}>{val}</span>
-    <Gauge {...g} color={color} out={out}/>
+function Metric({icon,label,val,unit,offUnit,r,tol,sMin,sMax,dec=1}){
+  const lv=climLevel(val,r,tol);const col=levelColor(lv?.k);
+  const txt=!lv?"":lv.k==="ok"?"En rango":`${fmtNum(Math.abs(lv.off),dec)}${offUnit} ${lv.off>0?"arriba":"abajo"}`;
+  return <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <span style={{color:C.textSoft}}><Icon n={icon} size={18}/></span>
+      <span style={{fontSize:14,fontWeight:700,color:C.textMid,flex:1}}>{label}</span>
+      <span style={{fontSize:18,fontWeight:800,color:col,fontVariantNumeric:"tabular-nums"}}>{fmtNum(val,dec)}{unit}</span>
+    </div>
+    <Gauge value={val} sMin={sMin} sMax={sMax} bMin={r.min} bMax={r.max} level={lv?.k}/>
+    <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:600}}>
+      <span style={{color:C.textSoft}}>Óptimo {fmtNum(r.min,dec)} a {fmtNum(r.max,dec)}{unit}</span>
+      <span style={{color:col,fontWeight:800}}>{txt}</span>
+    </div>
   </div>;
 }
 function ClimateMetrics({climate,tR,hR,vR}){
-  if(!climate||(climate.temperature==null&&climate.humidity==null))return <div style={{padding:"12px 20px 0",fontSize:12.5,color:C.textSoft,fontStyle:"italic"}}>Sin lectura de sensor</div>;
+  if(!climate||(climate.temperature==null&&climate.humidity==null))return <div style={{padding:"12px 2px 0",fontSize:13,color:C.textSoft}}>Sin lectura de sensor</div>;
   const t=climate.temperature,h=climate.humidity,v=climate.vpd;
   const vB={min:vR?.min??0.8,max:vR?.max??1.4};
-  const outT=t!=null&&(t<tR.min||t>tR.max),outH=h!=null&&(h<hR.min||h>hR.max);
-  return <div style={{display:"flex",flexDirection:"column",gap:11,padding:"14px 20px 0"}}>
-    {t!=null&&<Metric icon="🌡" val={`${t}°C`} color={C.amber} out={outT} g={{value:t,sMin:14,sMax:34,bMin:tR.min,bMax:tR.max}}/>}
-    {h!=null&&<Metric icon="💧" val={`${h}%`} color={C.blue} out={outH} g={{value:h,sMin:0,sMax:100,bMin:hR.min,bMax:hR.max}}/>}
-    {v!=null&&<Metric icon="🍃" val={v} color={C.purple} out={false} g={{value:v,sMin:0,sMax:2,bMin:vB.min,bMax:vB.max}}/>}
+  return <div style={{display:"flex",flexDirection:"column",gap:16,padding:"14px 2px 0"}}>
+    {t!=null&&<Metric icon="thermo" label="Temperatura" val={t} unit="°C" offUnit="°" r={tR} tol={CLIM_TOL.temp} sMin={14} sMax={34}/>}
+    {h!=null&&<Metric icon="drop" label="Humedad" val={h} unit="%" offUnit="%" r={hR} tol={CLIM_TOL.hum} sMin={20} sMax={100} dec={0}/>}
+    {v!=null&&<Metric icon="leaf" label="VPD" val={v} unit=" kPa" offUnit=" kPa" r={vB} tol={CLIM_TOL.vpd} sMin={0} sMax={2.2} dec={2}/>}
   </div>;
 }
 
+// ── Menú (admin) ─────────────────────────────────────────────────────────────
+const ADMIN_TABS=[{id:"dashboard",l:"Inicio",n:"home"},{id:"salas",l:"Salas",n:"salas"},{id:"vegetativo",l:"Vege",n:"vege"},{id:"tareas",l:"Tareas",n:"tareas"},{id:"__more__",l:"Más",n:"mas"}];
+const adminTabOf=p=>p==="dashboard"?"dashboard":(p==="salas"||p.startsWith("sala_"))?"salas":(p==="vegetativo"||p.startsWith("veg_"))?"vegetativo":p==="tareas"?"tareas":"__more__";
+const MAIN_PAGES=["dashboard","salas","vegetativo","tareas","__more__"];
+
+function AdminNav({page,setPage,wide}){
+  const cur=adminTabOf(page);
+  const tab=(t,vertical)=>{const on=cur===t.id;
+    return <button key={t.id} onClick={()=>setPage(t.id)} aria-label={t.l} aria-current={on?"page":undefined}
+      style={{flex:vertical?"none":1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"transparent",border:"none",cursor:"pointer",padding:vertical?"8px 0":"6px 0 4px",color:on?C.text:C.textSoft,fontSize:11.5,fontWeight:on?800:700,fontFamily:"inherit"}}>
+      <span style={{width:54,height:32,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",background:on?C.greenLight:"transparent",color:on?C.green:C.textSoft,transition:"background .2s"}}><Icon n={t.n} size={22}/></span>
+      {t.l}
+    </button>;};
+  if(wide)return <nav style={{width:96,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,height:"100vh",position:"sticky",top:0,display:"flex",flexDirection:"column",alignItems:"stretch",gap:4,padding:"18px 6px"}}>
+    <div style={{width:44,height:44,borderRadius:14,background:C.green,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px"}}><Icon n="vege" size={24}/></div>
+    {ADMIN_TABS.map(t=>tab(t,true))}
+  </nav>;
+  return <nav style={{position:"fixed",bottom:0,left:0,right:0,zIndex:90,maxWidth:480,margin:"0 auto",background:C.surface,borderTop:`1px solid ${C.border}`,boxShadow:"0 -6px 24px rgba(0,0,0,0.06)",display:"flex",padding:"4px 4px calc(6px + env(safe-area-inset-bottom))"}}>
+    {ADMIN_TABS.map(t=>tab(t,false))}
+  </nav>;
+}
+
+// Barra superior solo en páginas internas: una flecha que vuelve a su sección.
+function AdminTopBar({page,setPage}){
+  if(MAIN_PAGES.includes(page)||page.startsWith("sala_"))return null;
+  const parent=page.startsWith("veg_")?{p:"vegetativo",l:"Vege"}:{p:"__more__",l:"Más"};
+  return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",height:52,padding:"0 8px"}}>
+    <button onClick={()=>setPage(parent.p)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
+      <Icon n="back" size={22}/>{parent.l}
+    </button>
+  </header>;
+}
+
+// ── Salas: S1 y S2 en una sola pestaña ──────────────────────────────────────
+function SalasTab({roomId,rooms,setPage,user,genetics,roomConfig,targets,onTargetsChanged}){
+  let rid=roomId;
+  if(!rid||!rooms.includes(rid)){try{const s=localStorage.getItem("gm_sala");rid=rooms.includes(s)?s:rooms[0];}catch{rid=rooms[0];}}
+  useEffect(()=>{try{localStorage.setItem("gm_sala",rid);}catch{}},[rid]);
+  return <div style={{display:"flex",flexDirection:"column",gap:6}}>
+    <div role="tablist" style={{display:"flex",background:C.surfaceAlt,borderRadius:16,padding:4,border:`1px solid ${C.border}`,marginTop:8}}>
+      {rooms.map(r=>{const on=r===rid;const name=getRC(roomConfig,r)?.display_name||r;
+        return <button key={r} role="tab" aria-selected={on} onClick={()=>setPage(`sala_${r}`)} style={{flex:1,padding:"11px 8px",borderRadius:12,border:"none",cursor:"pointer",fontSize:15,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{name}</button>;})}
+    </div>
+    <SalaPage key={rid} roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)} targets={targets} onTargetsChanged={onTargetsChanged}/>
+  </div>;
+}
+
+// ── Más: carpetas ────────────────────────────────────────────────────────────
+function MorePageAdmin({user,setPage,textScale,setTextScale,theme,setTheme,onLogout}){
+  const groups=[
+    {t:"Cultivo",c:C.green,items:[["geneticas","dna","Genéticas","Colores, días de flora y notas"],["fenos","flask","Fenos","Búsquedas, cata y ranking"],["plagas","bug","Plagas","Registro de intervenciones"],["guia","book","Guía","Protocolos del cultivo"]]},
+    {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"],["estadisticas","chart","Estadísticas","Rendimiento y clima"]]},
+    {t:"Club",c:C.amber,items:[["compras","cart","Compras","Lista de insumos"],["bot","chat","Asistente","Consultas de cultivo","Sin conexión"]]},
+  ];
+  const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
+  const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
+  const seg=(opts,cur,set)=><div style={{display:"flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`,width:"100%",marginTop:10}}>
+    {opts.map(([v,l])=>{const on=cur===v;return <button key={l} onClick={()=>set(v)} style={{flex:1,padding:"9px 6px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13.5,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
+  </div>;
+  const row=(id,n,l,d,c,badge,i)=><button key={id} onClick={()=>setPage(id)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 14px",minHeight:60,width:"100%",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit",color:C.text}}>
+    {iconBox(n,c)}
+    <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15.5,fontWeight:700}}>{l}</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{d}</span></span>
+    {badge&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red}}>{badge}</span>}
+    <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+  </button>;
+  return <div style={{paddingBottom:24}}>
+    <div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",padding:"10px 2px 14px"}}>Más</div>
+    <Card style={{display:"flex",alignItems:"center",gap:14,padding:14}}>
+      <span style={{width:52,height:52,borderRadius:"50%",background:C.green,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20}}>{user.initial||user.name?.[0]}</span>
+      <div style={{flex:1,minWidth:0}}><div style={{fontSize:18,fontWeight:800,color:C.text}}>{user.name}</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Administrador</div></div>
+      <button onClick={onLogout} style={{fontSize:13.5,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:12,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit"}}>Cambiar</button>
+    </Card>
+    {groups.map(g=><div key={g.t}>{gTitle(g.t)}<Card style={{padding:0,overflow:"hidden"}}>{g.items.map(([id,n,l,d,badge],i)=>row(id,n,l,d,g.c,badge,i))}</Card></div>)}
+    {gTitle("Ajustes")}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      <div style={{padding:"12px 14px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:13}}>{iconBox("sun",C.textMid)}<span><span style={{display:"block",fontSize:15.5,fontWeight:700,color:C.text}}>Tema</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Claro para sala con luces prendidas</span></span></div>
+        {seg([["light","Claro"],["dark","Oscuro"]],theme,setTheme)}
+      </div>
+      <div style={{padding:"12px 14px 14px",borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:13}}>{iconBox("text",C.textMid)}<span><span style={{display:"block",fontSize:15.5,fontWeight:700,color:C.text}}>Tamaño de letra</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Se guarda en este dispositivo</span></span></div>
+        {seg([[1,"Normal"],[1.1,"Grande"],[1.2,"Más grande"]],textScale,setTextScale)}
+      </div>
+      {row("configuracion","sliders","Configuración","Salas, esquejeras y usuarios",C.textMid,null,1)}
+    </Card>
+  </div>;
+}
+
+// ── Tarea rápida: se escribe o se dicta como hablás, sin bot ─────────────────
+// Entiende sala, persona, día, tipo y urgencia. Lo que no entiende queda como título.
+const foldTxt=s=>String(s||"").toLowerCase().replace(/[áàä]/g,"a").replace(/[éèë]/g,"e").replace(/[íìï]/g,"i").replace(/[óòö]/g,"o").replace(/[úùü]/g,"u").replace(/ñ/g,"n");
+const QT_TYPES=[{k:"riego",l:"Riego",re:/\b(regar|riego|regado)\b/},{k:"nutricion",l:"Nutrición",re:/\b(nutri\w*|abon\w*|fertiliz\w*|te de compost|act|top ?dress\w*)\b/},{k:"fumigacion",l:"Fumigación",re:/\b(fumig\w*|plagas?|trips|aranuela|oidio|neem|foliar)\b/},{k:"poda",l:"Poda",re:/\b(pod\w*|defoli\w*|lollipop\w*)\b/},{k:"limpieza",l:"Limpieza",re:/\b(limpi\w*|lavar|barrer)\b/},{k:"revision",l:"Revisión",re:/\b(revis\w*|control\w*|cheque\w*)\b/},{k:"cosecha",l:"Cosecha",re:/\b(cosech\w*)\b/}];
+const QT_WD={domingo:0,lunes:1,martes:2,miercoles:3,jueves:4,viernes:5,sabado:6};
+function parseQuickTask(text,people,rooms,me){
+  const f=foldTxt(text);const cut=[];const out={};
+  const take=re=>{const m=f.match(re);if(m){cut.push([m.index,m.index+m[0].length]);return m;}return null;};
+  for(const r of rooms){const n=String(r).replace(/\D/g,"");if(n&&take(new RegExp(`\\b(en (la )?)?(sala ?${n}|s ?${n})\\b`))){out.room_id=r;break;}}
+  if(!out.room_id&&take(/\b(en (el )?)?(vege|vegetativo|vg)\b/))out.room_id="Vegetativo";
+  if(!out.room_id&&/\b(madres?|esquejeras?|esquejes?)\b/.test(f))out.room_id="Vegetativo";
+  const ppl=[...people].sort((a,b)=>b.length-a.length);
+  for(const p of ppl){if(take(new RegExp(`\\b(para |a )?${foldTxt(p)}\\b`))){out.assignee=p;break;}}
+  if(!out.assignee&&take(/\bpara mi\b/))out.assignee=me;
+  if(take(/\b(urgente|importante|ya mismo|prioridad alta)\b/))out.priority="alta";
+  let m;
+  if(take(/\bpasado manana\b/))out.due_date=addDays(todayISO,2);
+  else if(take(/\bhoy\b/))out.due_date=todayISO;
+  else if(take(/\bmanana\b/))out.due_date=addDays(todayISO,1);
+  else if((m=take(/\ben (\d{1,2}) dias?\b/)))out.due_date=addDays(todayISO,+m[1]);
+  else if((m=take(/\b(el |este |proximo )?(domingo|lunes|martes|miercoles|jueves|viernes|sabado)\b/))){const dow=new Date(todayISO+"T12:00:00").getDay();let d=QT_WD[m[2]]-dow;if(d<=0)d+=7;out.due_date=addDays(todayISO,d);}
+  else if((m=take(/\b(\d{1,2})[/-](\d{1,2})\b/))){const y=todayISO.slice(0,4);out.due_date=`${y}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;}
+  for(const t of QT_TYPES){if(t.re.test(f)){out.type=t.k;break;}}
+  const chars=String(text).split("");cut.forEach(([a,b])=>{for(let i=a;i<b;i++)chars[i]=" ";});
+  const FILL=/^(para|a|en|el|la|los|las|de|del|y|que)$/i;
+  const w=chars.join("").replace(/\s+/g," ").trim().split(" ").filter(Boolean);
+  while(w.length&&FILL.test(w[w.length-1]))w.pop();
+  while(w.length&&FILL.test(w[0]))w.shift();
+  const title=w.join(" ");
+  out.title=title?title[0].toUpperCase()+title.slice(1):(out.type?QT_TYPES.find(x=>x.k===out.type).l:"");
+  return out;
+}
+function QuickTaskSheet({user,rooms,onClose,onCreated}){
+  const [people,setPeople]=useState([user.name]);
+  const [text,setText]=useState("");
+  const [manual,setManual]=useState({});
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{db.get("users").then(us=>{const n=us.map(u=>u.name).filter(Boolean);if(n.length)setPeople(n);}).catch(()=>{});},[]);
+  useEffect(()=>{const prev=document.body.style.overflow;document.body.style.overflow="hidden";return()=>{document.body.style.overflow=prev;};},[]);
+  const auto=text.trim()?parseQuickTask(text,people,rooms,user.name):{};
+  const defs={assignee:user.name,due_date:todayISO,priority:"normal",room_id:"General",type:null,title:""};
+  const val=k=>manual[k]!==undefined?manual[k]:(auto[k]!==undefined?auto[k]:defs[k]);
+  const set=(k,v)=>setManual(p=>({...p,[k]:v}));
+  const understood=k=>auto[k]!==undefined&&manual[k]===undefined;
+  const roomOpts=[...rooms.map(r=>({k:r,l:r})),{k:"Vegetativo",l:"Vege"},{k:"General",l:"General"}];
+  const chip=(on)=>({padding:"9px 13px",minHeight:42,borderRadius:12,fontSize:14,fontWeight:700,fontFamily:"inherit",cursor:"pointer",border:"none",background:on?C.green:C.surfaceAlt,color:on?C.onAccent:C.textMid,boxShadow:on?"none":`inset 0 0 0 1px ${C.border}`});
+  const label=(t,k)=><div style={{fontSize:13,fontWeight:800,color:C.textMid,display:"flex",alignItems:"center",gap:6,marginBottom:6}}>{t}{k&&understood(k)&&<span style={{fontSize:11,fontWeight:800,color:C.green,background:C.greenLight,padding:"1px 8px",borderRadius:99}}>entendido</span>}</div>;
+  const crear=async()=>{
+    const title=String(val("title")||"").trim();if(!title)return;
+    setSaving(true);setErr(null);
+    try{
+      const room=val("room_id");
+      const payload={title,room_id:room,rooms:room,type:val("type")||"revision",assignee:val("assignee"),due_date:val("due_date")||todayISO,priority:val("priority"),status:"pendiente",created_by:user.name};
+      const ins=await db.insert("tasks",payload);
+      await logA(user.name,`Creó tarea: ${title} (${room})`,"task");
+      onCreated&&onCreated(ins?.[0]||payload);
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  const due=val("due_date");
+  return <div onClick={e=>{if(e.target===e.currentTarget&&!saving)onClose();}} style={{position:"fixed",inset:0,zIndex:250,background:"rgba(10,18,14,0.45)",display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div role="dialog" aria-modal="true" aria-label="Nueva tarea" style={{background:C.surface,width:"100%",maxWidth:560,borderRadius:"26px 26px 0 0",padding:"10px 18px calc(18px + env(safe-area-inset-bottom))",maxHeight:"92vh",overflowY:"auto"}}>
+      <div style={{width:40,height:5,borderRadius:99,background:C.borderStrong,margin:"0 auto 12px"}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+        <div><div style={{fontSize:21,fontWeight:800,color:C.text}}>Nueva tarea</div>
+          <div style={{fontSize:13,color:C.textSoft,marginTop:3,lineHeight:1.45}}>Escribila o dictala como la dirías. Por ejemplo: “poda S1 mañana para Alex”.</div></div>
+        <button onClick={onClose} aria-label="Cerrar" style={{background:"transparent",border:"none",cursor:"pointer",color:C.textSoft,padding:6}}><Icon n="x" size={22}/></button>
+      </div>
+      <textarea value={text} onChange={e=>{setText(e.target.value);setManual(p=>{const {title,...r}=p;return r;});}} placeholder="¿Qué hay que hacer?" rows={2}
+        style={{width:"100%",marginTop:14,minHeight:78,resize:"none",border:"none",borderRadius:16,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1.5px ${C.borderStrong}`,padding:"14px 16px",fontSize:17,fontWeight:600,lineHeight:1.4,color:C.text,fontFamily:"inherit",outline:"none"}}/>
+      <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:14}}>
+        <div>{label("Qué","title")}<input value={val("title")} onChange={e=>set("title",e.target.value)} placeholder="Título de la tarea"
+          style={{width:"100%",border:"none",borderRadius:12,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1px ${C.border}`,padding:"11px 13px",fontSize:15.5,fontWeight:700,color:C.text,fontFamily:"inherit",outline:"none"}}/></div>
+        <div>{label("Dónde","room_id")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{roomOpts.map(o=><button key={o.k} onClick={()=>set("room_id",o.k)} style={chip(val("room_id")===o.k)}>{o.l}</button>)}</div></div>
+        <div>{label("Cuándo","due_date")}<div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
+          {[[todayISO,"Hoy"],[addDays(todayISO,1),"Mañana"],[addDays(todayISO,2),"Pasado"]].map(([v,l])=><button key={l} onClick={()=>set("due_date",v)} style={chip(due===v)}>{l}</button>)}
+          <input type="date" value={due} onChange={e=>e.target.value&&set("due_date",e.target.value)} aria-label="Elegir fecha" style={{border:"none",borderRadius:12,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1px ${C.border}`,padding:"9px 10px",fontSize:14,fontWeight:700,color:C.text,fontFamily:"inherit",minHeight:42}}/>
+        </div></div>
+        <div>{label("Para","assignee")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{people.map(p=><button key={p} onClick={()=>set("assignee",p)} style={chip(val("assignee")===p)}>{p}</button>)}</div></div>
+        <div>{label("Tipo","type")}<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{QT_TYPES.map(t=><button key={t.k} onClick={()=>{set("type",t.k);if(!val("title"))set("title",t.l);}} style={chip(val("type")===t.k)}>{t.l}</button>)}</div></div>
+        <div>{label("Prioridad","priority")}<div style={{display:"flex",gap:7}}>{[["normal","Normal"],["alta","Alta"]].map(([k,l])=><button key={k} onClick={()=>set("priority",k)} style={chip(val("priority")===k)}>{l}</button>)}</div></div>
+      </div>
+      {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:13,marginTop:12}}>{err}</div>}
+      <button onClick={crear} disabled={saving||!String(val("title")||"").trim()} style={{width:"100%",minHeight:54,borderRadius:16,border:"none",background:C.green,color:C.onAccent,fontWeight:800,fontSize:16.5,fontFamily:"inherit",marginTop:18,cursor:"pointer",opacity:saving||!String(val("title")||"").trim()?0.45:1}}>{saving?"Creando...":"Crear tarea"}</button>
+    </div>
+  </div>;
+}
+
+// ── INICIO (admin) ───────────────────────────────────────────────────────────
 function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [cycles,setCycles]=useState([]);
   const [tasks,setTasks]=useState([]);
+  const [overdue,setOverdue]=useState([]);
   const [vegStock,setVegStock]=useState([]);
   const [climate,setClimate]=useState([]);
   const [cloners,setCloners]=useState([]);
@@ -915,183 +1156,206 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [drying,setDrying]=useState([]);   // ciclos cosechados que esperan el peso del secado
   const [vgPlantas,setVgPlantas]=useState(0);   // plantas vivas en tandas abiertas de VG
   const [loading,setLoading]=useState(true);
+  const [who,setWho]=useState("mias");
+  const [railIdx,setRailIdx]=useState(0);
+  const [showQuick,setShowQuick]=useState(false);
+  const [toast,setToast]=useState(null);
+  const railRef=useRef(null);
+
+  const loadTasks=useCallback(()=>Promise.all([
+    db.query("tasks",`due_date=eq.${todayISO}&order=priority.desc,created_at.asc`),
+    db.query("tasks",`status=eq.pendiente&due_date=lt.${todayISO}&order=due_date.desc&limit=30`).catch(()=>[]),
+  ]).then(([t,o])=>{setTasks(t);setOverdue(o);}).catch(()=>{}),[]);
   useEffect(()=>{
     Promise.all([
-      db.query("cycles","active=eq.true"),
-      db.query("tasks",`due_date=eq.${todayISO}&order=priority.desc`),
-      db.get("veg_stock"),
-      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`),
-      db.get("cloners"),
-      db.get("cloner_slots"),
+      loadTasks(),
+      db.query("cycles","active=eq.true").catch(()=>[]),
+      db.get("veg_stock").catch(()=>[]),
+      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).catch(()=>[]),
+      db.get("cloners").catch(()=>[]),
+      db.get("cloner_slots").catch(()=>[]),
       db.query("cycles","active=eq.false&harvest_status=eq.secando&order=closed_at.desc").catch(()=>[]),
       db.query("vg_batches","status=eq.vg&select=id").catch(()=>[]),
       db.query("vg_lines","select=batch_id,current_count").catch(()=>[]),
-    ]).then(([c,t,v,cl,co,cs,dry,vb,vl])=>{
-      setCycles(c);setTasks(t);setVegStock(v);setClimate(cl);setCloners(co);setClSlots(cs);setDrying(dry||[]);
+    ]).then(([,c,v,cl,co,cs,dry,vb,vl])=>{
+      setCycles(c);setVegStock(v);setClimate(cl);setCloners(co);setClSlots(cs);setDrying(dry||[]);
       const abiertas=new Set((vb||[]).map(b=>sid(b.id)));
       setVgPlantas((vl||[]).filter(l=>abiertas.has(sid(l.batch_id))).reduce((a,l)=>a+(l.current_count||0),0));
     }).finally(()=>setLoading(false));
-  },[]);
+  },[loadTasks]);
   useEffect(()=>{
     const id=setInterval(()=>{
       db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).then(setClimate).catch(()=>{});
-    },120000); // refresca el clima de las tarjetas solo cada 2 min
+    },120000); // refresca el clima solo cada 2 min
     return ()=>clearInterval(id);
   },[]);
   if(loading)return <Spin/>;
 
   const lastClimate=rid=>climate.find(c=>c.room_id===rid)||null;
-  const pending=tasks.filter(t=>t.status==="pendiente");
-  const myPending=pending.filter(t=>t.assignee===user.name).length;
   const renewM=vegStock.filter(v=>v.type==="madre"&&v.status==="renovar").length;
+  const madres=vegStock.filter(v=>v.type==="madre"&&v.status==="activa").reduce((a,v)=>a+(v.count||0),0);
 
   const toggleTask=async t=>{
     const ns=t.status==="completada"?"pendiente":"completada";
-    setTasks(ts=>ts.map(x=>x.id===t.id?{...x,status:ns}:x));
-    try{await db.update("tasks",t.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});}catch(e){}
+    const upd=list=>list.map(x=>x.id===t.id?{...x,status:ns}:x);
+    setTasks(upd);setOverdue(upd);
+    try{
+      await db.update("tasks",t.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
+      if(ns==="completada"&&t.recurrent&&t.recurrent_days){
+        await db.insert("tasks",{title:t.title,room_id:t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,created_by:"sistema"});
+      }
+      await logA(user.name,`${ns==="completada"?"Completó":"Reabrió"}: ${t.title}`,"task");
+      setToast({msg:ns==="completada"?`${t.title}: hecha`:`${t.title}: reabierta`,type:"success",undo:async()=>{
+        const back=list=>list.map(x=>x.id===t.id?{...x,status:t.status}:x);setTasks(back);setOverdue(back);
+        try{await db.update("tasks",t.id,{status:t.status,completed_at:t.status==="completada"?t.completed_at:null});}catch{}
+      }});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});loadTasks();}
   };
 
+  // ── Alertas (lo más urgente primero) ──
   const alerts=[];
-  rooms.forEach(rid=>{
-    const rc=getRC(roomConfig,rid),cl=lastClimate(rid);
-    const cyc=cycles.find(c=>c.room_id===rid);
-    const tg=getTargets(targets,rid,cyc,rc);
-    const tR=tg.temp,hR=tg.hum;
-    if(cl){
-      if(cl.temperature!=null&&(cl.temperature<tR.min||cl.temperature>tR.max))alerts.push({k:"red",ic:"🌡",t:`${rc.display_name}: temp ${cl.temperature}°C`,s:`Fuera del rango de ${tg.label} (${tR.min}–${tR.max}°C)`});
-      if(cl.humidity!=null&&(cl.humidity<hR.min||cl.humidity>hR.max))alerts.push({k:"red",ic:"💧",t:`${rc.display_name}: humedad ${cl.humidity}%`,s:`Fuera del rango de ${tg.label} (${hR.min}–${hR.max}%)`});
-    }
-  });
-  cycles.forEach(c=>{const dL=daysTo(c.estimated_harvest);if(dL>=0&&dL<=7)alerts.push({k:"amber",ic:"🌾",t:`Cosecha próxima · ${getRC(roomConfig,c.room_id).display_name}`,s:`Estimada en ${dL} día${dL===1?"":"s"}`});});
-  if(renewM>0)alerts.push({k:"amber",ic:"🌳",t:`${renewM} madre${renewM>1?"s":""} para renovar`,s:"Revisá el stock en Vegetativo"});
-  // Ciclos cosechados que todavía esperan que se carguen los gramos del secado.
-  drying.forEach(c=>{
-    const d=-daysTo(c.real_harvest||c.closed_at);
-    alerts.push({k:"amber",ic:"🌾",t:`${getRC(roomConfig,c.room_id).display_name}: falta cargar la cosecha`,s:`Cortado hace ${d} día${d===1?"":"s"} · cargalo en Historial`});
-  });
-  // Alertas de esquejeras según los días de la tanda (una tanda por bandeja).
+  const climAlert=(label,cl,tg,go)=>{
+    if(!cl)return;
+    const lt=climLevel(cl.temperature,tg.temp,CLIM_TOL.temp);
+    const lh=climLevel(cl.humidity,tg.hum,CLIM_TOL.hum);
+    if(lt&&lt.k!=="ok")alerts.push({k:lt.k==="far"?"red":"amber",ic:"thermo",go,t:`${label}: temperatura ${fmtNum(cl.temperature)}°C`,s:`${fmtNum(Math.abs(lt.off))}° ${lt.off>0?"arriba":"abajo"} del óptimo (${fmtNum(tg.temp.min)} a ${fmtNum(tg.temp.max)}°C)`});
+    if(lh&&lh.k!=="ok")alerts.push({k:lh.k==="far"?"red":"amber",ic:"drop",go,t:`${label}: humedad ${fmtNum(cl.humidity,0)}%`,s:`${fmtNum(Math.abs(lh.off),0)}% ${lh.off>0?"arriba":"abajo"} del óptimo (${fmtNum(tg.hum.min,0)} a ${fmtNum(tg.hum.max,0)}%)`});
+  };
+  rooms.forEach(rid=>{const rc=getRC(roomConfig,rid);const cyc=cycles.find(c=>c.room_id===rid);climAlert(rc.display_name,lastClimate(rid),getTargets(targets,rid,cyc,rc),`sala_${rid}`);});
+  climAlert("Vege",lastClimate("Vegetativo"),getTargets(targets,"Vegetativo",null,null),"vegetativo");
+  cycles.forEach(c=>{const dL=daysTo(c.estimated_harvest);if(c.phase==="floración"&&dL>=0&&dL<=7)alerts.push({k:"amber",ic:"harvest",go:`sala_${c.room_id}`,t:`Cosecha próxima en ${getRC(roomConfig,c.room_id).display_name}`,s:`Estimada en ${dL} día${dL===1?"":"s"}`});});
+  if(renewM>0)alerts.push({k:"amber",ic:"tree",go:"veg_madres",t:`${renewM} madre${renewM>1?"s":""} para renovar`,s:"Revisalas en Madres"});
+  drying.forEach(c=>{const d=-daysTo(c.real_harvest||c.closed_at);alerts.push({k:"amber",ic:"harvest",go:"historial",t:`${getRC(roomConfig,c.room_id).display_name}: falta cargar la cosecha`,s:`Cortado hace ${d} día${d===1?"":"s"}. Cargalo en Historial.`});});
   cloners.forEach(cl=>{
-    const slots=clSlots.filter(s=>s.cloner_id===cl.id&&s.genetic_name);
+    const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name);
     if(slots.length===0)return;
-    const prog=batchProgress(cl,slots);
-    if(!prog)return;
+    const prog=batchProgress(cl,slots);if(!prog)return;
     const d=prog.day;
-    if(d===1)alerts.push({k:"amber",ic:"🌿",t:`${cl.label}: prender timer`,s:`Día 1 desde el corte (${slots.length} esquejes)`});
-    else if(d===2)alerts.push({k:"amber",ic:"🌿",t:`${cl.label}: dejar semi tapadas`,s:`Día 2 desde el corte`});
-    else if(prog.left===1)alerts.push({k:"amber",ic:"🌿",t:`${cl.label}: falta 1 día`,s:`${prog.label} · preparate para pasarlos`});
-    else if(prog.ready)alerts.push({k:prog.left<-2?"red":"amber",ic:"🌿",t:`${cl.label}: listos para tierra`,s:`${prog.label} · cosechá la tanda`});
+    if(d===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: prender timer`,s:`Día 1 desde el corte (${slots.length} esquejes)`});
+    else if(d===2)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: dejar semi tapadas`,s:"Día 2 desde el corte"});
+    else if(prog.left===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: falta 1 día`,s:`${prog.label}. Preparate para cosechar.`});
+    else if(prog.ready)alerts.push({k:prog.left<-2?"red":"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: lista para cosechar`,s:`${prog.label}. Lo que prendió pasa a VG.`});
   });
+  alerts.sort((a,b)=>(a.k==="red"?0:1)-(b.k==="red"?0:1));
 
-  const madres=vegStock.filter(v=>v.type==="madre"&&v.status==="activa").reduce((a,v)=>a+(v.count||0),0);
-  const postEsq=vgPlantas;
-  const vegeClim=lastClimate("Vegetativo");
+  // ── Tareas de hoy ──
+  const mine=t=>who==="mias"?t.assignee===user.name:true;
+  const hoy=[...overdue.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="completada")];
+  const myPending=[...overdue,...tasks].filter(t=>t.assignee===user.name&&t.status==="pendiente").length;
+  const resumen=`${myPending>0?`Tenés ${myPending} tarea${myPending===1?"":"s"} para hoy`:"Tus tareas de hoy están hechas"}, ${alerts.length>0?`${alerts.length} alerta${alerts.length===1?"":"s"} para revisar`:"todo en rango"}`;
+  const fecha=(()=>{const s=fmtFull(TODAY);return s.charAt(0).toUpperCase()+s.slice(1);})();
 
-  const accesos=[
-    {ic:"📓",l:"Bitácora",p:"bitacora"},{ic:"📖",l:"Guía",p:"guia"},
-    {ic:"🛒",l:"Compras",p:"compras"},{ic:"🧬",l:"Genéticas",p:"geneticas"},
-    {ic:"🔬",l:"Fenos",p:"fenos"},
-    {ic:"🐛",l:"Plagas",p:"plagas"},{ic:"📅",l:"Agenda",p:"calendario"},
-    {ic:"📊",l:"Estadísticas",p:"estadisticas"},{ic:"📜",l:"Historial",p:"historial"},{ic:"🌱",l:"Vegetativo",p:"vegetativo"},
-    {ic:"🤖",l:"Bot IA",p:"bot"},{ic:"⚙️",l:"Config",p:"configuracion"},
-  ];
-  const eyebrow=txt=><div style={{fontSize:11.5,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em",margin:"22px 2px 12px",display:"flex",alignItems:"center",gap:10}}>{txt}<div style={{flex:1,height:1,background:C.border}}/></div>;
-
-  return <div style={{paddingBottom:28}}>
-    <div style={{padding:"14px 0 2px"}}>
-      <div style={{fontSize:13.5,color:C.textSoft,textTransform:"capitalize"}}>{fmtFull(TODAY)}</div>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,marginTop:4}}>Buenas, <span style={{color:C.green}}>{user.name}</span> 🌿</div>
-      <div style={{fontSize:14,color:C.textSoft,marginTop:4}}>{myPending>0?`Tenés ${myPending} tarea${myPending>1?"s":""} pendiente${myPending>1?"s":""} hoy`:"Estás al día 👌"}</div>
-    </div>
-
-    {eyebrow("Espacios")}
-    <div style={{display:"grid",gridTemplateColumns:wide?"repeat(3,1fr)":"1fr",gap:14}}>
-      {rooms.map(rid=><RoomCard key={rid} roomId={rid} rc={getRC(roomConfig,rid)} cycle={cycles.find(c=>c.room_id===rid)} climate={lastClimate(rid)} targets={targets} onClick={()=>setPage(`sala_${rid}`)}/>)}
-      <VegeCard madres={madres} postEsq={postEsq} climate={vegeClim} targets={targets} onClick={()=>setPage("vegetativo")}/>
-    </div>
-
-    {eyebrow("Accesos")}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-      {accesos.map(a=><div key={a.p} onClick={()=>setPage(a.p)} style={{display:"flex",alignItems:"center",gap:12,background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"12px 14px",cursor:"pointer"}}>
-        <div style={{width:34,height:34,borderRadius:10,background:C.surfaceAlt,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{a.ic}</div>
-        <span style={{fontSize:13.5,fontWeight:700,color:C.text}}>{a.l}</span>
-      </div>)}
-    </div>
-
-    {eyebrow("Hoy")}
-    {tasks.length===0
-      ? <Card style={{padding:"18px",textAlign:"center",color:C.textSoft,fontSize:14}}>No hay tareas para hoy 🌱</Card>
-      : <Card style={{padding:0,overflow:"hidden"}}>
-          {tasks.map((t,i)=>{const tm=TM[t.type]||TM.revision;const dn=t.status==="completada";const gm=groupMeta(t.room_id);return <div key={t.id} onClick={()=>toggleTask(t)} style={{display:"flex",alignItems:"center",gap:13,padding:"13px 16px",borderBottom:i<tasks.length-1?`1px solid ${C.border}`:"none",cursor:"pointer"}}>
-            <div style={{width:22,height:22,borderRadius:7,flexShrink:0,border:`2px solid ${dn?C.green:C.borderStrong}`,background:dn?C.green:"transparent",color:dn?C.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800}}>✓</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14.5,fontWeight:600,color:dn?C.textSoft:C.text,textDecoration:dn?"line-through":"none"}}>{tm.icon} {t.title}</div>
-              <div style={{fontSize:12,color:C.textSoft,marginTop:2,display:"flex",gap:8,flexWrap:"wrap"}}>
-                {t.room_id&&<span style={{color:gm.color,fontWeight:700}}>{t.room_id}</span>}
-                {t.priority==="alta"&&<span style={{color:C.red,fontWeight:700}}>● Alta</span>}
-                {t.assignee&&<span>{t.assignee}</span>}
-              </div>
-            </div>
-          </div>;})}
-        </Card>}
-
-    {alerts.length>0&&<>
-      {eyebrow("Alertas")}
-      <div style={{display:"flex",flexDirection:"column",gap:9}}>
-        {alerts.slice(0,5).map((a,i)=>{const col=a.k==="red"?C.red:C.amber;const bg=a.k==="red"?C.redLight:C.amberLight;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 15px",borderRadius:14,background:bg,border:`1px solid ${col}44`}}>
-          <div style={{width:34,height:34,borderRadius:10,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{a.ic}</div>
-          <div style={{flex:1,minWidth:0}}><div style={{fontSize:14,fontWeight:700,color:col}}>{a.t}</div><div style={{fontSize:12,color:C.textMid,marginTop:1}}>{a.s}</div></div>
-        </div>;})}
+  const roomTone=r=>r==="S1"?C.amber:r==="S2"?C.blue:r==="Vegetativo"?C.green:C.textSoft;
+  const roomShort=r=>r==="Vegetativo"?"Vege":(r||"General");
+  const taskRow=(t,i)=>{
+    const done=t.status==="completada";const late=!done&&t.due_date<todayISO;const tone=roomTone(t.room_id);
+    const meta=[late&&<span key="l" style={{color:C.red}}>Vencida {fmtDM(t.due_date)}</span>,who==="equipo"&&t.assignee&&<span key="a">{t.assignee}</span>,t.priority==="alta"&&!done&&!late&&<span key="p" style={{color:C.amber}}>Prioridad alta</span>].filter(Boolean);
+    return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",minHeight:62,borderTop:i?`1px solid ${C.border}`:"none"}}>
+      <button onClick={()=>toggleTask(t)} aria-label={done?"Marcar pendiente":"Marcar hecha"} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:done?C.green:"transparent",boxShadow:done?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:done?C.onAccent:"transparent",transition:"background .15s"}}><Icon n="check" size={18} sw={2.4}/></button>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:15,fontWeight:700,color:done?C.textSoft:C.text,textDecoration:done?"line-through":"none"}}>{t.title}</div>
+        {meta.length>0&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:1,display:"flex",gap:8,flexWrap:"wrap"}}>{meta}</div>}
       </div>
-    </>}
+      <span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,color:tone,background:`${tone}1F`,flexShrink:0}}>{roomShort(t.room_id)}</span>
+    </div>;
+  };
+
+  // ── Espacios ──
+  const climMini=(cl,tg)=>{
+    if(!cl)return <span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>Sin sensor</span>;
+    const vR={min:tg.vpd?.min??0.8,max:tg.vpd?.max??1.4};
+    return <span style={{display:"flex",flexDirection:"column",gap:3}}>
+      {[["thermo",cl.temperature,tg.temp,CLIM_TOL.temp,"°",1],["drop",cl.humidity,tg.hum,CLIM_TOL.hum,"%",0],["leaf",cl.vpd,vR,CLIM_TOL.vpd,"",2]].filter(x=>x[1]!=null).map(([n,v,r,tol,u,d])=>{
+        const lv=climLevel(v,r,tol);return <span key={n} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:800,color:levelColor(lv?.k),fontVariantNumeric:"tabular-nums"}}><Icon n={n} size={14} sw={2}/>{fmtNum(v,d)}{u}</span>;})}
+    </span>;
+  };
+  const track=(pct,marks,tone)=><span style={{position:"relative",display:"block",height:14,margin:"8px 0 2px"}}>
+    <span style={{position:"absolute",left:0,right:0,top:6,height:2,borderRadius:2,background:C.borderStrong}}/>
+    <span style={{position:"absolute",left:0,top:6,height:2,borderRadius:2,width:`${pct}%`,background:tone}}/>
+    {marks.map(m=><span key={m} style={{position:"absolute",top:4,left:`${m}%`,width:2,height:6,borderRadius:1,background:C.textSoft,opacity:0.6}}/>)}
+    <span style={{position:"absolute",top:2,left:`${pct}%`,width:10,height:10,marginLeft:-5,borderRadius:"50%",background:tone,boxShadow:`0 0 0 3px ${C.surface}`}}/>
+  </span>;
+  const spaceCol=(key,{name,tone,big,sub,trackEl,cl,tg,go},i)=><button key={key} onClick={()=>setPage(go)}
+    style={{display:"flex",flexDirection:"column",alignItems:"stretch",textAlign:"left",gap:2,padding:"14px 12px 13px",minWidth:0,background:"transparent",border:"none",borderLeft:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
+    <span style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,color:C.textMid}}><span style={{width:8,height:8,borderRadius:"50%",background:tone}}/>{name}</span>
+    <span style={{fontSize:25,fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,marginTop:6,fontVariantNumeric:"tabular-nums"}}>{big}</span>
+    <span style={{fontSize:12.5,color:C.textSoft,fontWeight:600,lineHeight:1.3,minHeight:33}}>{sub}</span>
+    {trackEl||<span style={{display:"block",height:14,margin:"8px 0 2px"}}/>}
+    <span style={{marginTop:6}}>{climMini(cl,tg)}</span>
+  </button>;
+  const cols=rooms.map(rid=>{
+    const rc=getRC(roomConfig,rid);const cyc=cycles.find(c=>c.room_id===rid);const tg=getTargets(targets,rid,cyc,rc);
+    const tone=roomTone(rid);const base={name:rc.display_name||rid,tone,cl:lastClimate(rid),tg,go:`sala_${rid}`};
+    if(!cyc)return {...base,big:"—",sub:"Sin ciclo activo"};
+    if(cyc.phase==="vegetativo"&&cyc.veg_start){
+      const day=Math.max(0,daysFrom(cyc.veg_start));const tot=cyc.veg_end?Math.max(1,Math.round((new Date(cyc.veg_end)-new Date(cyc.veg_start))/86400000)):null;
+      const left=tot!=null?tot-day:null;
+      return {...base,big:`Día ${day}`,sub:left==null?"Vege":left>0?`Vege, a flora en ${left} día${left===1?"":"s"}`:"Vege, toca pasar a flora",trackEl:tot?track(Math.min(100,day/tot*100),[],tone):null};
+    }
+    const fdays=rc?.flower_days||65;const day=Math.max(0,daysFrom(cyc.flower_start));const left=daysTo(cyc.estimated_harvest);
+    return {...base,big:`Día ${day}`,sub:left>0?`Flora, faltan ${left} días`:left===0?"Flora, cosecha hoy":"Flora, cosecha pasada",trackEl:track(Math.min(100,day/fdays*100),[15,21].filter(m=>m<fdays).map(m=>m/fdays*100),tone)};
+  });
+  cols.push({name:"Vege",tone:C.green,big:vgPlantas,sub:`en VG y ${madres} madre${madres===1?"":"s"}`,cl:lastClimate("Vegetativo"),tg:getTargets(targets,"Vegetativo",null,null),go:"vegetativo"});
+
+  const onRail=e=>{const el=e.currentTarget;const first=el.firstElementChild;if(!first)return;const w=first.offsetWidth+10;setRailIdx(Math.min(alerts.length-1,Math.max(0,Math.round(el.scrollLeft/w))));};
+  const alertTone=k=>k==="red"?{c:C.red,bg:C.redLight}:{c:C.amber,bg:C.amberLight};
+
+  const secHead=(t,right)=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"24px 2px 10px"}}><div style={{fontSize:18,fontWeight:800,color:C.text,letterSpacing:"-0.01em"}}>{t}</div>{right}</div>;
+  const whoSeg=<div style={{display:"inline-flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
+    {[["mias","Mías"],["equipo","Equipo"]].map(([k,l])=>{const on=who===k;return <button key={k} onClick={()=>setWho(k)} style={{padding:"6px 13px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
   </div>;
-}
 
-function VegeCard({madres,postEsq,climate,onClick,targets}){
-  const tg=getTargets(targets,"Vegetativo",null,null);const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
-  return <Card onClick={onClick} style={{padding:0,overflow:"hidden",position:"relative"}}>
-    <div style={{position:"absolute",left:0,top:0,bottom:0,width:5,background:C.green}}/>
-    <div style={{padding:"18px 20px 16px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>VEGE</div><div style={{fontSize:20,fontWeight:900,color:C.text,fontFamily:H}}>Vegetativo</div></div>
-        <Badge label="Madres" color={C.green} bg={C.greenLight}/>
+  const alertsBlock=<div>
+    {alerts.length===0
+      ?<div style={{display:"flex",alignItems:"center",gap:12,padding:"15px 16px",borderRadius:20,background:C.greenLight,color:C.green}}>
+        <span style={{width:36,height:36,borderRadius:12,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="ok" size={20}/></span>
+        <span><span style={{display:"block",fontWeight:800,fontSize:15.5}}>Todo en orden</span><span style={{display:"block",fontSize:13.5,color:C.textMid}}>Clima en rango y nada vencido en vege.</span></span>
       </div>
-      <div style={{display:"flex",gap:18,margin:"12px 0 2px"}}>
-        <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:30,color:C.green}}>{madres}</span><span style={{fontSize:12.5,color:C.textSoft,marginLeft:6}}>madres</span></div>
-        <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:30,color:C.text}}>{postEsq}</span><span style={{fontSize:12.5,color:C.textSoft,marginLeft:6}}>en VG</span></div>
-      </div>
-    </div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
-  </Card>;
-}
-
-function RoomCard({roomId,rc,cycle,climate,onClick,targets}){
-  const name=rc?.display_name||(roomId==="S1"?"Sala 1":roomId==="S2"?"Sala 2":roomId);
-  const fdays=rc?.flower_days||65;
-  const tg=getTargets(targets,roomId,cycle,rc);const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
-  const phase=cycle?.phase||"floración";
-  const accent=phase==="floración"?C.amber:C.green;
-  const header=<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-    <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:20,fontWeight:900,color:C.text,fontFamily:H}}>{name}</div></div>
-    {cycle?<PBadge phase={cycle.phase}/>:<Badge label="Sin ciclo" color={C.textSoft} bg={C.surfaceAlt}/>}
+      :<>
+        <div ref={railRef} className="gm-rail" onScroll={onRail} style={{display:"flex",gap:10,overflowX:"auto",scrollSnapType:"x mandatory",margin:wide?0:"0 -16px",padding:wide?"2px 0 4px":"2px 16px 4px",scrollbarWidth:"none"}}>
+          {alerts.map((a,i)=>{const tn=alertTone(a.k);return <button key={i} onClick={()=>setPage(a.go)} style={{scrollSnapAlign:"start",flex:`0 0 ${alerts.length===1?"100%":"86%"}`,borderRadius:20,padding:"15px 16px",display:"flex",gap:12,alignItems:"flex-start",minHeight:92,background:tn.bg,color:tn.c,border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+            <span style={{width:36,height:36,borderRadius:12,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={a.ic} size={20}/></span>
+            <span style={{minWidth:0}}><span style={{display:"block",fontWeight:800,fontSize:15.5,lineHeight:1.25}}>{a.t}</span><span style={{display:"block",fontSize:13.5,marginTop:3,color:C.textMid}}>{a.s}</span></span>
+          </button>;})}
+        </div>
+        {alerts.length>1&&<div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10}}>{alerts.map((_,i)=><span key={i} style={{width:i===railIdx?18:6,height:6,borderRadius:99,background:i===railIdx?C.textMid:C.borderStrong,transition:"width .2s"}}/>)}</div>}
+      </>}
   </div>;
-  if(!cycle)return <Card onClick={onClick} style={{padding:0,overflow:"hidden",position:"relative"}}>
-    <div style={{position:"absolute",left:0,top:0,bottom:0,width:5,background:accent}}/>
-    <div style={{padding:"18px 20px 16px"}}>{header}<div style={{fontSize:14,color:C.textSoft,marginTop:12}}>Sin ciclo activo</div></div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
-  </Card>;
-  const dayIn=daysFrom(cycle.flower_start);
-  const dLeft=daysTo(cycle.estimated_harvest);
-  const pct=Math.min(100,Math.round(dayIn/fdays*100));
-  return <Card onClick={onClick} style={{padding:0,overflow:"hidden",position:"relative"}}>
-    <div style={{position:"absolute",left:0,top:0,bottom:0,width:5,background:accent}}/>
-    <div style={{padding:"18px 20px 14px"}}>
-      {header}
-      <div style={{display:"flex",alignItems:"flex-end",gap:7,marginTop:12}}><span style={{fontFamily:MONO,fontWeight:700,fontSize:40,color:C.text,lineHeight:0.9}}>{dayIn}</span><span style={{fontSize:13,color:C.textSoft,paddingBottom:5}}>día de {phase}</span></div>
-      <div style={{fontSize:12.5,color:C.textSoft,marginTop:8}}>Cosecha en <b style={{color:dLeft<=7?C.red:dLeft<=20?C.amber:C.text}}>{dLeft} días</b> · {fmtDate(cycle.estimated_harvest)}</div>
-      <div style={{marginTop:12}}><Bar value={pct} max={100} color={accent} h={7}/></div>
+
+  const spacesBlock=<div>
+    {secHead("Espacios")}
+    <Card style={{padding:0,overflow:"hidden",display:"grid",gridTemplateColumns:`repeat(${cols.length},1fr)`}}>{cols.map((c,i)=>spaceCol(c.name+i,c,i))}</Card>
+  </div>;
+
+  const tasksBlock=<div>
+    {secHead("Hoy",whoSeg)}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      {hoy.length===0&&<div style={{padding:"20px 16px",textAlign:"center",color:C.textSoft,fontSize:14}}>{who==="mias"?"No tenés tareas para hoy.":"No hay tareas para hoy."}</div>}
+      {hoy.map((t,i)=>taskRow(t,i))}
+      <button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:12,padding:14,width:"100%",background:"transparent",border:"none",borderTop:hoy.length?`1px solid ${C.border}`:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,fontFamily:"inherit"}}>
+        <span style={{width:32,height:32,borderRadius:"50%",background:C.greenLight,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="plus" size={18} sw={2.2}/></span>Agregar tarea
+      </button>
+    </Card>
+  </div>;
+
+  return <div style={{paddingBottom:24}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
+    {showQuick&&<QuickTaskSheet user={user} rooms={rooms} onClose={()=>setShowQuick(false)} onCreated={t=>{setShowQuick(false);loadTasks();setToast({msg:`Tarea creada para ${t.assignee===user.name?"vos":t.assignee}, ${t.due_date===todayISO?"hoy":fmtDM(t.due_date)}`,type:"success"});}}/>}
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0 18px"}}>
+      <div>
+        <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{fecha}</div>
+        <div style={{fontSize:30,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",lineHeight:1.1,marginTop:2}}>Hola, {user.name}</div>
+        <div style={{fontSize:14.5,color:C.textMid,marginTop:6}}>{resumen}</div>
+      </div>
+      <button onClick={()=>setPage("__more__")} aria-label="Tu usuario" style={{width:42,height:42,borderRadius:"50%",background:C.green,color:C.onAccent,border:"none",cursor:"pointer",fontWeight:800,fontSize:16,flexShrink:0,fontFamily:"inherit"}}>{user.initial||user.name?.[0]}</button>
     </div>
-    <div style={{paddingBottom:18}}><ClimateMetrics climate={climate} tR={tR} hR={hR} vR={vR}/></div>
-  </Card>;
+    {wide
+      ?<div style={{display:"grid",gridTemplateColumns:"1.15fr 1fr",gap:"0 28px",alignItems:"start"}}>
+        <div>{alertsBlock}{spacesBlock}</div>
+        <div style={{marginTop:-24}}>{tasksBlock}</div>
+      </div>
+      :<>{alertsBlock}{spacesBlock}{tasksBlock}</>}
+  </div>;
 }
 
 // SALA PAGE
@@ -2396,7 +2660,7 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
   const go=p=>setPage&&setPage(p);
   const tile=({k,ic,t,d,v,sub,warn,p})=><Card key={k} onClick={()=>go(p)} style={{padding:"16px 18px"}}>
     <div style={{display:"flex",alignItems:"center",gap:14}}>
-      <div style={{width:52,height:52,borderRadius:14,background:C.greenLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,flexShrink:0}}>{ic}</div>
+      <div style={{width:52,height:52,borderRadius:14,background:C.greenLight,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={ic} size={26}/></div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:H}}>{t}</div>
         <div style={{fontSize:13,color:C.textSoft}}>{d}</div>
@@ -2406,7 +2670,7 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
         <div style={{fontFamily:MONO,fontSize:26,fontWeight:700,color:C.text,lineHeight:1.05}}>{v}</div>
         <div style={{fontSize:11.5,color:C.textSoft}}>{sub}</div>
       </div>
-      <span style={{fontSize:20,color:C.textSoft}}>›</span>
+      <span style={{color:C.textSoft}}><Icon n="chev" size={20}/></span>
     </div>
   </Card>;
 
@@ -2426,9 +2690,9 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
       <ClimateMetrics climate={climate} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
     </Card>;})()}
 
-    {tile({k:"m",ic:"🌳",t:"Madres",d:"Madres y fenos en selección",v:activas,sub:"activas",warn:renovar>0?`${renovar} para renovar`:null,p:"veg_madres"})}
-    {tile({k:"e",ic:"🌿",t:"Esquejeras",d:"Bandejas de esquejes",v:usados,sub:`de ${capacidad} lugares`,warn:listas>0?`${listas} bandeja${listas===1?"":"s"} lista${listas===1?"":"s"} para cosechar`:null,p:"veg_esquejeras"})}
-    {tile({k:"v",ic:"🪴",t:"VG",d:"Tandas post-esqueje",v:vg.plantas,sub:`${vg.tandas} tanda${vg.tandas===1?"":"s"}`,p:"veg_vg"})}
+    {tile({k:"m",ic:"tree",t:"Madres",d:"Madres y fenos en selección",v:activas,sub:"activas",warn:renovar>0?`${renovar} para renovar`:null,p:"veg_madres"})}
+    {tile({k:"e",ic:"scissors",t:"Esquejeras",d:"Bandejas de esquejes",v:usados,sub:`de ${capacidad} lugares`,warn:listas>0?`${listas} bandeja${listas===1?"":"s"} lista${listas===1?"":"s"} para cosechar`:null,p:"veg_esquejeras"})}
+    {tile({k:"v",ic:"pot",t:"VG",d:"Tandas post-esqueje",v:vg.plantas,sub:`${vg.tandas} tanda${vg.tandas===1?"":"s"}`,p:"veg_vg"})}
 
     {/* Métricas */}
     <Accordion title="Métricas" icon="📊">
@@ -5378,6 +5642,8 @@ export default function App(){
   useEffect(()=>{if(user){db.get("genetics").then(ensureGenColors).then(setGenetics).catch(()=>{});loadConfig();loadTargets();logA(user.name,"Inició sesión","auth");}},[user,loadConfig,loadTargets]);
   if(!user)return <LoginScreen onLogin={u=>{setUser(u);setPage(u.role==="admin"?"dashboard":"mi_turno");}}/>;
   const rooms=["S1","S2"];
+  const isAdmin=user.role==="admin";
+  const logout=()=>{setUser(null);setPage("dashboard");};
   const render=()=>{
     switch(page){
       case "mi_turno":     return <MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
@@ -5397,32 +5663,34 @@ export default function App(){
       case "bot":          return <BotPage user={user}/>;
       case "bitacora":     return <BitacoraPage user={user}/>;
       case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
-      case "__more__":     return <MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
+      case "__more__":     return isAdmin?<MorePageAdmin user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme} onLogout={logout}/>:<MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
+      case "salas":        return <SalasTab rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
       default:
+        if(page.startsWith("sala_")&&isAdmin)return <SalasTab roomId={page.slice(5)} rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
         if(page.startsWith("sala_")){const rid=page.slice(5);return <SalaPage roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)} targets={targets} onTargetsChanged={loadTargets}/>;}
         return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
     }
   };
-  const globalCSS=`*{box-sizing:border-box;margin:0;padding:0;}::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}input,select,button,textarea{font-family:inherit;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.page{animation:fadeUp 0.2s ease;}@keyframes gmDraw{to{stroke-dashoffset:0}}.gm-draw{stroke-dasharray:24;stroke-dashoffset:24;animation:gmDraw .2s ease-out forwards}@keyframes gmFlashA{from{background:${C.greenLight}}to{background:transparent}}@keyframes gmFlashB{from{background:${C.greenLight}}to{background:transparent}}@media (prefers-reduced-motion:reduce){.gm-draw{animation:none;stroke-dashoffset:0}}`;
+  const globalCSS=`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{-webkit-font-smoothing:antialiased;}.gm-rail::-webkit-scrollbar{display:none}::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}input,select,button,textarea{font-family:inherit;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.page{animation:fadeUp 0.2s ease;}@keyframes gmDraw{to{stroke-dashoffset:0}}.gm-draw{stroke-dasharray:24;stroke-dashoffset:24;animation:gmDraw .2s ease-out forwards}@keyframes gmFlashA{from{background:${C.greenLight}}to{background:transparent}}@keyframes gmFlashB{from{background:${C.greenLight}}to{background:transparent}}@media (prefers-reduced-motion:reduce){.gm-draw{animation:none;stroke-dashoffset:0}}`;
   // zoom escala toda la app de forma proporcional (los anchos son fluidos, no genera scroll horizontal)
   const zoomStyle=textScale!==1?{zoom:textScale}:{};
 
   if(wide){
-    return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",color:C.text,display:"flex",...zoomStyle}}>
+    return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,display:"flex",...zoomStyle}}>
       <style>{globalCSS}</style>
-      <NavBar user={user} page={page} setPage={setPage} wide/>
+      {isAdmin?<AdminNav page={page} setPage={setPage} wide/>:<NavBar user={user} page={page} setPage={setPage} wide/>}
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-        <TopBar user={user} page={page} setPage={setPage} onLogout={()=>{setUser(null);setPage("dashboard");}} wide/>
-        <div className="page" style={{padding:"6px 28px 28px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
+        {isAdmin?<AdminTopBar page={page} setPage={setPage}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout} wide/>}
+        <div className="page" style={{padding:isAdmin?"18px 32px 32px":"6px 28px 28px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
       </div>
-      {page!=="bot"&&<FloatingBot user={user} currentPage={page} wide/>}
+      {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide/>}
     </div>;
   }
-  return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:"system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
+  return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
     <style>{globalCSS}</style>
-    <TopBar user={user} page={page} setPage={setPage} onLogout={()=>{setUser(null);setPage("dashboard");}}/>
-    <div className="page" style={{padding:"16px 16px 88px"}}>{render()}</div>
-    {page!=="bot"&&<FloatingBot user={user} currentPage={page} wide={false}/>}
-    <NavBar user={user} page={page} setPage={setPage}/>
+    {isAdmin?<AdminTopBar page={page} setPage={setPage}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout}/>}
+    <div className="page" style={{padding:isAdmin?"14px 16px 104px":"16px 16px 88px"}}>{render()}</div>
+    {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide={false}/>}
+    {isAdmin?<AdminNav page={page} setPage={setPage}/>:<NavBar user={user} page={page} setPage={setPage}/>}
   </div>;
 }
