@@ -4603,18 +4603,22 @@ function CosechaAnteriorModal({rooms,roomConfig,genetics,user,onClose,onSaved}){
   </Modal>;
 }
 // HISTORIAL — ciclos cerrados, rendimiento por mesa y carga de post-cosecha
+// ══════════════════════════════════════════════════════════════════════════════
+// HISTORIAL — ciclos cerrados: arriba lo que falta pesar, después el detalle
+// ══════════════════════════════════════════════════════════════════════════════
 function HistorialPage({roomConfig,user,genetics,rooms}){
   const [cycles,setCycles]=useState([]);
   const [yields,setYields]=useState({});      // cycle_id → filas de harvest_yields
   const [loading,setLoading]=useState(true);
-  const [open,setOpen]=useState(null);        // ciclo expandido
+  const [sel,setSel]=useState(null);          // ciclo abierto en la hoja
   const [harvestFor,setHarvestFor]=useState(null);
   const [showAnterior,setShowAnterior]=useState(false);
   const [toast,setToast]=useState(null);
   const [err,setErr]=useState(null);
+  const isAdmin=user.role==="admin";
 
   const load=useCallback(()=>{
-    setLoading(true);
+    setLoading(true);setErr(null);
     db.query("cycles","active=eq.false&order=closed_at.desc&limit=60")
       .then(async cs=>{
         setCycles(cs);
@@ -4622,7 +4626,7 @@ function HistorialPage({roomConfig,user,genetics,rooms}){
           const hy=await db.query("harvest_yields","order=pot_label.asc,genetic_name.asc");
           const by={};hy.forEach(r=>{(by[r.cycle_id]=by[r.cycle_id]||[]).push(r);});
           setYields(by);
-        }catch(e){setErr("No pude leer el rendimiento por mesa. ¿Corriste el SQL de post-cosecha?");}
+        }catch{setYields({});}
       })
       .catch(e=>setErr(errMsg(e)))
       .finally(()=>setLoading(false));
@@ -4631,116 +4635,124 @@ function HistorialPage({roomConfig,user,genetics,rooms}){
 
   const printPDF=(c,rows)=>{
     const w=window.open("","_blank");
-    if(!w){setToast({msg:"Permití las ventanas emergentes para generar el PDF",type:"error"});return;}
+    if(!w){setToast({msg:"El navegador bloqueó la ventana. Habilitá los pop-ups.",type:"error"});return;}
     const esc=s=>String(s??"").replace(/[<>&]/g,ch=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[ch]));
     const name=getRC(roomConfig,c.room_id).display_name;
     const total=rows.reduce((a,r)=>a+(+r.grams||0),0);
     const plants=rows.reduce((a,r)=>a+(r.plant_count||0),0);
     const dias=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):"—";
-    const trs=rows.map(r=>`<tr><td>${esc(r.pot_label)}</td><td>${esc(r.genetic_name)}</td><td>${r.plant_count||0}</td><td>${+r.grams>0?Math.round(+r.grams):"—"}</td><td>${+r.grams>0&&r.plant_count>0?Math.round(+r.grams/r.plant_count)+" g":"—"}</td></tr>`).join("")||`<tr><td colspan="5">Sin datos por mesa</td></tr>`;
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ciclo ${esc(name)} — ${esc(c.real_harvest||"")}</title>
-    <style>body{font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#16191B;margin:40px;}h1{font-size:22px;margin:0 0 4px;}.sub{color:#717A76;font-size:13px;margin-bottom:24px;}
-    .grid{display:flex;gap:24px;flex-wrap:wrap;margin:18px 0;}.kpi{border:1px solid #E6E8E6;border-radius:10px;padding:12px 18px;}.kpi .v{font-size:26px;font-weight:800;color:#2D7A4B;}.kpi .l{font-size:11px;color:#717A76;text-transform:uppercase;letter-spacing:.08em;}
-    h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#454B49;border-bottom:1px solid #E6E8E6;padding-bottom:6px;margin:24px 0 10px;}
-    table{width:100%;border-collapse:collapse;font-size:13px;}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #EEE;}th{color:#717A76;font-size:11px;text-transform:uppercase;}
-    .notes{white-space:pre-wrap;font-size:13px;color:#454B49;}@media print{body{margin:18px;}}</style></head><body>
-    <h1>Informe de ciclo — ${esc(name)}</h1>
-    <div class="sub">Cosechado el ${esc(c.real_harvest?fmtDate(c.real_harvest):"—")}</div>
-    <div class="grid">
-      <div class="kpi"><div class="l">Días en flora</div><div class="v">${dias}</div></div>
-      <div class="kpi"><div class="l">Plantas</div><div class="v">${plants}</div></div>
-      <div class="kpi"><div class="l">Total cosechado</div><div class="v">${total>0?Math.round(total):"—"} g</div></div>
-      <div class="kpi"><div class="l">g / planta</div><div class="v">${plants>0&&total>0?Math.round(total/plants):"—"}</div></div>
-    </div>
-    <h2>Rendimiento por mesa</h2>
-    <table><thead><tr><th>Mesa</th><th>Genética</th><th>Plantas</th><th>Gramos</th><th>g/planta</th></tr></thead><tbody>${trs}</tbody></table>
-    ${c.summary?`<h2>Informe</h2><div class="notes">${esc(c.summary)}</div>`:""}
-    </body></html>`);
-    w.document.close();w.focus();
-    setTimeout(()=>{try{w.print();}catch(_){}},350);
+    const trs=rows.map(r=>`<tr><td>${esc(r.pot_label)}</td><td>${esc(r.genetic_name)}</td><td>${r.plant_count||0}</td><td>${+r.grams>0?Math.round(+r.grams):"—"}</td><td>${+r.grams>0&&r.plant_count>0?Math.round(+r.grams/r.plant_count):"—"}</td></tr>`).join("");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(name)} — ${esc(c.real_harvest||"")}</title>
+      <style>body{font-family:system-ui,sans-serif;padding:28px;color:#17201C}h1{font-size:22px;margin:0 0 4px}h2{font-size:14px;color:#6F7B75;margin:0 0 20px;font-weight:600}
+      table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #ddd}th{background:#F3F5F2}
+      .tot{display:flex;gap:26px;margin:16px 0 22px}.tot div b{display:block;font-size:22px}.tot div span{font-size:12px;color:#6F7B75}
+      pre{background:#F3F5F2;padding:12px;border-radius:8px;font-size:11px;white-space:pre-wrap}</style></head><body>
+      <h1>${esc(name)} — cosecha ${esc(c.real_harvest||"")}</h1><h2>${dias} días de floración</h2>
+      <div class="tot"><div><b>${total>0?Math.round(total):"—"} g</b><span>total</span></div><div><b>${plants||"—"}</b><span>plantas</span></div><div><b>${plants>0&&total>0?Math.round(total/plants):"—"}</b><span>g/planta</span></div></div>
+      <table><thead><tr><th>Mesa</th><th>Genética</th><th>Plantas</th><th>Gramos</th><th>g/pl</th></tr></thead><tbody>${trs||'<tr><td colspan="5">Sin detalle por mesa</td></tr>'}</tbody></table>
+      ${c.summary?`<h2 style="margin:22px 0 8px">Informe</h2><pre>${esc(c.summary)}</pre>`:""}
+      </body></html>`);
+    w.document.close();w.focus();w.print();
   };
 
   if(loading)return <Spin/>;
-  const pendientes=cycles.filter(c=>c.harvest_status==="secando").length;
+  const secando=cycles.filter(c=>c.harvest_status==="secando");
+  const cerrados=cycles.filter(c=>c.harvest_status!=="secando");
+  const gramosDe=c=>{const rows=yields[c.id]||[];return rows.reduce((a,r)=>a+(+r.grams||0),0)||(c.yield_grams||0);};
+  const plantasDe=c=>(yields[c.id]||[]).reduce((a,r)=>a+(r.plant_count||0),0);
+  const totalG=cerrados.reduce((a,c)=>a+gramosDe(c),0);
+  const conG=cerrados.filter(c=>gramosDe(c)>0);
+  const gppProm=(()=>{const p=conG.reduce((a,c)=>a+plantasDe(c),0);const g=conG.reduce((a,c)=>a+gramosDe(c),0);return p>0?Math.round(g/p):null;})();
 
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
+  const row=(c,i)=>{
+    const esSec=c.harvest_status==="secando";const g=gramosDe(c);const pl=plantasDe(c);
+    const name=getRC(roomConfig,c.room_id).display_name;
+    const dias=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
+    return <button key={c.id} onClick={()=>setSel(c)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"13px 14px",minHeight:66,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+      <span style={{width:42,height:42,borderRadius:13,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:esSec?C.amberLight:C.greenLight,color:esSec?C.amber:C.green}}><Icon n={esSec?"clock":"harvest"} size={22}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:15.5,fontWeight:800}}>{name}</span>
+        <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.real_harvest?fmtDM(c.real_harvest):"—"}{dias?` · ${dias} días de flora`:""}</span>
+      </span>
+      {esSec
+        ?<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.amberLight,color:C.amber}}>Falta pesar</span>
+        :<span style={{textAlign:"right"}}><span style={{display:"block",fontSize:19,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{g>0?Math.round(g):"—"}<span style={{fontSize:12,color:C.textSoft,fontWeight:600}}> g</span></span>{pl>0&&g>0&&<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}>{Math.round(g/pl)} g/pl</span>}</span>}
+      <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+    </button>;
+  };
+
+  const detalle=()=>{
+    const c=sel;const rows=yields[c.id]||[];const g=gramosDe(c);const pl=plantasDe(c);
+    const name=getRC(roomConfig,c.room_id).display_name;
+    const dias=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
+    const byPot={};rows.forEach(r=>{(byPot[r.pot_label]=byPot[r.pot_label]||[]).push(r);});
+    const esSec=c.harvest_status==="secando";
+    const st=(v,l)=><div style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"10px 12px"}}><div style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>{l}</div></div>;
+    return <Sheet title={`${name} — ${c.real_harvest?fmtDM(c.real_harvest):"sin fecha"}`} sub={dias?`${dias} días de floración`:null} onClose={()=>setSel(null)}>
+      <div style={{display:"flex",gap:8,marginTop:12}}>{st(g>0?`${Math.round(g)} g`:"—","total")}{st(pl||"—","plantas")}{st(pl>0&&g>0?Math.round(g/pl):"—","g/planta")}</div>
+      {esSec&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:12,padding:"10px 12px",borderRadius:12,background:C.amberLight,color:C.amber,fontSize:13.5,fontWeight:700}}><Icon n="alert" size={18}/>Falta cargar los gramos del secado</div>}
+      {rows.length>0&&<>
+        <div style={{fontSize:14,fontWeight:800,color:C.textMid,margin:"18px 0 6px"}}>Rendimiento por mesa</div>
+        {Object.entries(byPot).map(([pot,rs])=>{
+          const sub=rs.reduce((a,r)=>a+(+r.grams||0),0);
+          return <div key={pot} style={{padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:15,fontWeight:800,color:C.text}}>Mesa {pot}</span>
+              <span style={{fontSize:14,fontWeight:800,color:sub>0?C.green:C.textSoft}}>{sub>0?`${Math.round(sub)} g`:"sin pesar"}</span>
+            </div>
+            {rs.map(r=><div key={r.id||r.genetic_name} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:3}}>
+              <span>{r.genetic_name} · {r.plant_count||0} pl.</span>
+              <span>{+r.grams>0?`${Math.round(+r.grams)} g${r.plant_count>0?` · ${Math.round(+r.grams/r.plant_count)} g/pl`:""}`:"—"}</span>
+            </div>)}
+          </div>;
+        })}
+      </>}
+      {rows.length===0&&<div style={{fontSize:13,color:C.textSoft,marginTop:14,lineHeight:1.5}}>Este ciclo no tiene detalle por mesa. Podés cargarlo con “{esSec?"Cargar":"Editar"} cosecha”.</div>}
+      {c.summary&&<Fold icon="notebook" title="Informe del ciclo"><pre style={{background:C.surfaceAlt,borderRadius:12,padding:12,fontSize:11.5,color:C.textMid,whiteSpace:"pre-wrap",fontFamily:"monospace",maxHeight:240,overflowY:"auto",lineHeight:1.55,margin:0}}>{c.summary}</pre></Fold>}
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:16}}>
+        {isAdmin&&<Btn full onClick={()=>{setHarvestFor(c);setSel(null);}} style={{minHeight:50}}>{esSec?"Cargar cosecha":"Editar cosecha"}</Btn>}
+        <Btn v="secondary" full onClick={()=>printPDF(c,rows)} style={{minHeight:48}}>Imprimir o guardar PDF</Btn>
+      </div>
+    </Sheet>;
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-    {harvestFor&&<HarvestModal cycle={harvestFor} rc={getRC(roomConfig,harvestFor.room_id)} user={user}
-      onClose={()=>setHarvestFor(null)}
-      onSaved={()=>{setHarvestFor(null);load();setToast({msg:"Cosecha guardada ✓",type:"success"});}}/>}
+    {harvestFor&&<HarvestModal cycle={harvestFor} rc={getRC(roomConfig,harvestFor.room_id)} user={user} onClose={()=>setHarvestFor(null)} onSaved={()=>{setHarvestFor(null);load();setToast({msg:"Cosecha guardada ✓",type:"success"});}}/>}
+    {showAnterior&&<CosechaAnteriorModal rooms={rooms} roomConfig={roomConfig} genetics={genetics} user={user} onClose={()=>setShowAnterior(false)} onSaved={()=>{setShowAnterior(false);load();setToast({msg:"Cosecha anterior cargada ✓",type:"success"});}}/>}
+    {sel&&detalle()}
 
-    {showAnterior&&<CosechaAnteriorModal rooms={rooms} roomConfig={roomConfig} genetics={genetics} user={user}
-      onClose={()=>setShowAnterior(false)}
-      onSaved={()=>{setShowAnterior(false);load();setToast({msg:"Cosecha anterior cargada ✓",type:"success"});}}/>}
+    <PageTitle right={isAdmin&&<button onClick={()=>setShowAnterior(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Cosecha anterior</button>}>Historial</PageTitle>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:12,padding:"10px 14px",fontSize:13}}>{err}</div>}
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Historial</div>
-      {user.role==="admin"&&<Btn onClick={()=>setShowAnterior(true)} style={{padding:"9px 14px",fontSize:12.5}}>+ Cosecha anterior</Btn>}
-    </div>
-    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"10px 14px",fontSize:12.5}}>{err}</div>}
+    {cerrados.length>0&&<div style={{display:"flex",gap:8}}>
+      {[[cerrados.length,`ciclo${cerrados.length===1?"":"s"}`],[totalG>0?`${(totalG/1000).toFixed(1).replace(".",",")} kg`:"—","cosechado"],[gppProm||"—","g/planta"]].map(([v,l])=>
+        <div key={l} style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 13px"}}>
+          <div style={{fontSize:22,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{l}</div>
+        </div>)}
+    </div>}
 
-    {pendientes>0&&<Card style={{padding:"12px 16px",background:C.amberLight,border:`1px solid ${C.amber}44`}}>
-      <div style={{fontSize:13,color:C.textMid,lineHeight:1.5}}>🌾 <b>{pendientes} ciclo{pendientes>1?"s":""} en secado</b> — falta cargar los gramos. Tocá el ciclo y usá “Cargar cosecha”.</div>
+    {secando.length>0&&<div>
+      <div style={{fontSize:18,fontWeight:800,color:C.amber,margin:"12px 2px 10px"}}>Falta pesar</div>
+      <Card style={{padding:0,overflow:"hidden"}}>{secando.map(row)}</Card>
+    </div>}
+
+    {cerrados.length>0&&<div>
+      <div style={{fontSize:18,fontWeight:800,color:C.text,margin:"12px 2px 10px"}}>Ciclos cerrados</div>
+      <Card style={{padding:0,overflow:"hidden"}}>{cerrados.map(row)}</Card>
+    </div>}
+
+    {cycles.length===0&&<Card style={{padding:"26px 18px",textAlign:"center"}}>
+      <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="history" size={30}/></div>
+      <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Sin ciclos cerrados</div>
+      <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Cuando cierres uno aparece acá con su detalle y su PDF.</div>
     </Card>}
-
-    {cycles.length===0&&<Card style={{padding:"22px 18px",textAlign:"center"}}>
-      <div style={{fontSize:30,marginBottom:8}}>📜</div>
-      <div style={{fontSize:14,color:C.textSoft,lineHeight:1.5}}>Todavía no hay ciclos cerrados. Cuando cierres uno, va a aparecer acá con todo su detalle.</div>
-    </Card>}
-
-    {cycles.map(c=>{
-      const rows=yields[c.id]||[];
-      const total=rows.reduce((a,r)=>a+(+r.grams||0),0)||(c.yield_grams||0);
-      const plants=rows.reduce((a,r)=>a+(r.plant_count||0),0);
-      const secando=c.harvest_status==="secando";
-      const isOpen=open===c.id;
-      const name=getRC(roomConfig,c.room_id).display_name;
-      const dias=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
-      const byPot={};rows.forEach(r=>{(byPot[r.pot_label]=byPot[r.pot_label]||[]).push(r);});
-      return <Card key={c.id} style={{padding:0,overflow:"hidden"}}>
-        <div onClick={()=>setOpen(isOpen?null:c.id)} style={{padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:44,height:44,borderRadius:12,background:secando?C.amberLight:C.greenLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21,flexShrink:0}}>{secando?"🌾":"✓"}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:15.5,fontWeight:800,color:C.text}}>{name}</div>
-            <div style={{fontSize:12,color:C.textSoft}}>{c.real_harvest?fmtDate(c.real_harvest):"—"}{dias?` · ${dias} días de flora`:""}</div>
-          </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            {secando
-              ?<Badge label="en secado" color={C.amber} bg={C.amberLight}/>
-              :<><div style={{fontSize:19,fontWeight:900,color:C.text,fontFamily:H,lineHeight:1}}>{total>0?Math.round(total):"—"}<span style={{fontSize:11,color:C.textSoft,fontWeight:400}}> g</span></div>
-                 {plants>0&&total>0&&<div style={{fontSize:11,color:C.textSoft}}>{Math.round(total/plants)} g/pl</div>}</>}
-          </div>
-          <span style={{fontSize:14,color:C.textSoft,marginLeft:2}}>{isOpen?"▾":"▸"}</span>
-        </div>
-        {isOpen&&<div style={{padding:"0 16px 16px",borderTop:`1px solid ${C.border}`}}>
-          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",margin:"14px 0 10px"}}>Rendimiento por mesa</div>
-          {rows.length===0&&<div style={{fontSize:12.5,color:C.textSoft,fontStyle:"italic",marginBottom:12,lineHeight:1.5}}>Este ciclo no tiene el detalle por mesa (se cerró antes de esta función). Podés cargarlo igual con “Cargar cosecha”.</div>}
-          {Object.entries(byPot).map(([pot,rs])=>{
-            const sub=rs.reduce((a,r)=>a+(+r.grams||0),0);
-            return <div key={pot} style={{background:C.bg,borderRadius:10,padding:"10px 13px",marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                <div style={{fontSize:13,fontWeight:800,color:C.text}}>Mesa {pot}</div>
-                <div style={{fontSize:12.5,fontWeight:700,color:sub>0?C.green:C.textSoft}}>{sub>0?Math.round(sub)+" g":"sin pesar"}</div>
-              </div>
-              {rs.map(r=><div key={r.id||r.genetic_name} style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.textMid,marginTop:2}}>
-                <span>{r.genetic_name} · {r.plant_count||0} pl.</span>
-                <span style={{fontFamily:MONO}}>{+r.grams>0?`${Math.round(+r.grams)} g${r.plant_count>0?` · ${Math.round(+r.grams/r.plant_count)} g/pl`:""}`:"—"}</span>
-              </div>)}
-            </div>;
-          })}
-          {c.summary&&<>
-            <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",margin:"14px 0 8px"}}>Informe</div>
-            <pre style={{background:C.bg,borderRadius:10,padding:12,fontSize:11,color:C.textMid,whiteSpace:"pre-wrap",fontFamily:"monospace",maxHeight:200,overflowY:"auto",lineHeight:1.5}}>{c.summary}</pre>
-          </>}
-          <div style={{display:"flex",gap:10,marginTop:12}}>
-            {user.role==="admin"&&<Btn onClick={()=>setHarvestFor(c)} style={{flex:1,fontSize:13}}>{secando?"Cargar cosecha":"Editar cosecha"}</Btn>}
-            <Btn onClick={()=>printPDF(c,rows)} v="secondary" style={{flex:1,fontSize:13}}>🖨 PDF</Btn>
-          </div>
-        </div>}
-      </Card>;
-    })}
   </div>;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ESTADÍSTICAS — rendimiento arriba, clima y trabajo del equipo plegados
+// ══════════════════════════════════════════════════════════════════════════════
 function EstadisticasPage({rooms,roomConfig,targets}){
   const [stats,setStats]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -4755,41 +4767,38 @@ function EstadisticasPage({rooms,roomConfig,targets}){
       db.query("cycle_genetics","order=id.desc&limit=400"),
       db.query("climate_logs",`recorded_at=gte.${new Date(Date.now()-24*3600*1000).toISOString()}&order=recorded_at.desc`),
       db.query("cycles","active=eq.true"),
-    ]).then(([tasks,wl,nl,closed,cgAll,climate,active])=>{
+      db.query("harvest_yields","order=pot_label.asc").catch(()=>[]),
+    ]).then(([tasks,wl,nl,closed,cgAll,climate,active,hy])=>{
       const climByRoom={};(climate||[]).forEach(c=>{if(!climByRoom[c.room_id])climByRoom[c.room_id]=c;});
       const activeByRoom={};(active||[]).forEach(c=>{if(!activeByRoom[c.room_id])activeByRoom[c.room_id]=c;});
       const byUser={};
-      tasks.forEach(t=>{if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
-      const byType={};
-      tasks.forEach(t=>{byType[t.type]=(byType[t.type]||0)+1;});
+      tasks.forEach(t=>{if(!t.assignee)return;if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
       const wByRoom={};(rooms||["S1","S2"]).forEach(r=>{wByRoom[r]=0;});
       wl.forEach(w=>{if(wByRoom[w.room_id]!==undefined)wByRoom[w.room_id]++;});
-      // Rendimiento por ciclo cerrado: g, plantas, g/planta, días real vs estimado
+      // Los gramos salen de harvest_yields si están; si no, de cycle_genetics o del total del ciclo.
+      const hyByCycle={};(hy||[]).forEach(r=>{(hyByCycle[r.cycle_id]=hyByCycle[r.cycle_id]||[]).push(r);});
       const cgByCycle={};(cgAll||[]).forEach(g=>{(cgByCycle[g.cycle_id]=cgByCycle[g.cycle_id]||[]).push(g);});
       const cycleStats=(closed||[]).map(c=>{
-        const gs=cgByCycle[c.id]||[];
-        const plants=gs.reduce((a,g)=>a+(g.plant_count||0),0);
-        const grams=c.yield_grams||gs.reduce((a,g)=>a+(g.yield_grams||0),0);
+        const hr=hyByCycle[c.id]||[];const gs=cgByCycle[c.id]||[];
+        const plants=hr.reduce((a,r)=>a+(r.plant_count||0),0)||gs.reduce((a,g)=>a+(g.plant_count||0),0);
+        const grams=hr.reduce((a,r)=>a+(+r.grams||0),0)||c.yield_grams||gs.reduce((a,g)=>a+(g.yield_grams||0),0);
         const realDays=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
         const estDays=c.flower_start&&c.estimated_harvest?Math.round((new Date(c.estimated_harvest)-new Date(c.flower_start))/86400000):null;
         const area=getRC(roomConfig,c.room_id).area_m2;
-        const gm2=area&&grams?Math.round(grams/area):null;
-        return {id:c.id,room:c.room_id,closed_at:c.closed_at,grams,plants,gpp:plants>0&&grams>0?Math.round(grams/plants):null,gm2,realDays,estDays};
+        return {id:c.id,room:c.room_id,closed_at:c.closed_at,harvest:c.real_harvest,grams,plants,gpp:plants>0&&grams>0?Math.round(grams/plants):null,gm2:area&&grams?Math.round(grams/area):null,realDays,estDays};
       });
-      // Rendimiento acumulado por genética (sobre ciclos cerrados)
-      const byGen={};(cgAll||[]).forEach(g=>{if(!byGen[g.genetic_name])byGen[g.genetic_name]={grams:0,plants:0};byGen[g.genetic_name].grams+=g.yield_grams||0;byGen[g.genetic_name].plants+=g.plant_count||0;});
+      const byGen={};
+      (hy||[]).forEach(r=>{if(!r.genetic_name)return;if(!byGen[r.genetic_name])byGen[r.genetic_name]={grams:0,plants:0};byGen[r.genetic_name].grams+=+r.grams||0;byGen[r.genetic_name].plants+=r.plant_count||0;});
+      (cgAll||[]).forEach(g=>{if(!g.genetic_name||hyByCycle[g.cycle_id])return;if(!byGen[g.genetic_name])byGen[g.genetic_name]={grams:0,plants:0};byGen[g.genetic_name].grams+=g.yield_grams||0;byGen[g.genetic_name].plants+=g.plant_count||0;});
       const genStats=Object.entries(byGen).map(([name,d])=>({name,...d,gpp:d.plants>0&&d.grams>0?Math.round(d.grams/d.plants):null})).filter(g=>g.grams>0).sort((a,b)=>b.grams-a.grams);
-      // Balance del suelo: ciclos cerrados desde el último Reset Express por sala.
       const soil=(rooms||["S1","S2"]).map(r=>{
         const rcR=getRC(roomConfig,r);
         const lr=rcR.last_reset_at?new Date(rcR.last_reset_at):null;
         const rcClosed=(closed||[]).filter(c=>c.room_id===r&&c.closed_at).sort((a,b)=>new Date(b.closed_at)-new Date(a.closed_at));
         const lastClosed=rcClosed[0]||null;
-        const since=lr?rcClosed.filter(c=>new Date(c.closed_at)>lr).length:rcClosed.length;
-        const resetPending=!!lastClosed&&(!lr||lr<new Date(lastClosed.closed_at));
-        return {room:r,name:rcR.display_name,lastReset:rcR.last_reset_at||null,closedCount:rcClosed.length,since,resetPending};
+        return {room:r,name:rcR.display_name,lastReset:rcR.last_reset_at||null,closedCount:rcClosed.length,resetPending:!!lastClosed&&(!lr||lr<new Date(lastClosed.closed_at))};
       });
-      setStats({byUser,byType,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length,cycleStats,genStats,soil,climByRoom,activeByRoom});
+      setStats({byUser,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length,cycleStats,genStats,soil,climByRoom,activeByRoom});
     }).finally(()=>setLoading(false));
   },[rooms,roomConfig]);
   useEffect(()=>{
@@ -4811,108 +4820,316 @@ function EstadisticasPage({rooms,roomConfig,targets}){
   },[clRange]);
   if(loading)return <Spin/>;
   if(!stats)return null;
-  const pct=(d,t)=>t>0?Math.round(d/t*100):0;
-  const maxU=Math.max(...Object.values(stats.byUser).map(u=>u.total),1);
-  // Serie de clima por sala para los gráficos comparativos
+
   const CL_ROOMS=[...(rooms||["S1","S2"]),"Vegetativo"];
-  const CL_COLORS=[C.green,C.amber,C.blue,C.purple,C.red];
+  const CL_COLORS=[C.amber,C.blue,C.green,C.purple,C.red];
   const clFor=field=>CL_ROOMS.map((r,i)=>({
     name:getRC(roomConfig,r).display_name,
     color:CL_COLORS[i%CL_COLORS.length],
     points:clSeries.filter(c=>c.room_id===r&&c[field]!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c[field]})),
   })).filter(s=>s.points.length>0);
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Estadísticas</div>
-    {stats.climByRoom&&<Card>
-      <SL>🌡 Clima en vivo</SL>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-        {[...(rooms||["S1","S2"]),"Vegetativo"].map(r=>{const cl=stats.climByRoom[r];const rc=getRC(roomConfig,r);const tg=getTargets(targets,r,stats.activeByRoom?.[r]||null,rc);const tR=tg.temp,hR=tg.hum;return <div key={r} style={{background:C.bg,borderRadius:14,padding:"12px 12px",border:`1px solid ${C.border}`}}>
-          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8,textAlign:"center"}}>{rc.display_name}</div>
-          {[["🌡",cl&&cl.temperature!=null?`${cl.temperature}°C`:"—",C.amber,cl&&cl.temperature!=null&&(cl.temperature<tR.min||cl.temperature>tR.max)],["💧",cl&&cl.humidity!=null?`${cl.humidity}%`:"—",C.blue,cl&&cl.humidity!=null&&(cl.humidity<hR.min||cl.humidity>hR.max)],["🍃",cl&&cl.vpd!=null?cl.vpd:"—",C.purple,false]].map((row,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<2?`1px solid ${C.border}`:"none"}}><span style={{fontSize:13}}>{row[0]}</span><span style={{fontFamily:MONO,fontWeight:700,fontSize:14,color:row[3]?C.red:row[2]}}>{row[1]}</span></div>)}
-        </div>;})}
-      </div>
-      <div style={{fontSize:11,color:C.textSoft,marginTop:8,fontStyle:"italic"}}>Última lectura de cada sensor · se actualiza sola</div>
-    </Card>}
-    <Card>
-      <SL>📈 Clima comparado</SL>
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["24h","24 h"],["7d","7 días"],["30d","30 días"]].map(([k,l])=><button key={k} onClick={()=>setClRange(k)} style={{flex:1,fontSize:12.5,fontWeight:700,padding:"8px 0",borderRadius:9,cursor:"pointer",border:`1px solid ${clRange===k?C.green:C.border}`,background:clRange===k?C.greenLight:"transparent",color:clRange===k?C.green:C.textSoft}}>{l}</button>)}
-      </div>
-      {clSeries.length===0
-        ?<div style={{textAlign:"center",color:C.textSoft,fontSize:13,fontStyle:"italic",padding:"16px 0"}}>Sin datos en este rango todavía</div>
-        :<>
-          <div style={{fontSize:11,color:C.textSoft,marginBottom:8,fontStyle:"italic"}}>Las tres salas superpuestas · tocá o arrastrá el dedo sobre el gráfico para ver hora y valores</div>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,marginBottom:4}}>🌡 Temperatura (°C)</div>
-          <LineChart series={clFor("temperature")} unit="°C" height={160}/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"14px 0 4px"}}>💧 Humedad (%)</div>
-          <LineChart series={clFor("humidity")} unit="%" height={160}/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"14px 0 4px"}}>🍃 VPD (kPa)</div>
-          <LineChart series={clFor("vpd")} unit=" kPa" height={160}/>
-          <div style={{fontSize:11,color:C.textSoft,marginTop:10,fontStyle:"italic"}}>Sin franja objetivo: cada sala tiene su propio rango según la etapa. Los objetivos por sala están en Sala 1 / Sala 2 / Vegetativo.</div>
-        </>}
-    </Card>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
-      {[{l:"Riegos registrados",v:stats.wCount,i:"💧",c:C.blue},{l:"Aplicaciones nutrición",v:stats.nCount,i:"🌱",c:C.green}].map(s=><Card key={s.l} style={{padding:"16px 18px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div><div style={{fontSize:11,color:C.textSoft,marginBottom:4}}>{s.l}</div><div style={{fontSize:32,fontWeight:900,color:s.c,fontFamily:H}}>{s.v}</div></div>
-          <span style={{fontSize:24}}>{s.i}</span>
-        </div>
-      </Card>)}
+
+  const conG=stats.cycleStats.filter(c=>c.grams>0);
+  const totalG=conG.reduce((a,c)=>a+c.grams,0);
+  const plantasT=conG.reduce((a,c)=>a+c.plants,0);
+  const mejor=stats.genStats.find(g=>g.gpp)||null;
+  const stat=(v,l,color)=><div style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 13px",minWidth:0}}>
+    <div style={{fontSize:21,fontWeight:800,color:color||C.text,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{v}</div><div style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{l}</div>
+  </div>;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
+    <PageTitle>Estadísticas</PageTitle>
+
+    <div style={{display:"flex",gap:8}}>
+      {stat(totalG>0?`${(totalG/1000).toFixed(1).replace(".",",")} kg`:"—","cosechado")}
+      {stat(plantasT>0&&totalG>0?Math.round(totalG/plantasT):"—","g/planta")}
+      {stat(conG.length,`ciclo${conG.length===1?"":"s"} con peso`)}
     </div>
-    {stats.soil&&stats.soil.length>0&&<Card>
-      <SL>🌱 Balance del suelo · Reset Express</SL>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {stats.soil.map(s=><div key={s.room} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:s.resetPending?C.amberLight:C.bg,borderRadius:12,border:`1px solid ${s.resetPending?"#E8C07A":C.border}`}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:800,color:C.text}}>{s.name}</div>
-            <div style={{fontSize:12,color:C.textSoft,marginTop:2}}>Último reset: {s.lastReset?fmtDate(s.lastReset):"nunca"} · {s.closedCount} ciclo(s) cerrado(s)</div>
+
+    {stats.genStats.length>0&&<Card style={{padding:"16px 16px 14px"}}>
+      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Rendimiento por genética</div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:12}}>{mejor?`La más rendidora es ${mejor.name}, con ${mejor.gpp} g por planta.`:"Sobre los ciclos ya cerrados."}</div>
+      {(()=>{const max=Math.max(...stats.genStats.map(g=>g.grams),1);return stats.genStats.map((g,i)=>
+        <div key={g.name} style={{marginTop:i?12:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
+            <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
+            <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{Math.round(g.grams)} g{g.gpp?` · ${g.gpp} g/pl`:""}</span>
           </div>
-          {s.resetPending
-            ?<Badge label="Reset pendiente" color={C.amber} bg={C.surface}/>
-            :<Badge label="Al día ✓" color={C.green} bg={C.greenLight}/>}
+          <Bar value={g.grams} max={max} color={C.green} h={8}/>
+        </div>);})()}
+    </Card>}
+
+    {stats.cycleStats.length>0&&<Card style={{padding:"16px 16px 6px"}}>
+      <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:4}}>Ciclos cerrados</div>
+      {stats.cycleStats.map((c,i)=>{
+        const name=getRC(roomConfig,c.room).display_name;const dif=c.realDays!=null&&c.estDays!=null?c.realDays-c.estDays:null;
+        return <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+          <span style={{width:10,alignSelf:"stretch",minHeight:34,borderRadius:4,background:c.room==="S1"?C.amber:C.blue,flexShrink:0}}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{name}{c.harvest?` · ${fmtDM(c.harvest)}`:""}</div>
+            <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.grams>0?`${c.plants||"—"} plantas${c.gpp?` · ${c.gpp} g/pl`:""}${c.gm2?` · ${c.gm2} g/m²`:""}`:"Falta cargar la cosecha"}{c.realDays!=null?` · ${c.realDays} días`:""}</div>
+          </div>
+          <span style={{textAlign:"right"}}>
+            <span style={{display:"block",fontSize:18,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{c.grams>0?Math.round(c.grams):"—"}<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}> g</span></span>
+            {dif!=null&&<span style={{fontSize:11.5,fontWeight:800,color:dif===0?C.green:C.amber}}>{dif===0?"en fecha":dif>0?`+${dif} días`:`${dif} días`}</span>}
+          </span>
+        </div>;})}
+    </Card>}
+
+    <Fold icon="chart" title="Clima comparado">
+      <div style={{display:"flex",gap:6,marginBottom:6}}>
+        {[["24h","24 h"],["7d","7 días"],["30d","30 días"]].map(([k,l])=><button key={k} onClick={()=>setClRange(k)} style={{flex:1,fontSize:13,fontWeight:800,padding:"8px 0",borderRadius:10,cursor:"pointer",fontFamily:"inherit",border:`1px solid ${clRange===k?C.green:C.border}`,background:clRange===k?C.greenLight:"transparent",color:clRange===k?C.green:C.textSoft}}>{l}</button>)}
+      </div>
+      {clSeries.length===0?<div style={{textAlign:"center",color:C.textSoft,fontSize:13,padding:"16px 0"}}>Sin datos en este rango</div>:<>
+        {[["temperature","Temperatura (°C)","°C"],["humidity","Humedad (%)","%"],["vpd","VPD (kPa)"," kPa"]].map(([f,l,u])=><div key={f}>
+          <div style={{fontSize:12.5,fontWeight:800,color:C.textMid,margin:"14px 0 4px"}}>{l}</div>
+          <LineChart series={clFor(f)} unit={u}/>
+        </div>)}
+      </>}
+    </Fold>
+
+    {stats.climByRoom&&<Fold icon="thermo" title="Clima ahora">
+      {CL_ROOMS.map((r,i)=>{
+        const cl=stats.climByRoom[r];const rc=getRC(roomConfig,r);const tg=getTargets(targets,r,stats.activeByRoom?.[r]||null,rc);
+        return <div key={r} style={{padding:"12px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:2}}>{rc.display_name}</div>
+          {cl?<div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+            {[["thermo",cl.temperature,tg.temp,CLIM_TOL.temp,"°C",1],["drop",cl.humidity,tg.hum,CLIM_TOL.hum,"%",0],["leaf",cl.vpd,tg.vpd,CLIM_TOL.vpd," kPa",2]].filter(x=>x[1]!=null).map(([n,v,rr,tol,u,d])=>{
+              const lv=climLevel(v,rr,tol);
+              return <span key={n} style={{display:"flex",alignItems:"center",gap:5,fontSize:15,fontWeight:800,color:levelColor(lv?.k),fontVariantNumeric:"tabular-nums"}}><Icon n={n} size={16} sw={2}/>{fmtNum(v,d)}{u}</span>;})}
+          </div>:<div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Sin lectura de sensor</div>}
+        </div>;})}
+    </Fold>}
+
+    {stats.soil&&stats.soil.length>0&&<Fold icon="vege" title="Balance del suelo">
+      {stats.soil.map((s,i)=><div key={s.room} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.text}}>{s.name}</div>
+          <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Último reset: {s.lastReset?fmtDM(String(s.lastReset).slice(0,10)):"nunca"} · {s.closedCount} ciclo{s.closedCount===1?"":"s"} cerrado{s.closedCount===1?"":"s"}</div>
+        </div>
+        <span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:s.resetPending?C.amberLight:C.greenLight,color:s.resetPending?C.amber:C.green}}>{s.resetPending?"Reset pendiente":"Al día"}</span>
+      </div>)}
+      <div style={{fontSize:12.5,color:C.textSoft,marginTop:10,lineHeight:1.5}}>Conviene recargar el suelo (Reset Express) entre ciclos. Si una cosecha quedó sin reset, aparece pendiente. El cronograma se genera al cerrar el ciclo o desde la Guía.</div>
+    </Fold>}
+
+    <Fold icon="tareas" title="Trabajo del equipo">
+      <div style={{display:"flex",gap:8,margin:"4px 0 12px"}}>
+        {stat(`${stats.total>0?Math.round(stats.done/stats.total*100):0}%`,"tareas hechas")}{stat(stats.wCount,"riegos")}{stat(stats.nCount,"nutriciones")}
+      </div>
+      {Object.entries(stats.byUser).sort((a,b)=>b[1].total-a[1].total).map(([u,d],i)=>{
+        const max=Math.max(...Object.values(stats.byUser).map(x=>x.total),1);
+        return <div key={u} style={{marginTop:i?12:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontSize:14.5,fontWeight:700,color:C.text}}>{u}</span>
+            <span style={{fontSize:13.5,color:C.textMid,fontWeight:800}}>{d.done} de {d.total}</span>
+          </div>
+          <Bar value={d.total} max={max} color={C.blue} h={8}/>
+        </div>;})}
+      {Object.keys(stats.byUser).length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin tareas asignadas todavía.</div>}
+      <div style={{display:"flex",gap:8,marginTop:14}}>
+        {Object.entries(stats.wByRoom).map(([room,count])=><div key={room} style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"10px 12px"}}>
+          <div style={{fontSize:20,fontWeight:800,color:C.text}}>{count}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>riegos en {room}</div>
         </div>)}
       </div>
-      <div style={{fontSize:11.5,color:C.textSoft,marginTop:10,lineHeight:1.5}}>En tu sistema de alta rotación conviene recargar el suelo (Reset Express) entre ciclos. Si quedó una cosecha sin reset posterior, aparece como pendiente. El cronograma se genera solo al cerrar el ciclo o desde la Guía.</div>
-    </Card>}
-    {stats.genStats.length>0&&<Card>
-      <SL>🌾 Rendimiento por genética (ciclos cerrados)</SL>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {(()=>{const max=Math.max(...stats.genStats.map(g=>g.grams),1);return stats.genStats.map(g=>
-          <div key={g.name}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:700,color:C.text}}>{g.name}</span><span style={{fontSize:13,color:C.textMid,fontWeight:700}}>{g.grams} g{g.gpp?` · ${g.gpp} g/pl`:""}</span></div>
-            <Bar value={g.grams} max={max} color={C.green} h={7}/>
-          </div>);})()}
+    </Fold>
+  </div>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AGENDA — un mes de un vistazo: hitos de los ciclos y tareas
+// ══════════════════════════════════════════════════════════════════════════════
+function CalendarioPage({user,roomConfig}){
+  const [ref,setRef]=useState(()=>{const d=new Date();return {y:d.getFullYear(),m:d.getMonth()};});
+  const [tasks,setTasks]=useState([]);
+  const [milestones,setMilestones]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selDay,setSelDay]=useState(todayISO);
+
+  const monthStart=new Date(ref.y,ref.m,1);
+  const monthEnd=new Date(ref.y,ref.m+1,0);
+  const mm=String(ref.m+1).padStart(2,"0");
+  const startISO=`${ref.y}-${mm}-01`;
+  const endISO=`${ref.y}-${mm}-${String(monthEnd.getDate()).padStart(2,"0")}`;
+
+  const load=useCallback(()=>{
+    setLoading(true);
+    Promise.all([
+      db.query("tasks",`due_date=gte.${startISO}&due_date=lte.${endISO}&order=due_date.asc`),
+      db.query("cycle_milestones",`due_date=gte.${startISO}&due_date=lte.${endISO}`).catch(()=>[]),
+    ]).then(([t,m])=>{setTasks(t);setMilestones(m);}).catch(()=>{setTasks([]);setMilestones([]);}).finally(()=>setLoading(false));
+  },[startISO,endISO]);
+  useEffect(()=>{load();},[load]);
+
+  const HITOS={start:{l:"Inicio de floración",c:C.amber,ic:"vege"},cosecha:{l:"Cosecha",c:C.red,ic:"harvest"},lavado:{l:"Lavado",c:C.blue,ic:"water"},poda:{l:"Poda",c:C.purple,ic:"scissors"}};
+  const milesOf=ds=>milestones.filter(m=>m.due_date===ds&&HITOS[m.type]);
+  const tasksOf=ds=>tasks.filter(t=>t.due_date===ds);
+  const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const monthName=`${MESES[ref.m]} ${ref.y}`;
+  const firstWeekday=(monthStart.getDay()+6)%7;   // la semana arranca el lunes
+  const cells=[];
+  for(let i=0;i<firstWeekday;i++)cells.push(null);
+  for(let d=1;d<=monthEnd.getDate();d++)cells.push(`${ref.y}-${mm}-${String(d).padStart(2,"0")}`);
+  const prevMonth=()=>setRef(r=>r.m===0?{y:r.y-1,m:11}:{y:r.y,m:r.m-1});
+  const nextMonth=()=>setRef(r=>r.m===11?{y:r.y+1,m:0}:{y:r.y,m:r.m+1});
+  const dayTasks=tasksOf(selDay);
+  const dayMiles=milesOf(selDay);
+  const hitosMes=milestones.filter(m=>HITOS[m.type]).sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date)));
+  const tone=r=>r==="S1"?C.amber:r==="S2"?C.blue:r==="Vegetativo"?C.green:C.textSoft;
+  const roomShort=r=>r==="Vegetativo"?"Vege":(r||"General");
+  const DIAS_L=["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+  const selLabel=selDay===todayISO?"Hoy":`${DIAS_L[(new Date(selDay+"T12:00:00").getDay()+6)%7]} ${fmtDM(selDay)}`;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
+    <PageTitle>Agenda</PageTitle>
+    <Card style={{padding:"12px 12px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <button onClick={prevMonth} aria-label="Mes anterior" style={{width:40,height:40,borderRadius:12,border:`1px solid ${C.border}`,background:C.surfaceAlt,cursor:"pointer",color:C.textMid,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="back" size={20}/></button>
+        <span style={{fontSize:17,fontWeight:800,color:C.text}}>{monthName.charAt(0).toUpperCase()+monthName.slice(1)}</span>
+        <button onClick={nextMonth} aria-label="Mes siguiente" style={{width:40,height:40,borderRadius:12,border:`1px solid ${C.border}`,background:C.surfaceAlt,cursor:"pointer",color:C.textMid,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="chev" size={20}/></button>
       </div>
-      <div style={{fontSize:11.5,color:C.textSoft,marginTop:10,lineHeight:1.5}}>Se nutre de los gramos por genética cargados al cerrar cada ciclo.</div>
-    </Card>}
-    {stats.cycleStats.length>0&&<Card>
-      <SL>📦 Ciclos cerrados</SL>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {stats.cycleStats.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:C.bg,borderRadius:12,border:`1px solid ${C.border}`}}>
-          <div style={{width:42,height:42,borderRadius:10,background:C.greenLight,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <div style={{fontSize:11,fontWeight:800,color:C.green}}>{c.room}</div>
-          </div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.grams?`${c.grams} g`:"Sin rendimiento"}{c.gm2?` · ${c.gm2} g/m²`:""}{c.gpp?` · ${c.gpp} g/planta`:""}</div>
-            <div style={{fontSize:12,color:C.textSoft,marginTop:2}}>
-              {c.plants} plantas{c.closed_at?` · cerrado ${fmtDate(c.closed_at)}`:""}
-              {c.realDays!=null?` · ${c.realDays}d real${c.estDays!=null?` vs ${c.estDays}d est.`:""}`:""}
-            </div>
-          </div>
-          {c.realDays!=null&&c.estDays!=null&&<Badge label={c.realDays>c.estDays?`+${c.realDays-c.estDays}d`:c.realDays<c.estDays?`${c.realDays-c.estDays}d`:"en fecha"} color={c.realDays===c.estDays?C.green:C.amber} bg={c.realDays===c.estDays?C.greenLight:C.amberLight}/>}
-        </div>)}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>
+        {["L","M","M","J","V","S","D"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:11.5,fontWeight:800,color:C.textSoft}}>{d}</div>)}
       </div>
-    </Card>}
-    <Card>
-      <SL>Riegos por sala</SL>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        {Object.entries(stats.wByRoom).map(([room,count])=><div key={room} style={{background:C.bg,borderRadius:12,padding:14,textAlign:"center",border:`1px solid ${C.border}`}}>
-          <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>{room}</div>
-          <div style={{fontSize:36,fontWeight:900,color:C.blue,fontFamily:H}}>{count}</div>
-          <div style={{fontSize:11,color:C.textSoft}}>riegos</div>
-        </div>)}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+        {cells.map((ds,i)=>{
+          if(!ds)return <div key={i}/>;
+          const dt=tasksOf(ds);const ms=milesOf(ds);const hito=ms[0]?HITOS[ms[0].type]:null;
+          const isToday=ds===todayISO;const isSel=ds===selDay;
+          const pend=dt.some(t=>t.status==="pendiente");
+          const dotColor=dt.length===0?null:pend?(ds<todayISO?C.red:C.amber):C.green;
+          return <button key={i} onClick={()=>setSelDay(ds)} aria-label={`${+ds.slice(-2)}, ${dt.length} tareas`} style={{aspectRatio:"1",borderRadius:12,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,position:"relative",
+            border:isSel?`2px solid ${C.green}`:`1px solid ${hito?hito.c+"55":C.border}`,background:isSel?C.greenLight:hito?hito.c+"14":isToday?C.surfaceAlt:"transparent"}}>
+            <span style={{fontSize:14.5,fontWeight:isToday||isSel||hito?800:600,color:hito?hito.c:isToday?C.green:C.text,fontVariantNumeric:"tabular-nums"}}>{+ds.slice(-2)}</span>
+            <span style={{display:"flex",gap:2,height:5,alignItems:"center"}}>
+              {hito&&<span style={{width:5,height:5,borderRadius:"50%",background:hito.c}}/>}
+              {dotColor&&<span style={{width:5,height:5,borderRadius:"50%",background:dotColor}}/>}
+            </span>
+          </button>;
+        })}
+      </div>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:14,fontSize:12,color:C.textSoft,fontWeight:600}}>
+        {[[C.purple,"hito del ciclo"],[C.amber,"tareas pendientes"],[C.green,"todo hecho"],[C.red,"vencidas"]].map(([c,l])=><span key={l} style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:c}}/>{l}</span>)}
       </div>
     </Card>
+
+    <div style={{fontSize:18,fontWeight:800,color:C.text,margin:"10px 2px 0"}}>{selLabel}</div>
+    {dayMiles.length>0&&<Card style={{padding:0,overflow:"hidden"}}>
+      {dayMiles.map((m,i)=>{const h=HITOS[m.type];return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",borderTop:i?`1px solid ${C.border}`:"none"}}>
+        <span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:h.c+"1F",color:h.c,flexShrink:0}}><Icon n={h.ic} size={20}/></span>
+        <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15,fontWeight:800,color:C.text}}>{m.label||h.l}</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Hito del ciclo{m.room_id?` · ${roomShort(m.room_id)}`:""}</span></span>
+      </div>;})}
+    </Card>}
+    {loading?<Spin/>:<Card style={{padding:0,overflow:"hidden"}}>
+      {dayTasks.length===0&&<div style={{padding:"20px 16px",textAlign:"center",color:C.textSoft,fontSize:14}}>Sin tareas este día.</div>}
+      {dayTasks.map((t,i)=>{
+        const hecha=t.status==="completada";
+        return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",minHeight:60,borderTop:i?`1px solid ${C.border}`:"none"}}>
+          <span style={{width:28,height:28,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:hecha?C.green:"transparent",boxShadow:hecha?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:C.onAccent}}>{hecha&&<Icon n="check" size={16} sw={2.6}/>}</span>
+          <span style={{flex:1,minWidth:0}}>
+            <span style={{display:"block",fontSize:15,fontWeight:700,color:hecha?C.textSoft:C.text,textDecoration:hecha?"line-through":"none"}}>{t.title}</span>
+            {t.assignee&&<span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{t.assignee}</span>}
+          </span>
+          <span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,color:tone(t.room_id),background:`${tone(t.room_id)}1F`,flexShrink:0}}>{roomShort(t.room_id)}</span>
+        </div>;})}
+    </Card>}
+    {dayTasks.length>0&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,padding:"0 2px"}}>Para marcarlas o editarlas, entrá a Tareas.</div>}
+
+    {hitosMes.length>0&&<Fold icon="calendar" title="Hitos del mes" count={hitosMes.length}>
+      {hitosMes.map((m,i)=>{const h=HITOS[m.type];return <button key={i} onClick={()=>setSelDay(m.due_date)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+        <span style={{color:h.c}}><Icon n={h.ic} size={20}/></span>
+        <span style={{flex:1,minWidth:0,fontSize:14.5,fontWeight:700,color:C.text}}>{m.label||h.l}{m.room_id?<span style={{color:C.textSoft,fontWeight:600}}> · {roomShort(m.room_id)}</span>:null}</span>
+        <span style={{fontSize:14,fontWeight:800,color:C.textMid}}>{fmtDM(m.due_date)}</span>
+      </button>;})}
+    </Fold>}
+  </div>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BITÁCORA — notas del día, agrupadas por fecha
+// ══════════════════════════════════════════════════════════════════════════════
+function BitacoraPage({user}){
+  const [entries,setEntries]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [draft,setDraft]=useState("");
+  const [entryDate,setEntryDate]=useState(todayISO);
+  const [saving,setSaving]=useState(false);
+  const [showNew,setShowNew]=useState(false);
+  const [sel,setSel]=useState(null);
+  const [delE,setDelE]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [toast,setToast]=useState(null);
+  const [err,setErr]=useState(null);
+
+  const load=useCallback(()=>{
+    setLoading(true);
+    db.query("bitacora","order=entry_date.desc,created_at.desc").then(r=>{setEntries(r);setErr(null);}).catch(e=>{setEntries([]);setErr(errMsg(e));}).finally(()=>setLoading(false));
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const save=async()=>{
+    if(!draft.trim()||saving)return;
+    setSaving(true);
+    try{
+      await db.insert("bitacora",{entry_date:entryDate,author:user.name,content:draft.trim(),processed:false});
+      await logA(user.name,"Anotó en la bitácora","bitacora");
+      setDraft("");setShowNew(false);setEntryDate(todayISO);load();setToast({msg:"Nota guardada ✓",type:"success"});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}
+    finally{setSaving(false);}
+  };
+  const borrar=async()=>{
+    const e=delE;if(!e)return;setBusy(true);
+    try{await db.delete("bitacora",e.id);setEntries(prev=>prev.filter(x=>x.id!==e.id));setDelE(null);setSel(null);setToast({msg:"Nota borrada",type:"success"});}
+    catch(ex){setToast({msg:errMsg(ex),type:"error"});}finally{setBusy(false);}
+  };
+
+  // Las notas se agrupan por día para que el scroll sea el de un cuaderno.
+  const byDate={};entries.forEach(e=>{(byDate[e.entry_date]=byDate[e.entry_date]||[]).push(e);});
+  const dates=Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+  const DIAS_L=["lunes","martes","miércoles","jueves","viernes","sábado","domingo"];
+  const dLabel=d=>{
+    if(d===todayISO)return "Hoy";
+    if(d===addDays(todayISO,-1))return "Ayer";
+    const dt=new Date(d+"T12:00:00");
+    return `${DIAS_L[(dt.getDay()+6)%7]} ${fmtDM(d)}`;
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    {delE&&<ConfirmModal title="¿Borrar esta nota?" text="No se puede deshacer." busy={busy} onClose={()=>setDelE(null)} onConfirm={borrar}/>}
+    {sel&&!delE&&<Sheet title={dLabel(sel.entry_date)} sub={`${sel.author||"—"}${sel.entry_date!==todayISO?` · ${fmtDM(sel.entry_date)}`:""}`} onClose={()=>setSel(null)}>
+      <div style={{fontSize:15,color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap",marginTop:8}}>{sel.content}</div>
+      <Btn v="danger" full onClick={()=>setDelE(sel)} style={{marginTop:18,minHeight:48}}>Borrar nota</Btn>
+    </Sheet>}
+    {showNew&&<Sheet title="Nueva nota" sub="Lo que hiciste y lo que viste hoy." onClose={()=>setShowNew(false)}>
+      <div style={{marginTop:12}}><FI label="Fecha" type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></div>
+      <textarea value={draft} onChange={e=>setDraft(e.target.value)} rows={6} autoFocus placeholder="Ej: Regué S1 y S2. Vi cochinillas en la mesa D. Las número 20, 13 y 10 quedan en observación por posible polen."
+        style={{width:"100%",minHeight:140,resize:"vertical",border:"none",borderRadius:16,background:C.surfaceAlt,boxShadow:`inset 0 0 0 1.5px ${C.borderStrong}`,padding:"14px 16px",fontSize:16,fontWeight:500,lineHeight:1.5,color:C.text,fontFamily:"inherit",outline:"none"}}/>
+      <Btn full onClick={save} disabled={saving||!draft.trim()} style={{marginTop:14,minHeight:52}}>{saving?"Guardando...":"Guardar nota"}</Btn>
+    </Sheet>}
+
+    <PageTitle right={<button onClick={()=>{setEntryDate(todayISO);setShowNew(true);}} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nota</button>}
+      sub="El cuaderno del cultivo: lo que hiciste y lo que viste, día por día.">Bitácora</PageTitle>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:12,padding:"10px 14px",fontSize:13}}>{err}</div>}
+
+    {loading?<Spin/>:dates.length===0?<Card style={{padding:"26px 18px",textAlign:"center"}}>
+      <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="notebook" size={30}/></div>
+      <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Todavía no hay notas</div>
+      <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Tocá “Nota” y escribí la primera.</div>
+    </Card>:dates.map(d=><div key={d}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"14px 2px 8px"}}>
+        <div style={{fontSize:16,fontWeight:800,color:d===todayISO?C.green:C.text}}>{dLabel(d)}</div>
+        <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{byDate[d].length} nota{byDate[d].length===1?"":"s"}</span>
+      </div>
+      <Card style={{padding:0,overflow:"hidden"}}>
+        {byDate[d].map((e,i)=><button key={e.id} onClick={()=>setSel(e)} style={{display:"block",width:"100%",padding:"13px 15px",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+            <span style={{width:24,height:24,borderRadius:"50%",background:C.greenLight,color:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>{(e.author||"?")[0]}</span>
+            <span style={{fontSize:12.5,fontWeight:700,color:C.textSoft}}>{e.author||"—"}</span>
+          </div>
+          <div style={{fontSize:14.5,color:C.text,lineHeight:1.55,whiteSpace:"pre-wrap",display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{e.content}</div>
+        </button>)}
+      </Card>
+    </div>)}
   </div>;
 }
 
@@ -4970,522 +5187,6 @@ function PlagasPage({user,rooms}){
         </Card>;
       })}
     </div>}
-  </div>;
-}
-
-// CALENDARIO — vista mensual + historial de lo hecho
-function CalendarioPage({user}){
-  const [ref,setRef]=useState(()=>{const d=new Date();return {y:d.getFullYear(),m:d.getMonth()};});
-  const [tasks,setTasks]=useState([]);
-  const [milestones,setMilestones]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [selDay,setSelDay]=useState(todayISO);
-
-  const monthStart=new Date(ref.y,ref.m,1);
-  const monthEnd=new Date(ref.y,ref.m+1,0);
-  const startISO=`${ref.y}-${String(ref.m+1).padStart(2,"0")}-01`;
-  const endISO=`${ref.y}-${String(ref.m+1).padStart(2,"0")}-${String(monthEnd.getDate()).padStart(2,"0")}`;
-
-  const load=useCallback(()=>{
-    setLoading(true);
-    Promise.all([
-      db.query("tasks",`due_date=gte.${startISO}&due_date=lte.${endISO}&order=due_date.asc`),
-      db.query("cycle_milestones",`due_date=gte.${startISO}&due_date=lte.${endISO}`),
-    ]).then(([t,m])=>{setTasks(t);setMilestones(m);}).catch(()=>{setTasks([]);setMilestones([]);}).finally(()=>setLoading(false));
-  },[startISO,endISO]);
-  useEffect(()=>{load();},[load]);
-
-  // Tipos de hito que se marcan de forma destacada
-  const HITO_TYPES={start:{l:"Inicio floración",c:"#B8860B",icon:"🌼"},cosecha:{l:"Cosecha",c:"#B83228",icon:"✂️"},lavado:{l:"Lavado",c:"#1E5FAD",icon:"💧"},poda:{l:"Poda",c:"#6B4FA0",icon:"🌿"}};
-  const milesOf=(ds)=>milestones.filter(m=>m.due_date===ds&&HITO_TYPES[m.type]);
-
-  const monthName=monthStart.toLocaleDateString("es-AR",{month:"long",year:"numeric"});
-  // construir grilla: empezar en lunes
-  const firstWeekday=(monthStart.getDay()+6)%7; // 0=lunes
-  const daysInMonth=monthEnd.getDate();
-  const cells=[];
-  for(let i=0;i<firstWeekday;i++)cells.push(null);
-  for(let d=1;d<=daysInMonth;d++)cells.push(`${ref.y}-${String(ref.m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`);
-
-  const tasksOf=(ds)=>tasks.filter(t=>t.due_date===ds);
-  const dayTasks=tasksOf(selDay);
-  const prevMonth=()=>setRef(r=>r.m===0?{y:r.y-1,m:11}:{y:r.y,m:r.m-1});
-  const nextMonth=()=>setRef(r=>r.m===11?{y:r.y+1,m:0}:{y:r.y,m:r.m+1});
-
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Agenda</div>
-    <Card style={{padding:"14px 14px 18px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <button onClick={prevMonth} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,width:36,height:36,cursor:"pointer",fontSize:16,color:C.textMid}}>‹</button>
-        <span style={{fontSize:16,fontWeight:800,color:C.text,textTransform:"capitalize"}}>{monthName}</span>
-        <button onClick={nextMonth} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,width:36,height:36,cursor:"pointer",fontSize:16,color:C.textMid}}>›</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
-        {["L","M","M","J","V","S","D"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:10,fontWeight:700,color:C.textSoft,padding:"2px 0"}}>{d}</div>)}
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
-        {cells.map((ds,i)=>{
-          if(!ds)return <div key={i}/>;
-          const dt=tasksOf(ds);
-          const ms=milesOf(ds);
-          const topHito=ms[0]?HITO_TYPES[ms[0].type]:null;
-          const isToday=ds===todayISO;
-          const isSel=ds===selDay;
-          const allDone=dt.length>0&&dt.every(t=>t.status==="completada");
-          const hasPend=dt.some(t=>t.status==="pendiente");
-          const ringColor=topHito?topHito.c:isSel?C.green:isToday?C.borderStrong:"transparent";
-          return <button key={i} onClick={()=>setSelDay(ds)} style={{aspectRatio:"1",borderRadius:9,border:`${topHito?2.5:1.5}px solid ${ringColor}`,background:isSel?C.greenLight:topHito?topHito.c+"18":isToday?C.bg:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1,padding:0,position:"relative"}}>
-            {topHito&&<span style={{position:"absolute",top:1,right:2,fontSize:9}}>{topHito.icon}</span>}
-            <span style={{fontSize:13,fontWeight:isToday||isSel||topHito?800:500,color:topHito?topHito.c:isToday?C.green:C.text}}>{+ds.slice(-2)}</span>
-            {dt.length>0&&<span style={{width:5,height:5,borderRadius:"50%",background:allDone?C.green:hasPend?C.amber:C.blue}}/>}
-          </button>;
-        })}
-      </div>
-    </Card>
-
-    <div>
-      <SL>{selDay===todayISO?"Hoy":fmtDate(selDay)}</SL>
-      {milesOf(selDay).length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-        {milesOf(selDay).map((m,idx)=>{const h=HITO_TYPES[m.type];return <div key={idx} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:h.c+"18",border:`2px solid ${h.c}`}}>
-          <div style={{width:30,height:30,borderRadius:8,background:h.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{h.icon}</div>
-          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:800,color:h.c}}>{m.label||h.l}</div><div style={{fontSize:11,color:C.textSoft}}>Hito del ciclo</div></div>
-        </div>;})}
-      </div>}
-      <div style={{fontSize:12,color:C.textSoft,marginBottom:8}}>{dayTasks.length} tarea{dayTasks.length!==1?"s":""}</div>
-      {loading?<Spin/>:dayTasks.length===0
-        ?<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"24px 0"}}>Sin tareas este día</div>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {dayTasks.map(t=>{const tm=TM[t.type]||TM.revision;return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:t.status==="completada"?C.greenLight:C.surface,border:`1px solid ${C.border}`,opacity:t.status==="completada"?0.7:1,boxShadow:C.shadow}}>
-            <div style={{width:30,height:30,borderRadius:8,background:tm.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>{tm.icon}</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,textDecoration:t.status==="completada"?"line-through":"none"}}>{t.title}</div>
-              <div style={{fontSize:11,color:C.textSoft}}>{t.room_id?`${t.room_id} · `:""}{t.assignee}{t.completed_at?` · hecho ${fmtDate(t.completed_at.split("T")[0])}`:""}</div>
-            </div>
-            {t.status==="completada"?<span style={{fontSize:11,color:C.green,fontWeight:700}}>✓ Hecho</span>:<span style={{fontSize:11,color:C.amber,fontWeight:700}}>Pendiente</span>}
-          </div>;})}
-        </div>}
-    </div>
-
-    <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap",fontSize:11,color:C.textSoft,paddingTop:4}}>
-      <span><span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:C.green,marginRight:4}}/>Todo hecho</span>
-      <span><span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:C.amber,marginRight:4}}/>Pendiente</span>
-      <span>🌼✂️ Hitos del ciclo</span>
-    </div>
-  </div>;
-}
-
-// COMPRAS / FALTANTES
-function ComprasPage({user}){
-  const [items,setItems]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [showForm,setShowForm]=useState(false);
-  const [showDone,setShowDone]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [toast,setToast]=useState(null);
-  const [newI,setNewI]=useState({name:"",category:"general",quantity:"",notes:""});
-  const CATS=["general","limpieza","insumos","herramientas","fertilizantes","otros"];
-  const CAT_ICON={general:"📦",limpieza:"🧽",insumos:"🌿",herramientas:"🔧",fertilizantes:"🧪",otros:"📌"};
-
-  const load=useCallback(()=>{
-    setLoading(true);
-    db.query("shopping_items","order=created_at.desc").then(setItems).catch(()=>setItems([])).finally(()=>setLoading(false));
-  },[]);
-  useEffect(()=>{load();},[load]);
-
-  const add=async()=>{
-    if(!newI.name.trim())return;
-    setSaving(true);
-    try{
-      const ins=await db.insert("shopping_items",{name:newI.name.trim(),category:newI.category,quantity:newI.quantity||null,notes:newI.notes||null,status:"pendiente",requested_by:user.name});
-      await logA(user.name,`Pidió comprar: ${newI.name}`,"compras");
-      setItems(prev=>[ins[0],...prev]);setShowForm(false);
-      setNewI({name:"",category:"general",quantity:"",notes:""});
-      setToast({msg:"Agregado ✓",type:"success"});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-  const toggle=async(it)=>{
-    const ns=it.status==="comprado"?"pendiente":"comprado";
-    await db.update("shopping_items",it.id,{status:ns,purchased_by:ns==="comprado"?user.name:null,purchased_at:ns==="comprado"?new Date().toISOString():null});
-    await logA(user.name,`${ns==="comprado"?"Compró":"Reabrió"}: ${it.name}`,"compras");
-    setItems(prev=>prev.map(x=>x.id===it.id?{...x,status:ns,purchased_by:ns==="comprado"?user.name:null}:x));
-    const undo=async()=>{
-      await db.update("shopping_items",it.id,{status:it.status,purchased_by:it.purchased_by||null,purchased_at:it.purchased_at||null});
-      setItems(prev=>prev.map(x=>x.id===it.id?{...x,status:it.status,purchased_by:it.purchased_by}:x));
-    };
-    setToast({msg:ns==="comprado"?"Marcado comprado ✓":"Reabierto",type:"success",undo});
-  };
-  const del=async(it)=>{
-    if(!window.confirm(`¿Eliminar "${it.name}" de la lista?`))return;
-    await db.delete("shopping_items",it.id);
-    setItems(prev=>prev.filter(x=>x.id!==it.id));setToast({msg:"Eliminado",type:"success"});
-  };
-
-  const pending=items.filter(i=>i.status==="pendiente");
-  const bought=items.filter(i=>i.status==="comprado");
-
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Compras</div>
-      <Btn onClick={()=>setShowForm(!showForm)}>+ Agregar</Btn>
-    </div>
-    <div style={{fontSize:13,color:C.textSoft}}>Anotá lo que falta comprar — cualquiera puede agregar y marcar como comprado.</div>
-
-    {showForm&&<Card>
-      <SL>¿Qué falta?</SL>
-      <FI label="Producto *" value={newI.name} onChange={e=>setNewI(p=>({...p,name:e.target.value}))} placeholder="Ej: Lavandina, guantes, perlita..."/>
-      <FS label="Categoría" value={newI.category} onChange={e=>setNewI(p=>({...p,category:e.target.value}))} options={CATS}/>
-      <FI label="Cantidad (opcional)" value={newI.quantity} onChange={e=>setNewI(p=>({...p,quantity:e.target.value}))} placeholder="Ej: 2 litros, 1 unidad"/>
-      <FT label="Notas (opcional)" value={newI.notes} onChange={e=>setNewI(p=>({...p,notes:e.target.value}))} placeholder="Marca preferida, dónde comprarlo, etc." rows={2}/>
-      <div style={{display:"flex",gap:10}}><Btn onClick={add} disabled={saving||!newI.name.trim()} style={{flex:1}}>{saving?"Guardando...":"Agregar"}</Btn><Btn onClick={()=>setShowForm(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-    </Card>}
-
-    {loading?<Spin/>:<>
-      <SL>Por comprar ({pending.length})</SL>
-      {pending.length===0
-        ?<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"16px 0"}}>Nada pendiente 👌</div>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {pending.map(it=><div key={it.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px",borderRadius:14,background:C.surface,border:`1.5px solid ${C.border}`,boxShadow:C.shadow}}>
-            <button onClick={()=>toggle(it)} style={{width:28,height:28,borderRadius:9,flexShrink:0,background:"transparent",border:`2px solid ${C.borderStrong}`,cursor:"pointer"}}/>
-            <div style={{width:34,height:34,borderRadius:9,background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{CAT_ICON[it.category]||"📦"}</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text}}>{it.name}{it.quantity?<span style={{color:C.textSoft,fontWeight:500}}> · {it.quantity}</span>:""}</div>
-              <div style={{fontSize:11,color:C.textSoft}}>{it.category} · pidió {it.requested_by}{it.notes?` · ${it.notes}`:""}</div>
-            </div>
-            <button onClick={()=>del(it)} style={{background:"transparent",border:"none",color:C.red,fontSize:11,cursor:"pointer"}}>✕</button>
-          </div>)}
-        </div>}
-
-      {bought.length>0&&<>
-        <button onClick={()=>setShowDone(!showDone)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:C.textSoft,display:"flex",alignItems:"center",gap:6,padding:"4px 0",marginTop:8}}>{showDone?"▲":"▼"} Comprados ({bought.length})</button>
-        {showDone&&<div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.65}}>
-          {bought.map(it=><div key={it.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 15px",borderRadius:14,background:C.greenLight,border:`1px solid ${C.green}33`}}>
-            <button onClick={()=>toggle(it)} style={{width:26,height:26,borderRadius:8,flexShrink:0,background:C.green,border:"none",cursor:"pointer",color:"#fff",fontSize:14}}>✓</button>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:600,color:C.text,textDecoration:"line-through"}}>{it.name}{it.quantity?` · ${it.quantity}`:""}</div>
-              <div style={{fontSize:11,color:C.textSoft}}>comprado por {it.purchased_by||"?"}</div>
-            </div>
-            <button onClick={()=>del(it)} style={{background:"transparent",border:"none",color:C.red,fontSize:11,cursor:"pointer"}}>✕</button>
-          </div>)}
-        </div>}
-      </>}
-    </>}
-  </div>;
-}
-
-// CONFIGURACIÓN (solo admins)
-function ConfigPage({user,roomConfig,onChanged,textScale,setTextScale,theme,setTheme}){
-  const [tab,setTab]=useState("salas");
-  const [rows,setRows]=useState([]);
-  const [cloners,setCloners]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [toast,setToast]=useState(null);
-  const [saving,setSaving]=useState(false);
-  const [showAddRoom,setShowAddRoom]=useState(false);
-  const [showAddCloner,setShowAddCloner]=useState(false);
-  const [newRoom,setNewRoom]=useState({room_id:"",display_name:"",irrigation_type:"manual"});
-  const [newCloner,setNewCloner]=useState({label:"",capacity:48});
-
-  const load=useCallback(async()=>{
-    setLoading(true);
-    try{
-      let rc=await db.get("room_config");
-      // Garantizar que S1 y S2 existan siempre
-      const have=rc.map(r=>r.room_id);
-      const seed=[{room_id:"S1",display_name:"Sala 1",irrigation_type:"automático",sort_order:0},{room_id:"S2",display_name:"Sala 2",irrigation_type:"manual",sort_order:1}].filter(s=>!have.includes(s.room_id));
-      if(seed.length>0){
-        for(const s of seed){try{await db.insert("room_config",{...s,...RC_DEFAULTS});}catch{}}
-        rc=await db.get("room_config");
-      }
-      // Mostrar solo S1 y S2 (sacamos salas extra como la S3 dormida)
-      rc=rc.filter(r=>r.room_id==="S1"||r.room_id==="S2");
-      const cl=await db.get("cloners");
-      setRows(rc.sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)));setCloners(cl);
-    }finally{setLoading(false);}
-  },[]);
-  useEffect(()=>{load();},[load]);
-
-  if(user.role!=="admin")return <div style={{textAlign:"center",padding:"40px 20px",color:C.textSoft}}>Solo administradores</div>;
-
-  const setField=(id,field,val)=>setRows(prev=>prev.map(r=>r.id===id?{...r,[field]:val}:r));
-  const saveRoom=async(r)=>{
-    setSaving(true);
-    try{
-      await db.update("room_config",r.id,{
-        display_name:r.display_name,
-        flower_days:+r.flower_days||65,flush_days:+r.flush_days||20,
-        harvest_days:+r.harvest_days||5,veg_days:+r.veg_days||0,
-        area_m2:r.area_m2===""||r.area_m2==null?null:+r.area_m2,
-        volume_l:r.volume_l===""||r.volume_l==null?null:+r.volume_l,
-        temp_min:r.temp_min===""||r.temp_min==null?null:+r.temp_min,
-        temp_max:r.temp_max===""||r.temp_max==null?null:+r.temp_max,
-        hum_min:r.hum_min===""||r.hum_min==null?null:+r.hum_min,
-        hum_max:r.hum_max===""||r.hum_max==null?null:+r.hum_max,
-        irrigation_type:r.irrigation_type||"manual",
-      });
-      await logA(user.name,`Configuró sala ${r.room_id}`,"config");
-      setToast({msg:"Guardado ✓",type:"success"});
-      onChanged&&onChanged();
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-  const addRoom=async()=>{
-    if(!newRoom.room_id.trim())return;
-    setSaving(true);
-    try{
-      await db.insert("room_config",{room_id:newRoom.room_id.trim(),display_name:newRoom.display_name.trim()||newRoom.room_id.trim(),irrigation_type:newRoom.irrigation_type,sort_order:rows.length,...RC_DEFAULTS});
-      await logA(user.name,`Creó sala ${newRoom.room_id}`,"config");
-      setNewRoom({room_id:"",display_name:"",irrigation_type:"manual"});
-      setShowAddRoom(false);setToast({msg:"Sala creada ✓",type:"success"});
-      load();onChanged&&onChanged();
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-  const delRoom=async(r)=>{
-    if(!window.confirm(`¿Eliminar la sala ${r.room_id}? Esto borra su configuración (no los ciclos ni registros).`))return;
-    await db.delete("room_config",r.id);
-    await logA(user.name,`Eliminó sala ${r.room_id}`,"config");
-    setRows(prev=>prev.filter(x=>x.id!==r.id));setToast({msg:"Sala eliminada",type:"success"});
-    onChanged&&onChanged();
-  };
-  const saveCloner=async(cl)=>{
-    setSaving(true);
-    try{await db.update("cloners",cl.id,{label:cl.label,capacity:+cl.capacity||48});setToast({msg:"Esquejera guardada ✓",type:"success"});}
-    catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-  const setClonerField=(id,field,val)=>setCloners(prev=>prev.map(c=>c.id===id?{...c,[field]:val}:c));
-  const addCloner=async()=>{
-    if(!newCloner.label.trim())return;
-    setSaving(true);
-    try{
-      await db.insert("cloners",{label:newCloner.label.trim(),capacity:+newCloner.capacity||48});
-      setNewCloner({label:"",capacity:48});setShowAddCloner(false);setToast({msg:"Esquejera creada ✓",type:"success"});load();
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-  const delCloner=async(cl)=>{
-    if(!window.confirm(`¿Eliminar ${cl.label}? Se borran sus slots.`))return;
-    await db.deleteWhere("cloner_slots","cloner_id",cl.id);
-    await db.delete("cloners",cl.id);
-    setCloners(prev=>prev.filter(c=>c.id!==cl.id));setToast({msg:"Esquejera eliminada",type:"success"});
-  };
-
-  const numField=(r,field,label)=>(
-    <label style={{display:"flex",flexDirection:"column",gap:4,fontSize:11,color:C.textSoft}}>
-      {label}
-      <NumField value={r[field]??""} onCommit={v=>setField(r.id,field,v)} min={0}/>
-    </label>
-  );
-
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Configuración</div>
-    {setTheme&&<ThemeControl theme={theme} setTheme={setTheme}/>}
-    {setTextScale&&<TextScaleControl textScale={textScale} setTextScale={setTextScale}/>}
-    <div style={{display:"flex",gap:8}}>
-      {[{id:"salas",l:"🏠 Salas"},{id:"clima",l:"🌡 Clima"},{id:"esquejeras",l:"🌿 Esquejeras"}].map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"11px 6px",borderRadius:12,cursor:"pointer",fontSize:13,fontWeight:700,background:tab===t.id?C.green:C.surface,color:tab===t.id?"#fff":C.textMid,border:`1.5px solid ${tab===t.id?C.green:C.border}`}}>{t.l}</button>)}
-    </div>
-
-    {loading?<Spin/>:<>
-      {/* SALAS Y FASES */}
-      {tab==="salas"&&<>
-        {rows.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Cargando salas...</div>}
-        {rows.map(r=><Card key={r.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <Badge label={r.room_id} color={C.green} bg={C.greenLight}/>
-              <input value={r.display_name||""} onChange={e=>setField(r.id,"display_name",e.target.value)} placeholder="Nombre" style={{fontSize:16,fontWeight:800,color:C.text,border:"none",borderBottom:`1.5px solid ${C.border}`,background:"transparent",outline:"none",padding:"2px 0",maxWidth:140}}/>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            {numField(r,"flower_days","Días floración")}
-            {numField(r,"flush_days","Días lavado (antes cosecha)")}
-            {numField(r,"harvest_days","Días cosechando")}
-            {numField(r,"veg_days","Días vegetativo post-cosecha")}
-            {numField(r,"area_m2","Área cultivada (m²)")}
-            {numField(r,"volume_l","Volumen sustrato (L)")}
-          </div>
-          <FS label="Tipo de riego" value={r.irrigation_type||"manual"} onChange={e=>setField(r.id,"irrigation_type",e.target.value)} options={["manual","automático"]}/>
-          <Btn onClick={()=>saveRoom(r)} disabled={saving} full style={{marginTop:4}}>{saving?"Guardando...":"Guardar sala"}</Btn>
-        </Card>)}
-      </>}
-
-      {/* CLIMA — rangos ideales */}
-      {tab==="clima"&&<>
-        <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Definí los rangos ideales de temperatura (°C) y humedad (%) por sala. Se usarán como referencia visual cuando cargues mediciones.</div>
-        {rows.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Configurá una sala primero en la pestaña Salas</div>}
-        {rows.map(r=><Card key={r.id}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <Badge label={r.room_id} color={C.blue} bg={C.blueLight}/>
-            <span style={{fontSize:16,fontWeight:800,color:C.text}}>{r.display_name||r.room_id}</span>
-          </div>
-          <div style={{fontSize:13,color:C.textMid,lineHeight:1.55,background:C.bg,borderRadius:12,padding:"12px 14px",border:`1px solid ${C.border}`}}>
-            Los objetivos de temperatura y humedad ahora se definen <b>por etapa</b> (vega, flora temprana/media/tardía) y se editan desde cada sala: entrá a <b>{r.display_name||r.room_id}</b> → tarjeta de clima → <b>✎ Editar</b>. Estos rangos únicos por sala quedaron obsoletos.
-          </div>
-        </Card>)}
-      </>}
-
-      {/* ESPEJERAS */}
-      {tab==="esquejeras"&&<>
-        <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={()=>setShowAddCloner(!showAddCloner)} v="secondary" style={{fontSize:13}}>+ Agregar esquejera</Btn></div>
-        {showAddCloner&&<Card>
-          <SL>Nueva esquejera</SL>
-          <FI label="Nombre *" value={newCloner.label} onChange={e=>setNewCloner(p=>({...p,label:e.target.value}))} placeholder="Ej: Esquejera 4"/>
-          <NumField label="Capacidad" value={newCloner.capacity} onCommit={v=>setNewCloner(p=>({...p,capacity:v}))} min={1} max={200}/>
-          <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={addCloner} disabled={saving||!newCloner.label.trim()} style={{flex:1}}>{saving?"...":"Crear"}</Btn><Btn onClick={()=>setShowAddCloner(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-        </Card>}
-        {cloners.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"20px 0"}}>Sin esquejeras</div>}
-        {cloners.map(cl=><Card key={cl.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-            <span style={{fontSize:15,fontWeight:800,color:C.text}}>🌿</span>
-            <button onClick={()=>delCloner(cl)} style={{fontSize:11,color:C.red,background:"transparent",border:"none",cursor:"pointer"}}>Eliminar</button>
-          </div>
-          <FI label="Nombre" value={cl.label||""} onChange={e=>setClonerField(cl.id,"label",e.target.value)}/>
-          <NumField label="Capacidad (slots)" value={cl.capacity??48} onCommit={v=>setClonerField(cl.id,"capacity",v)} min={1} max={200}/>
-          <Btn onClick={()=>saveCloner(cl)} disabled={saving} full style={{marginTop:4}}>{saving?"Guardando...":"Guardar esquejera"}</Btn>
-        </Card>)}
-      </>}
-    </>}
-  </div>;
-}
-
-// BOT (Groq vía Edge Function) — chat reutilizable (página + panel flotante)
-// currentPage: contexto de la pantalla actual para el bot.
-// Maneja el patrón de confirmación (pendingAction) para acciones de Nivel 2.
-// BITÁCORA — notas libres del día que la IA traduce a tareas/avisos
-function BitacoraPage({user}){
-  const [entries,setEntries]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [draft,setDraft]=useState("");
-  const [entryDate,setEntryDate]=useState(todayISO);
-  const [saving,setSaving]=useState(false);
-  const [proc,setProc]=useState(null);
-  const [plan,setPlan]=useState(null);
-  const [planEntry,setPlanEntry]=useState(null);
-  const [applying,setApplying]=useState(false);
-  const [toast,setToast]=useState(null);
-
-  const load=()=>{setLoading(true);db.query("bitacora","order=created_at.desc").then(setEntries).catch(()=>setEntries([])).finally(()=>setLoading(false));};
-  useEffect(load,[]);
-
-  const save=async()=>{
-    if(!draft.trim()||saving)return;
-    setSaving(true);
-    try{
-      await db.insert("bitacora",{entry_date:entryDate,author:user.name,content:draft.trim(),processed:false});
-      await logA(user.name,"Anotó en la bitácora","bitacora");
-      setDraft("");load();setToast({msg:"Nota guardada ✓",type:"success"});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-
-  const process=async(entry)=>{
-    setProc(entry.id);
-    try{
-      const r=await fetch(`${SUPA_URL}/functions/v1/grow-bot`,{
-        method:"POST",headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},
-        body:JSON.stringify({user_name:user.name,mode:"bitacora",texto:entry.content,fecha:entry.entry_date}),
-      });
-      const data=await r.json();
-      if(data.error){setToast({msg:data.error,type:"error"});}
-      else if(data.plan){setPlan(data.plan);setPlanEntry(entry);}
-    }catch(e){setToast({msg:"No me pude conectar con el asistente.",type:"error"});}
-    finally{setProc(null);}
-  };
-
-  const applyPlan=async()=>{
-    if(!plan||!planEntry||applying)return;
-    setApplying(true);
-    const now=new Date().toISOString();
-    let nH=0,nN=0;
-    try{
-      // Tareas hechas: buscar pendiente que matchee sala+tipo y marcarla; si no hay, crearla ya hecha.
-      let pend=[];
-      try{pend=await db.query("tasks","status=eq.pendiente");}catch{pend=[];}
-      for(const h of (plan.hechas||[])){
-        const sala=h.sala||"S1";
-        const idx=pend.findIndex(t=>t.room_id===sala&&(t.type===h.tipo||(h.titulo&&t.title&&t.title.toLowerCase().includes(String(h.titulo).toLowerCase().slice(0,6)))));
-        if(idx>=0){await db.update("tasks",pend[idx].id,{status:"completada",completed_at:now});pend.splice(idx,1);}
-        else{await db.insert("tasks",{title:h.titulo||"Tarea",room_id:sala,rooms:sala,type:h.tipo||"revision",assignee:user.name,due_date:planEntry.entry_date,priority:"normal",status:"completada",completed_at:now,source:"bitacora",created_by:`bitácora (${user.name})`});}
-        nH++;
-      }
-      // Tareas nuevas: crear pendientes (con dedupe por título+sala+fecha).
-      for(const t of (plan.nuevas||[])){
-        const sala=t.sala||"S1";const due=t.fecha||planEntry.entry_date;const titulo=t.titulo||"Tarea";
-        let dup=[];try{dup=await db.query("tasks",`room_id=eq.${sala}&due_date=eq.${due}&title=eq.${encodeURIComponent(titulo)}`);}catch{}
-        if(dup&&dup.length)continue;
-        await db.insert("tasks",{title:titulo,room_id:sala,rooms:sala,type:t.tipo||"revision",assignee:user.name,due_date:due,priority:t.prioridad==="alta"?"alta":"normal",status:"pendiente",instructions:t.instrucciones||null,source:"bitacora",created_by:`bitácora (${user.name})`});
-        nN++;
-      }
-      const obs=(plan.observaciones||[]).filter(Boolean);
-      const resumen=`${nH} hecha(s), ${nN} nueva(s)${obs.length?` · ${obs.length} obs.`:""}`;
-      await db.update("bitacora",planEntry.id,{processed:true,processed_at:now,result:resumen+(obs.length?` — ${obs.join(" | ")}`:"")});
-      await logA(user.name,`Procesó bitácora: ${resumen}`,"bitacora");
-      setPlan(null);setPlanEntry(null);load();setToast({msg:`Aplicado: ${resumen} ✓`,type:"success"});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setApplying(false);}
-  };
-
-  const TM_={riego:"💧",nutricion:"🌱",poda:"✂️",fumigacion:"🔬",limpieza:"🧹",revision:"👁",cosecha:"🌾"};
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-    <div style={{paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>📓 Bitácora</div>
-      <div style={{fontSize:14,color:C.textSoft,marginTop:4,lineHeight:1.5}}>Anotá libre lo que hiciste y viste hoy. Después la IA lo ordena: marca hechas las tareas y crea las nuevas.</div>
-    </div>
-
-    {/* Modal de confirmación del plan */}
-    {plan&&<Modal title="🤖 Plan propuesto" onClose={()=>{setPlan(null);setPlanEntry(null);}}>
-      <div style={{fontSize:13,color:C.textSoft,marginBottom:14,lineHeight:1.5}}>Revisá antes de aplicar. Se marcarán hechas las tareas que ya hiciste y se crearán las nuevas.</div>
-      {(plan.hechas||[]).length>0&&<div style={{marginBottom:14}}>
-        <SL style={{color:C.green}}>✓ Marcar como hechas</SL>
-        {plan.hechas.map((h,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",background:C.greenLight,borderRadius:10,padding:"9px 12px",marginBottom:6}}>
-          <span>{TM_[h.tipo]||"✓"}</span><span style={{flex:1,fontSize:13.5,fontWeight:600,color:C.text}}>{h.titulo}</span>
-          {h.sala&&<Badge label={h.sala} color={C.green} bg={C.surface}/>}
-        </div>)}
-      </div>}
-      {(plan.nuevas||[]).length>0&&<div style={{marginBottom:14}}>
-        <SL style={{color:C.blue}}>+ Tareas nuevas</SL>
-        {plan.nuevas.map((t,i)=><div key={i} style={{background:C.blueLight,borderRadius:10,padding:"9px 12px",marginBottom:6}}>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}><span>{TM_[t.tipo]||"•"}</span><span style={{flex:1,fontSize:13.5,fontWeight:700,color:C.text}}>{t.titulo}</span>{t.sala&&<Badge label={t.sala} color={C.blue} bg={C.surface}/>}</div>
-          <div style={{fontSize:11.5,color:C.textSoft,marginTop:3}}>{t.fecha||planEntry?.entry_date}{t.prioridad==="alta"?" · alta":""}{t.instrucciones?` · ${t.instrucciones}`:""}</div>
-        </div>)}
-      </div>}
-      {(plan.observaciones||[]).length>0&&<div style={{marginBottom:14}}>
-        <SL>📝 Observaciones (se guardan)</SL>
-        {plan.observaciones.map((o,i)=><div key={i} style={{fontSize:13,color:C.textMid,background:C.bg,borderRadius:10,padding:"9px 12px",marginBottom:6,lineHeight:1.5}}>{o}</div>)}
-      </div>}
-      {!(plan.hechas||[]).length&&!(plan.nuevas||[]).length&&!(plan.observaciones||[]).length&&<div style={{fontSize:13.5,color:C.textSoft,fontStyle:"italic",marginBottom:14}}>La IA no encontró tareas ni observaciones para registrar en esta nota.</div>}
-      <div style={{display:"flex",gap:10}}>
-        <Btn onClick={applyPlan} disabled={applying} full>{applying?"Aplicando...":"Confirmar y aplicar"}</Btn>
-        <Btn onClick={()=>{setPlan(null);setPlanEntry(null);}} v="secondary">Cancelar</Btn>
-      </div>
-    </Modal>}
-
-    {/* Editor de nota nueva */}
-    <Card>
-      <SL>Nueva entrada</SL>
-      <FI label="Fecha" value={entryDate} onChange={e=>setEntryDate(e.target.value)} type="date"/>
-      <FT label="Notas del día" value={draft} onChange={e=>setDraft(e.target.value)} rows={5} placeholder="Ej: Regué S1 y S2. Podé la sala 2. Vi cochinillas en el macetón D. Falta comprar melaza. Mañana trasplantar esquejes."/>
-      <Btn onClick={save} disabled={saving||!draft.trim()} full>{saving?"Guardando...":"Guardar nota"}</Btn>
-    </Card>
-
-    {/* Historial */}
-    {loading?<Spin/>:entries.length===0?<Card><div style={{fontSize:14,color:C.textSoft,textAlign:"center",padding:"12px 0"}}>Todavía no hay entradas. Escribí la primera arriba.</div></Card>
-      :<div style={{display:"flex",flexDirection:"column",gap:12}}>
-        <SL>Historial</SL>
-        {entries.map(e=><Card key={e.id} style={{padding:"14px 16px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8}}>
-            <div style={{fontSize:12.5,fontWeight:700,color:C.textMid}}>{fmtDate(e.entry_date)} · {e.author}</div>
-            {e.processed?<Badge label="Procesada ✓" color={C.green} bg={C.greenLight}/>:<Badge label="Sin procesar" color={C.amber} bg={C.amberLight}/>}
-          </div>
-          <div style={{fontSize:14,color:C.text,lineHeight:1.55,whiteSpace:"pre-wrap"}}>{e.content}</div>
-          {e.processed&&e.result&&<div style={{fontSize:12,color:C.textSoft,marginTop:8,fontStyle:"italic",background:C.bg,borderRadius:8,padding:"8px 10px"}}>🤖 {e.result}</div>}
-          {!e.processed&&<Btn onClick={()=>process(e)} disabled={proc===e.id} v="secondary" full style={{marginTop:10,fontSize:13.5}}>{proc===e.id?"Interpretando...":"🤖 Procesar con IA"}</Btn>}
-        </Card>)}
-      </div>}
   </div>;
 }
 
@@ -6078,7 +5779,7 @@ export default function App(){
       case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets}/>;
       case "historial": return <HistorialPage roomConfig={roomConfig} user={user} genetics={genetics} rooms={rooms}/>;
       case "plagas":       return <PlagasPage user={user} rooms={rooms}/>;
-      case "calendario":   return <CalendarioPage user={user}/>;
+      case "calendario":   return <CalendarioPage user={user} roomConfig={roomConfig}/>;
       case "compras":      return <ComprasPage user={user}/>;
       case "guia":         return <GuiaPage user={user} roomConfig={roomConfig} rooms={rooms}/>;
       case "bot":          return <BotPage user={user}/>;
