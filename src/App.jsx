@@ -810,6 +810,7 @@ function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"],targets}){
   const toggle=async task=>{
     const ns=task.status==="completada"?"pendiente":"completada";
     await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
+    if(ns==="completada")await pestTaskDone(task,user.name);
     if(ns==="completada"&&task.recurrent&&task.recurrent_days){
       await db.insert("tasks",{title:task.title,room_id:task.room_id,type:task.type,assignee:task.assignee,due_date:addDays(task.due_date,task.recurrent_days),status:"pendiente",priority:task.priority,recurrent:true,recurrent_days:task.recurrent_days,created_by:"sistema"});
     }
@@ -1241,6 +1242,7 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
     setTasks(upd);setOverdue(upd);
     try{
       await db.update("tasks",t.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
+      if(ns==="completada")await pestTaskDone(t,user.name);
       if(ns==="completada"&&t.recurrent&&t.recurrent_days){
         await db.insert("tasks",{title:t.title,room_id:t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,created_by:"sistema"});
       }
@@ -1531,6 +1533,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const toggleTask=async task=>{
     const ns=task.status==="completada"?"pendiente":"completada";
     await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
+    if(ns==="completada")await pestTaskDone(task,user.name);
     if(ns==="completada"&&task.recurrent&&task.recurrent_days){
       await db.insert("tasks",{title:task.title,room_id:task.room_id,type:task.type,assignee:task.assignee,due_date:addDays(task.due_date,task.recurrent_days),status:"pendiente",priority:task.priority,recurrent:true,recurrent_days:task.recurrent_days,auto_generated:task.auto_generated,created_by:"sistema"});
     }
@@ -1918,6 +1921,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [editing,setEditing]=useState(false);   // arranca en modo lectura: no se pinta hasta tocar "Editar"
   const [snapshot,setSnapshot]=useState(null);   // copia para poder Cancelar sin perder lo guardado
   const [showSize,setShowSize]=useState(false);
+  const [showOtras,setShowOtras]=useState(false);
   // Búsqueda de fenos: el modo queda prendido en la mesa hasta que un admin lo apague.
   const [phenoMode,setPhenoMode]=useState(false);
   const [cellPhenos,setCellPhenos]=useState(()=>Array(W0*H0).fill(null)); // pheno_id por celda
@@ -2076,7 +2080,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
 
   const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
-    background:on?col:`${col}1F`,color:on?"#fff":col,border:`1.5px solid ${col}`}}>{children}</button>;
+    background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{children}</button>;
   const lbl=t=><div style={{fontSize:12.5,fontWeight:800,color:C.textSoft,margin:"2px 0 7px"}}>{t}</div>;
   const wrap=inSheet?{}:{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16};
   const sz=phenoMode?36:34;
@@ -2098,12 +2102,12 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     {/* Por ubicar: lo que llegó de VG a esta sala y todavía no tiene lugar */}
     {poolItems.length>0&&!phenoMode&&(editing||poolLeft>0)&&<div style={{background:C.amberLight,borderRadius:14,padding:"11px 12px",marginBottom:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:800,color:C.amber,marginBottom:editing?9:0}}>
-        <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}
+        <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}{editing&&<span style={{fontSize:12.5,fontWeight:700,color:C.textMid,marginLeft:4}}>· tocá una y después las celdas</span>}
       </div>
       {!editing&&isAdmin&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:3}}>Tocá Editar y usalas como pincel.</div>}
       {editing&&<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
         {poolItems.map(it=>{const col=genMap[it.genetic_name]||C.green;const f=fenoDe(it.pheno_id,it.pheno_label);const on=brushPool===it.key;
-          return chip(on,col,<>{it.genetic_name}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.25)":C.purpleLight,color:on?"#fff":C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
+          return chip(on,col,<>{it.genetic_name}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
       </div>}
     </div>}
 
@@ -2142,18 +2146,26 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       </div>
     </div>}
 
-    {editing&&!phenoMode&&<div style={{marginBottom:12}}>
-      {cycleGenetics.length>0&&lbl("Genéticas del ciclo")}
-      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-        {cycleGenetics.map(g=>{const col=genMap[g.genetic_name]||C.green;return chip(!brushPool&&brush===g.genetic_name,col,g.genetic_name,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);})}
-        {chip(!brushPool&&brush===null,C.red,"Borrar",()=>{setBrushPool(null);setBrush(null);},"__borrar__")}
-      </div>
-      <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
-        {!brushPool&&brush&&<button onClick={()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Llenar con {brush}</button>}
-        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
-        <button onClick={()=>setShowSize(s=>!s)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:showSize?C.greenLight:C.surfaceAlt,color:showSize?C.green:C.textMid,border:`1px solid ${showSize?C.green:C.border}`}}><Icon n="sliders" size={15}/>Medidas {gridW}×{gridH}</button>
-      </div>
-    </div>}
+    {editing&&!phenoMode&&(()=>{
+      // Si llegó stock de VG, los pinceles son esos (arriba, una sola vez). Las genéticas
+      // del ciclo que no vinieron de VG quedan en "Otras genéticas".
+      const poolGen=new Set(poolItems.map(p=>p.genetic_name));
+      const otras=cycleGenetics.filter(g=>!poolGen.has(g.genetic_name));
+      const genChips=list=>list.map(g=>{const col=genMap[g.genetic_name]||C.green;return chip(!brushPool&&brush===g.genetic_name,col,g.genetic_name,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);});
+      const tool=(on,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:on?C.greenLight:C.surfaceAlt,color:on?C.green:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{children}</button>;
+      const hayPool=poolItems.length>0;
+      return <div style={{marginBottom:12}}>
+        {!hayPool&&cycleGenetics.length>0&&<>{lbl("Genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(cycleGenetics)}</div></>}
+        {hayPool&&showOtras&&otras.length>0&&<>{lbl("Otras genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(otras)}</div></>}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {chip(!brushPool&&brush===null,C.red,"Borrar",()=>{setBrushPool(null);setBrush(null);},"__borrar__")}
+          {!brushPool&&brush&&tool(false,`Llenar con ${brush}`,()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));},"llenar")}
+          {tool(false,"Limpiar",()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));},"limpiar")}
+          {tool(showSize,<><Icon n="sliders" size={15}/>Medidas {gridW}×{gridH}</>,()=>setShowSize(s=>!s),"medidas")}
+          {hayPool&&otras.length>0&&tool(showOtras,`Otras genéticas (${otras.length})`,()=>setShowOtras(s=>!s),"otras")}
+        </div>
+      </div>;
+    })()}
     {editing&&(showSize||phenoMode)&&<div style={{display:"flex",gap:14,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
       {[{l:"Ancho",v:gridW,set:v=>updateGrid(v===""?1:v,gridH),max:pot?.circular?4:8},{l:"Largo",v:gridH,set:v=>updateGrid(gridW,v===""?1:v),max:pot?.circular?4:10}].map(f=><label key={f.l} style={{display:"flex",alignItems:"center",gap:6,fontSize:13.5,fontWeight:700,color:C.textMid}}>
         {f.l}<NumField value={f.v} onCommit={f.set} min={1} max={f.max} compact/>
@@ -2204,39 +2216,150 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     </div>}
   </div>;
 }
+// ══════════════════════════════════════════════════════════════════════════════
+// FORMULARIOS — formato nuevo: hoja inferior, opciones tocables, sin emojis.
+// ══════════════════════════════════════════════════════════════════════════════
+// Colores de genética muy claros (amarillo, rosa, celeste) no se leen como texto:
+// en esos casos el texto va oscuro y el color queda en el borde y el fondo.
+const isLightColor=hex=>{const h=String(hex||"").replace("#","");if(h.length<6)return false;const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return (0.299*r+0.587*g+0.114*b)>165;};
+const inkOn=col=>isLightColor(col)?C.text:col;                  // texto sobre fondo teñido
+const inkFill=col=>isLightColor(col)?"#17201C":"#FFFFFF";       // texto sobre el color lleno
+const ErrBox=({err})=>err?<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:13,fontWeight:600,marginBottom:10,lineHeight:1.45}}>{err}</div>:null;
+const FLabel=({children,style})=><div style={{fontSize:13,fontWeight:800,color:C.textSoft,margin:"12px 0 7px",...style}}>{children}</div>;
+function Pills({options,value,onChange,col,multi=false}){
+  const c=col||C.green;
+  return <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+    {options.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];const on=multi?(value||[]).includes(v):value===v;
+      return <button key={String(v)} type="button" onClick={()=>onChange(v)} style={{padding:"9px 14px",borderRadius:99,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",background:on?c:C.surface,color:on?C.onAccent:C.textMid,border:`1.5px solid ${on?c:C.border}`}}>{l}</button>;})}
+  </div>;
+}
+const SheetActions=({onSave,onCancel,saving,label="Guardar",busyLabel="Guardando...",disabled})=><div style={{display:"flex",gap:10,marginTop:14}}>
+  <Btn onClick={onSave} disabled={saving||disabled} style={{flex:1,minHeight:48}}>{saving?busyLabel:label}</Btn>
+  <Btn onClick={onCancel} v="secondary" disabled={saving} style={{flex:1,minHeight:48}}>Cancelar</Btn>
+</div>;
+const roomLabel=r=>r==="S1"?"Sala 1":r==="S2"?"Sala 2":r==="Vegetativo"?"Vege":r;
+
+// Productos: los que más usás (según lo registrado) y los de siempre, tocables. "Otro" para escribir.
+const NUTRI_BASE=["Zoil Monkey","Humus de lombriz","Compost","Harina de alfalfa","Yeso agrícola","Harina de roca","Melaza","Micorrizas","Bioestimulante radicular","ACT (té de compost)"];
+const FOLIAR_BASE=["Mamboretá","Neem","Silicio","Bt","Jabón potásico"];
+function ProductPicker({kind,value,onChange}){
+  const [recent,setRecent]=useState([]);
+  const [otro,setOtro]=useState("");
+  useEffect(()=>{
+    db.query("nutrition_logs","select=products,application_type&order=logged_at.desc.nullslast&limit=80").then(rows=>{
+      const cnt={};
+      (rows||[]).filter(r=>kind==="foliar"?r.application_type==="foliar":r.application_type!=="foliar")
+        .forEach(r=>String(r.products||"").split(/\s*[+,;]\s*/).map(s=>s.trim()).filter(Boolean).forEach(p=>{cnt[p]=(cnt[p]||0)+1;}));
+      setRecent(Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([p])=>p).slice(0,8));
+    }).catch(()=>{});
+  },[kind]);
+  const seen=new Set();
+  const opts=[...recent,...(kind==="foliar"?FOLIAR_BASE:NUTRI_BASE),...value].filter(p=>{const k=p.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});
+  const toggle=p=>onChange(value.includes(p)?value.filter(x=>x!==p):[...value,p]);
+  const add=()=>{const p=otro.trim();if(!p)return;if(!value.some(x=>x.toLowerCase()===p.toLowerCase()))onChange([...value,p]);setOtro("");};
+  return <>
+    <Pills options={opts} value={value} onChange={toggle} multi/>
+    <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
+      <input value={otro} onChange={e=>setOtro(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}} placeholder="Otro producto" style={{flex:1,minWidth:0,padding:"11px 13px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.text,fontSize:15,fontFamily:"inherit",outline:"none"}}/>
+      <button type="button" onClick={add} disabled={!otro.trim()} aria-label="Agregar producto" style={{width:44,height:44,borderRadius:12,border:"none",background:otro.trim()?C.green:C.surfaceAlt,color:otro.trim()?C.onAccent:C.textSoft,cursor:otro.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n="plus" size={20}/></button>
+    </div>
+  </>;
+}
+
 // MODALS
 function WaterModal({roomId,user,onClose,onSaved}){
-  const [method,setMethod]=useState("manual");
+  const [method,setMethod]=useState(roomId==="S1"?"automático":"manual");
   const [duration,setDuration]=useState("");
   const [notes,setNotes]=useState("");
   const [saving,setSaving]=useState(false);
-  const save=async()=>{setSaving(true);try{await db.insert("watering_logs",{room_id:roomId,method,duration_minutes:duration?+duration:null,notes,logged_by:user.name,logged_at:new Date().toISOString()});onSaved();}finally{setSaving(false);}};
-  return <Modal title={`💧 Riego — ${roomId}`} onClose={onClose}>
-    <FS label="Método" value={method} onChange={e=>setMethod(e.target.value)} options={["automático","manual"]}/>
-    <NumField label="Duración (min)" value={duration} onCommit={setDuration} min={0} max={600} placeholder="Ej: 15"/>
+  const [err,setErr]=useState(null);
+  const save=async()=>{setSaving(true);setErr(null);try{await db.insert("watering_logs",{room_id:roomId,method,duration_minutes:duration?+duration:null,notes:notes||null,logged_by:user.name,logged_at:new Date().toISOString()});onSaved();}catch(e){setErr(errMsg(e));setSaving(false);}};
+  return <Sheet title="Registrar riego" sub={roomLabel(roomId)} onClose={onClose}>
+    <ErrBox err={err}/>
+    <FLabel style={{marginTop:4}}>Cómo</FLabel>
+    <Pills options={[["automático","Automático"],["manual","Manual"]]} value={method} onChange={setMethod}/>
+    <FLabel>Duración</FLabel>
+    <Pills options={[5,10,15,20,30].map(n=>[String(n),`${n} min`])} value={String(duration)} onChange={v=>setDuration(String(duration)===v?"":v)}/>
+    <div style={{marginTop:10}}><NumField label="Otra duración (min)" value={duration} onCommit={v=>setDuration(v===""?"":String(v))} min={0} max={600} placeholder="Ej: 12"/></div>
     <FI label="Notas" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Opcional"/>
-    <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Registrar riego"/>
+  </Sheet>;
 }
 function NutriModal({roomId,cycleId,user,onClose,onSaved}){
-  const [products,setProducts]=useState("");
+  const [prods,setProds]=useState([]);
   const [dose,setDose]=useState("");
   const [notes,setNotes]=useState("");
   const [saving,setSaving]=useState(false);
-  const save=async()=>{if(!products.trim())return;setSaving(true);try{await db.insert("nutrition_logs",{room_id:roomId,cycle_id:cycleId,products,dose,notes,logged_by:user.name,logged_at:new Date().toISOString()});onSaved();}finally{setSaving(false);}};
-  return <Modal title={`🌱 Nutrición — ${roomId}`} onClose={onClose}>
-    <FI label="Productos *" value={products} onChange={e=>setProducts(e.target.value)} placeholder="Ej: Humus + Biotrissol"/>
-    <FI label="Dosis" value={dose} onChange={e=>setDose(e.target.value)} placeholder="Ej: 5ml/L"/>
+  const [err,setErr]=useState(null);
+  const save=async()=>{
+    if(!prods.length){setErr("Elegí al menos un producto.");return;}
+    setSaving(true);setErr(null);
+    try{await db.insert("nutrition_logs",{room_id:roomId,cycle_id:cycleId,products:prods.join(" + "),dose:dose||null,notes:notes||null,logged_by:user.name,logged_at:new Date().toISOString()});onSaved();}
+    catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title="Registrar nutrición" sub={roomLabel(roomId)} onClose={onClose}>
+    <ErrBox err={err}/>
+    <FLabel style={{marginTop:4}}>Qué aplicaste</FLabel>
+    <ProductPicker kind="nutricion" value={prods} onChange={setProds}/>
+    <div style={{marginTop:12}}><FI label="Dosis" value={dose} onChange={e=>setDose(e.target.value)} placeholder="Ej: 5 ml/L, 10 L por cama"/></div>
     <FI label="Notas" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Opcional"/>
-    <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving||!products.trim()} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label={prods.length?`Registrar (${prods.length})`:"Registrar"}/>
+  </Sheet>;
+}
+function FoliarModal({roomId,cycleId,user,onClose,onSaved}){
+  const [prods,setProds]=useState([]);
+  const [dose,setDose]=useState("");
+  const [notes,setNotes]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const save=async()=>{
+    if(!prods.length){setErr("Elegí al menos un producto.");return;}
+    setSaving(true);setErr(null);
+    try{
+      await db.insert("nutrition_logs",{room_id:roomId,cycle_id:cycleId,products:prods.join(" + "),dose:dose||null,notes:notes||null,application_type:"foliar",logged_by:user.name,logged_at:new Date().toISOString()});
+      await logA(user.name,`Aplicación foliar en ${roomId}`,"foliar");
+      onSaved();
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title="Aplicación foliar" sub={roomLabel(roomId)} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{display:"flex",alignItems:"center",gap:10,background:C.surfaceAlt,borderRadius:12,padding:"10px 12px",fontSize:13.5,color:C.textMid,fontWeight:600,margin:"4px 0 2px"}}><Icon n="moon" size={18}/>Con las luces apagadas.</div>
+    <FLabel>Qué aplicaste</FLabel>
+    <ProductPicker kind="foliar" value={prods} onChange={setProds}/>
+    <div style={{marginTop:12}}><FI label="Dosis" value={dose} onChange={e=>setDose(e.target.value)} placeholder="Ej: 5 ml/L"/></div>
+    <FI label="Notas" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Opcional"/>
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label={prods.length?`Registrar (${prods.length})`:"Registrar"}/>
+  </Sheet>;
+}
+function ClimateModal({roomId,user,onClose,onSaved}){
+  const [temp,setTemp]=useState("");
+  const [hum,setHum]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const save=async()=>{
+    if(temp===""&&hum===""){setErr("Cargá al menos temperatura o humedad.");return;}
+    setSaving(true);setErr(null);
+    try{
+      await db.insert("climate_logs",{room_id:roomId,temperature:temp===""?null:+temp,humidity:hum===""?null:+hum,source:"manual",recorded_by:user.name,recorded_at:new Date().toISOString()});
+      await logA(user.name,`Midió clima en ${roomId}`,"clima");
+      onSaved();
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title="Medición de clima" sub={`${roomLabel(roomId)} · se guarda con la hora de ahora`} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{display:"flex",gap:10,marginTop:4}}>
+      <div style={{flex:1}}><NumField label="Temperatura (°C)" value={temp} onCommit={setTemp} min={-10} max={60} placeholder="Ej: 24"/></div>
+      <div style={{flex:1}}><NumField label="Humedad (%)" value={hum} onCommit={setHum} min={0} max={100} placeholder="Ej: 55"/></div>
+    </div>
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Registrar"/>
+  </Sheet>;
 }
 function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
   const fdays=rc?.flower_days||65;
   const vdays=rc?.veg_days||30;
   const [phase,setPhase]=useState(cycle?.phase||"vegetativo");
-  const [flowerStart,setFlowerStart]=useState(cycle?.flower_start||todayISO);
-  const [estimatedHarvest,setEstimatedHarvest]=useState(cycle?.estimated_harvest||addDays(todayISO,fdays));
+  const [flowerStart,setFlowerStart]=useState(cycle?.phase==="floración"?(cycle?.flower_start||todayISO):todayISO);
+  const [estimatedHarvest,setEstimatedHarvest]=useState(cycle?.phase==="floración"&&cycle?.estimated_harvest?cycle.estimated_harvest:addDays(todayISO,fdays));
   const [vegStart,setVegStart]=useState(cycle?.veg_start||todayISO);
   const [vegEnd,setVegEnd]=useState(cycle?.veg_end||addDays(todayISO,vdays));
   const [saving,setSaving]=useState(false);
@@ -2270,24 +2393,29 @@ function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
       onSaved();
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
-  return <Modal title={`Fase — ${rc?.display_name||roomId}`} onClose={onClose}>
-    {err&&<div style={{background:"#FDECEC",color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
-    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
-      {["vegetativo","floración","cosechando"].map(p=>{const m=PM[p];return <button key={p} onClick={()=>setPhase(p)} style={{padding:"14px 16px",borderRadius:12,border:`2px solid ${phase===p?m.color:C.border}`,background:phase===p?m.bg:C.surface,cursor:"pointer",display:"flex",alignItems:"center",gap:12,textAlign:"left"}}>
-        <div style={{width:12,height:12,borderRadius:"50%",background:m.color}}/><span style={{fontSize:15,fontWeight:700,color:C.text}}>{m.label}</span>{phase===p&&<span style={{marginLeft:"auto"}}>✓</span>}
+  const opts=[["vegetativo","Vegetativo","vege"],["floración","Floración","flower"],["cosechando","Cosechando","harvest"]];
+  return <Sheet title={cycle?"Cambiar fase":"Iniciar ciclo"} sub={rc?.display_name||roomId} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{display:"flex",flexDirection:"column",gap:8,margin:"4px 0 12px"}}>
+      {opts.map(([k,l,ic])=>{const m=PM[k];const on=phase===k;return <button key={k} onClick={()=>setPhase(k)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text,background:on?C.greenLight:C.surfaceAlt,border:`2px solid ${on?C.green:C.border}`}}>
+        <span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:on?C.green:C.surface,color:on?C.onAccent:m.color}}><Icon n={ic} size={20}/></span>
+        <span style={{flex:1,fontSize:16,fontWeight:800}}>{l}{cycle?.phase===k&&<span style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}> · actual</span>}</span>
+        {on&&<span style={{color:C.green}}><Icon n="check" size={20} sw={2.4}/></span>}
       </button>;})}
     </div>
-    {phase==="vegetativo"&&<>
-      <FI label="Inicio etapa vegetativa" type="date" value={vegStart} onChange={e=>setVegStart(e.target.value)}/>
-      <FI label="Hasta (fin estimado de vegetativo)" type="date" value={vegEnd} onChange={e=>setVegEnd(e.target.value)}/>
-    </>}
+    {phase==="vegetativo"&&<div style={{display:"flex",gap:10}}>
+      <div style={{flex:1}}><FI label="Inicio de vege" type="date" value={vegStart} onChange={e=>setVegStart(e.target.value)}/></div>
+      <div style={{flex:1}}><FI label="Pasa a flora" type="date" value={vegEnd} onChange={e=>setVegEnd(e.target.value)}/></div>
+    </div>}
     {phase==="floración"&&<>
-      <FI label="Inicio floración" type="date" value={flowerStart} onChange={e=>{setFlowerStart(e.target.value);setEstimatedHarvest(addDays(e.target.value,fdays));}}/>
-      <FI label="Cosecha estimada" type="date" value={estimatedHarvest} onChange={e=>setEstimatedHarvest(e.target.value)}/>
-      <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:12}}>⚡ Se generan tareas de poda y Zoil automáticamente · {fdays} días de floración</div>
+      <div style={{display:"flex",gap:10}}>
+        <div style={{flex:1}}><FI label="Inicio de flora" type="date" value={flowerStart} onChange={e=>{setFlowerStart(e.target.value);setEstimatedHarvest(addDays(e.target.value,fdays));}}/></div>
+        <div style={{flex:1}}><FI label="Cosecha estimada" type="date" value={estimatedHarvest} onChange={e=>setEstimatedHarvest(e.target.value)}/></div>
+      </div>
+      {cycle?.phase!=="floración"&&<div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45}}>Se crean solas las tareas de poda (día 15 y 21) y de Zoil Monkey · {fdays} días de flora.</div>}
     </>}
-    <div style={{display:"flex",gap:10}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Confirmar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Confirmar"/>
+  </Sheet>;
 }
 // Editor de objetivos de clima por etapa (temp y humedad, por sala). VPD fijo.
 function TargetsModal({roomId,rc,cycle,user,onClose,onSaved}){
@@ -2337,76 +2465,69 @@ function TargetsModal({roomId,rc,cycle,user,onClose,onSaved}){
     }catch(e){setErr(errMsg(e));}
     finally{setSaving(false);}
   };
-  return <Modal title={`Objetivos de clima — ${roomName}`} onClose={onClose}>
+  return <Sheet title="Objetivos de clima" sub={roomName} onClose={onClose}>
     <div style={{fontSize:12.5,color:C.textMid,marginBottom:14,lineHeight:1.5}}>Definí el rango ideal de <b>temperatura</b> y <b>humedad</b> para cada etapa. La app usa el objetivo de la etapa en la que está la sala. El <b>VPD</b> es fijo por etapa.</div>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
     {loading||!vals?<Spin/>:<>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {stages.map(s=>{const d=vals[s];const vpd=VPD_BY_STAGE[s];const isActive=s===activeStage;return <div key={s} style={{background:C.bg,borderRadius:14,padding:"12px 14px",border:`1.5px solid ${isActive?C.green:C.border}`}}>
+        {stages.map(s=>{const d=vals[s];const vpd=VPD_BY_STAGE[s];const isActive=s===activeStage;return <div key={s} style={{background:C.surfaceAlt,borderRadius:14,padding:"12px 14px",border:`1.5px solid ${isActive?C.green:C.border}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
             <span style={{fontSize:13.5,fontWeight:800,color:C.text}}>{CLIMA_STAGE_LABEL[s]}</span>
             {isActive&&<Badge label="Etapa actual" color={C.green} bg={C.greenLight}/>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"58px 1fr 1fr",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:12.5,color:C.textMid}}>🌡 Temp</span>
+            <span style={{fontSize:12.5,color:C.textMid}}>Temp</span>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>min</span><NumField compact value={d.temp_min} onCommit={n=>setField(s,"temp_min",n)} min={5} max={40}/></div>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>max</span><NumField compact value={d.temp_max} onCommit={n=>setField(s,"temp_max",n)} min={5} max={40}/><span style={{fontSize:12,color:C.textSoft}}>°C</span></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"58px 1fr 1fr",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12.5,color:C.textMid}}>💧 Hum</span>
+            <span style={{fontSize:12.5,color:C.textMid}}>Hum</span>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>min</span><NumField compact value={d.hum_min} onCommit={n=>setField(s,"hum_min",n)} min={0} max={100}/></div>
             <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:11,color:C.textSoft}}>max</span><NumField compact value={d.hum_max} onCommit={n=>setField(s,"hum_max",n)} min={0} max={100}/><span style={{fontSize:12,color:C.textSoft}}>%</span></div>
           </div>
-          <div style={{fontSize:11.5,color:C.purple,marginTop:9,fontFamily:MONO}}>🍃 VPD {vpd.min}–{vpd.max} kPa <span style={{color:C.textSoft,fontFamily:H}}>· fijo</span></div>
+          <div style={{fontSize:11.5,color:C.purple,marginTop:9,fontFamily:MONO}}>VPD {vpd.min}–{vpd.max} kPa <span style={{color:C.textSoft,fontFamily:H}}>· fijo</span></div>
         </div>;})}
       </div>
       <div style={{display:"flex",gap:10,marginTop:16}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar objetivos"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
     </>}
-  </Modal>;
+  </Sheet>;
 }
 function AddGenModal({cycleId,genetics,existing,counts,onClose,onSaved}){
   const [rows,setRows]=useState(existing);
-  const [sel,setSel]=useState("");
-  const [saving,setSaving]=useState(false);
+  const [busy,setBusy]=useState(null);
+  const [confirmId,setConfirmId]=useState(null);
   const [err,setErr]=useState(null);
-  const avail=genetics.filter(g=>!rows.map(e=>e.genetic_name).includes(g.name));
+  const avail=genetics.filter(g=>!rows.some(e=>e.genetic_name===g.name));
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
-
-  const add=async()=>{
-    if(!sel)return;
-    setSaving(true);setErr(null);
-    try{
-      const ins=await db.insert("cycle_genetics",{cycle_id:cycleId,genetic_name:sel,plant_count:0});
-      setRows(prev=>[...prev,ins[0]]);setSel("");
-    }catch(e){setErr(errMsg(e));}
-    finally{setSaving(false);}
+  const add=async(name)=>{
+    setBusy(name);setErr(null);
+    try{const ins=await db.insert("cycle_genetics",{cycle_id:cycleId,genetic_name:name,plant_count:0});setRows(prev=>[...prev,ins[0]]);}
+    catch(e){setErr(errMsg(e));}finally{setBusy(null);}
   };
   const remove=async(row)=>{
-    if(!window.confirm(`¿Quitar ${row.genetic_name} del ciclo? No borra el dibujo de las mesas.`))return;
-    try{await db.delete("cycle_genetics",row.id);setRows(prev=>prev.filter(r=>r.id!==row.id));}
-    catch(e){setErr(errMsg(e));}
+    if(confirmId!==row.id){setConfirmId(row.id);return;}
+    setBusy(row.id);
+    try{await db.delete("cycle_genetics",row.id);setRows(prev=>prev.filter(r=>r.id!==row.id));setConfirmId(null);}
+    catch(e){setErr(errMsg(e));}finally{setBusy(null);}
   };
-
-  return <Modal title="Genéticas del ciclo" onClose={()=>{onSaved();}}>
-    {err&&<div style={{background:C.redLight||"#FDECEC",color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
-    <div style={{fontSize:12,color:C.textSoft,marginBottom:14,lineHeight:1.5}}>Elegí las genéticas que hay en la sala. Las cantidades se calculan solas según lo que dibujes en las mesas.</div>
-
-    {rows.length>0&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-      {rows.map(r=><div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,background:C.bg,border:`1px solid ${C.border}`}}>
-        <div style={{width:12,height:12,borderRadius:"50%",background:genMap[r.genetic_name]||C.green,flexShrink:0}}/>
-        <span style={{flex:1,fontSize:14,fontWeight:700,color:C.text}}>{r.genetic_name}</span>
-        <span style={{fontSize:12,color:C.textSoft}}>{counts?.[r.genetic_name]||0} pl.</span>
-        <button onClick={()=>remove(r)} style={{background:"transparent",border:"none",color:C.red,fontSize:12,cursor:"pointer",fontWeight:600}}>Quitar</button>
-      </div>)}
-    </div>}
-
-    {avail.length>0?<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-      <div style={{flex:1}}><FS label="Agregar genética" value={sel} onChange={e=>setSel(e.target.value)} options={[{value:"",label:"Elegir..."},...avail.map(g=>({value:g.name,label:g.name}))]}/></div>
-      <Btn onClick={add} disabled={saving||!sel} style={{marginBottom:12}}>{saving?"...":"+ Agregar"}</Btn>
-    </div>:<div style={{fontSize:12,color:C.textSoft,fontStyle:"italic",textAlign:"center",padding:"8px 0"}}>Todas las genéticas ya están en el ciclo</div>}
-
-    <Btn onClick={()=>onSaved()} full style={{marginTop:8}}>Listo</Btn>
-  </Modal>;
+  return <Sheet title="Genéticas del ciclo" sub="Las cantidades salen de lo que pintás en las mesas" onClose={()=>onSaved()}>
+    <ErrBox err={err}/>
+    {rows.length===0&&<div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0 8px"}}>Todavía no hay genéticas en el ciclo.</div>}
+    {rows.map((r,i)=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+      <span style={{width:10,alignSelf:"stretch",minHeight:30,borderRadius:4,background:genMap[r.genetic_name]||C.green,flexShrink:0}}/>
+      <span style={{flex:1,minWidth:0,fontSize:15,fontWeight:700,color:C.text}}>{r.genetic_name}</span>
+      <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{counts?.[r.genetic_name]||0} pl.</span>
+      <button onClick={()=>remove(r)} disabled={busy===r.id} style={{padding:"7px 11px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:800,border:"none",background:confirmId===r.id?C.red:C.redLight,color:confirmId===r.id?"#fff":C.red}}>{confirmId===r.id?"¿Seguro?":"Quitar"}</button>
+    </div>)}
+    {avail.length>0&&<>
+      <FLabel>Tocá para agregar</FLabel>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+        {avail.map(g=>{const col=g.color||C.green;return <button key={g.name} onClick={()=>add(g.name)} disabled={!!busy} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:busy===g.name?0.5:1}}><Icon n="plus" size={15}/>{g.name}</button>;})}
+      </div>
+    </>}
+    {confirmId&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:10}}>Quitarla del ciclo no borra lo pintado en las mesas.</div>}
+    <Btn onClick={()=>onSaved()} full style={{marginTop:16,minHeight:48}}>Listo</Btn>
+  </Sheet>;
 }
 // Arma la foto de "qué había en cada mesa" al momento de cerrar el ciclo.
 // Devuelve una fila por mesa+genética con la cantidad de plantas.
@@ -2504,10 +2625,10 @@ function CloseCycleModal({cycle,roomId,rc,cg,potCounts,wLog,nLog,user,onClose,on
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
 
-  return <Modal title={`Cerrar ciclo — ${name}`} onClose={onClose}>
+  return <Sheet title="Cerrar ciclo" sub={name} onClose={onClose}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
     <div style={{background:C.amberLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:14,lineHeight:1.5}}>
-      ⚠ Esto archiva el ciclo y deja la sala lista para uno nuevo.<br/>
+      Esto archiva el ciclo y deja la sala lista para uno nuevo.<br/>
       El ciclo queda <b>en secado</b>: los gramos se cargan después, cuando peses, desde <b>Historial</b>.
     </div>
     <SL>Se va a guardar esta distribución</SL>
@@ -2523,8 +2644,8 @@ function CloseCycleModal({cycle,roomId,rc,cg,potCounts,wLog,nLog,user,onClose,on
     <FT label="Notas finales (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones del ciclo..." rows={2}/>
     <SL>Vista previa</SL>
     <pre style={{background:C.bg,borderRadius:10,padding:14,fontSize:11,color:C.textMid,whiteSpace:"pre-wrap",fontFamily:"monospace",maxHeight:160,overflowY:"auto",lineHeight:1.5}}>{buildSummary()}</pre>
-    <Btn onClick={close} disabled={saving||rows===null} full style={{marginTop:12}}>{saving?"Cerrando...":"Cerrar y pasar a secado"}</Btn>
-  </Modal>;
+    <Btn onClick={close} disabled={saving||rows===null} full style={{marginTop:12,minHeight:48,background:C.red,color:"#fff",border:"none"}}>{saving?"Cerrando...":"Cerrar y pasar a secado"}</Btn>
+  </Sheet>;
 }
 
 // Carga de cosecha: gramos por mesa y por genética. Se puede volver las veces que haga falta.
@@ -2585,7 +2706,7 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
   const byPot={};
   (rows||[]).forEach((r,i)=>{(byPot[r.pot_label]=byPot[r.pot_label]||[]).push({...r,_i:i});});
 
-  return <Modal title={`🌾 Cosecha — ${name}`} onClose={onClose}>
+  return <Sheet title="Cargar cosecha" sub={name} onClose={onClose}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
     <div style={{fontSize:12,color:C.textSoft,marginBottom:14,lineHeight:1.5}}>
       Cerrado el {cycle.real_harvest?fmtDate(cycle.real_harvest):"—"} · Pesá cada mesa por separado, aunque se repita la genética.
@@ -2628,52 +2749,7 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
       </div>
       <div style={{fontSize:11.5,color:C.textSoft,marginTop:8,fontStyle:"italic",lineHeight:1.5}}>“Guardar y seguir” deja el ciclo en secado por si falta pesar alguna mesa. “Finalizar” lo marca como completo.</div>
     </>}
-  </Modal>;
-}
-function ClimateModal({roomId,user,onClose,onSaved}){
-  const [temp,setTemp]=useState("");
-  const [hum,setHum]=useState("");
-  const [saving,setSaving]=useState(false);
-  const [err,setErr]=useState(null);
-  const save=async()=>{
-    if(temp===""&&hum===""){setErr("Cargá al menos temperatura o humedad");return;}
-    setSaving(true);setErr(null);
-    try{
-      await db.insert("climate_logs",{room_id:roomId,temperature:temp===""?null:+temp,humidity:hum===""?null:+hum,source:"manual",recorded_by:user.name,recorded_at:new Date().toISOString()});
-      await logA(user.name,`Midió clima en ${roomId}`,"clima");
-      onSaved();
-    }catch(e){setErr(errMsg(e));setSaving(false);}
-  };
-  return <Modal title={`🌡 Medición — ${roomId}`} onClose={onClose}>
-    {err&&<div style={{background:"#FDECEC",color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
-    <NumField label="Temperatura (°C)" value={temp} onCommit={setTemp} min={-10} max={60} placeholder="Ej: 24"/>
-    <NumField label="Humedad (%)" value={hum} onCommit={setHum} min={0} max={100} placeholder="Ej: 55"/>
-    <div style={{display:"flex",gap:10,marginTop:4}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Registrar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
-}
-function FoliarModal({roomId,cycleId,user,onClose,onSaved}){
-  const [products,setProducts]=useState("");
-  const [dose,setDose]=useState("");
-  const [notes,setNotes]=useState("");
-  const [saving,setSaving]=useState(false);
-  const [err,setErr]=useState(null);
-  const save=async()=>{
-    if(!products.trim()){setErr("Indicá al menos un producto");return;}
-    setSaving(true);setErr(null);
-    try{
-      await db.insert("nutrition_logs",{room_id:roomId,cycle_id:cycleId,products:products.trim(),dose:dose||null,notes:notes||null,application_type:"foliar",logged_by:user.name});
-      await logA(user.name,`Aplicación foliar en ${roomId}`,"foliar");
-      onSaved();
-    }catch(e){setErr(errMsg(e));setSaving(false);}
-  };
-  return <Modal title={`🍃 Aplicación foliar — ${roomId}`} onClose={onClose}>
-    {err&&<div style={{background:"#FDECEC",color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
-    <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.textMid,marginBottom:14}}>💡 Recordá apagar las luces antes de aplicar foliar.</div>
-    <FI label="Productos *" value={products} onChange={e=>setProducts(e.target.value)} placeholder="Ej: aceite de neem, jabón potásico"/>
-    <FI label="Dosis (opcional)" value={dose} onChange={e=>setDose(e.target.value)} placeholder="Ej: 5ml/L"/>
-    <FT label="Notas (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} rows={2}/>
-    <div style={{display:"flex",gap:10,marginTop:4}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Registrar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
+  </Sheet>;
 }
 
 // TAREAS PAGE
@@ -2705,6 +2781,7 @@ function TareasPage({user,rooms}){
   const toggle=async task=>{
     const ns=task.status==="completada"?"pendiente":"completada";
     await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
+    if(ns==="completada")await pestTaskDone(task,user.name);
     if(ns==="completada"&&task.recurrent&&task.recurrent_days){
       await db.insert("tasks",{title:task.title,room_id:task.room_id,type:task.type,assignee:task.assignee,due_date:addDays(task.due_date,task.recurrent_days),status:"pendiente",priority:task.priority,recurrent:true,recurrent_days:task.recurrent_days,created_by:"sistema"});
     }
@@ -3308,8 +3385,9 @@ function TareasPageV2({user,rooms}){
     setDone(prev=>[doneT,...prev]);setSel(null);
     try{
       await db.update("tasks",t.id,{status:"completada",completed_at:doneT.completed_at});
-      let next=null;
-      if(t.recurrent&&t.recurrent_days){
+      let next=await pestTaskDone(t,user.name);
+      if(next)setTasks(prev=>[...prev,next].sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))));
+      if(!next&&t.recurrent&&t.recurrent_days){
         const ins=await db.insert("tasks",{title:t.title,room_id:t.room_id,rooms:t.rooms||t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,instructions:t.instructions||null,created_by:"sistema"});
         next=ins?.[0]||null;if(next)setTasks(prev=>[...prev,next].sort((a,b)=>String(a.due_date).localeCompare(String(b.due_date))));
       }
@@ -3702,6 +3780,7 @@ function VGPage({genetics,user,roomConfig=[]}){
   const [sala,setSala]=useState("S1");
   const [salaDate,setSalaDate]=useState(todayISO);
   const [salaCycles,setSalaCycles]=useState({});   // ciclo activo de cada sala, para saber si recibe
+  const [showVgMenu,setShowVgMenu]=useState(false);
   const [showDel,setShowDel]=useState(false);
   const [busy,setBusy]=useState(false);
   const [toast,setToast]=useState(null);
@@ -3842,7 +3921,8 @@ function VGPage({genetics,user,roomConfig=[]}){
     const d=daysSince(sel.start_date);
     const perdidasB=losses.filter(x=>sid(x.batch_id)===sid(sel.id));
     const origTxt=vgOrigTxt(ls," y ");
-    return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
+    const destName=getRC(roomConfig,sel.dest_room||"S1").display_name;
+    return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
       {overlay}
       {showSala&&<Sheet title="Pasar a sala" sub={`Entran ${vivas} planta${vivas===1?"":"s"}${origTxt?`: ${origTxt}`:""}`} onClose={()=>{if(!busy)setShowSala(false);}}>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
@@ -3863,30 +3943,32 @@ function VGPage({genetics,user,roomConfig=[]}){
           <Btn v="secondary" onClick={()=>setShowSala(false)} disabled={busy} style={{flex:1,minHeight:48}}>Cancelar</Btn>
         </div>
       </Sheet>}
+      {showVgMenu&&<Sheet title={`Tanda del ${fmtDM(sel.start_date)}`} onClose={()=>setShowVgMenu(false)}>
+        {cerrada&&<SheetRow icon="swap" label="Devolver a VG" onClick={()=>{setShowVgMenu(false);devolverVG();}}/>}
+        <SheetRow i={cerrada?1:0} icon="trash" label="Eliminar tanda" danger onClick={()=>{setShowVgMenu(false);setShowDel(true);}}/>
+      </Sheet>}
       {showDel&&<ConfirmModal title={`¿Eliminar la tanda del ${fmtDM(sel.start_date)}?`} busy={busy} onClose={()=>setShowDel(false)} onConfirm={eliminar} confirmLabel="Eliminar tanda"
         text={`Se borran las ${vivas} planta${vivas===1?"":"s"} de la tanda y ${perdidasB.length} registro${perdidasB.length===1?"":"s"} de pérdidas. No se puede deshacer.`}/>}
 
-      <button onClick={()=>setSelId(null)} style={{alignSelf:"flex-start",background:"transparent",border:"none",color:C.green,fontWeight:800,fontSize:14.5,cursor:"pointer",padding:"8px 0 0"}}>← Todas las tandas</button>
-      <div>
-        <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Tanda del {fmtDM(sel.start_date)}</div>
-        <div style={{fontSize:13.5,color:C.textSoft,marginTop:2}}>{cerrada?`Estuvo ${Math.max(0,daysSince(sel.start_date)-daysSince(sel.moved_date))} días en VG`:(d<=0?"Entró hoy":`${d} día${d===1?"":"s"} en VG`)}. {vivas} vivas de {entraron}.</div>
-      </div>
+      <button onClick={()=>setSelId(null)} style={{alignSelf:"flex-start",display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",color:C.green,fontWeight:800,fontSize:14.5,cursor:"pointer",padding:"2px 0",fontFamily:"inherit"}}><Icon n="back" size={20}/>Todas las tandas</button>
+      <PageTitle sub={`${cerrada?`Estuvo ${Math.max(0,daysSince(sel.start_date)-daysSince(sel.moved_date))} días en VG`:(d<=0?"Entró hoy":`${d} día${d===1?"":"s"} en VG`)} · ${vivas} vivas de ${entraron}`}
+        right={isAdmin&&<button onClick={()=>setShowVgMenu(true)} aria-label="Más acciones de la tanda" style={{width:42,height:42,borderRadius:12,border:`1px solid ${C.border}`,cursor:"pointer",background:C.surface,color:C.textMid,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="mas" size={22}/></button>}>Tanda del {fmtDM(sel.start_date)}</PageTitle>
 
-      <Card>
-        {cerrada&&<div style={{background:C.greenLight,color:C.green,borderRadius:11,padding:"10px 12px",fontWeight:700,fontSize:13.5,marginBottom:12}}>Pasó a {getRC(roomConfig,sel.dest_room).display_name||sel.dest_room||"sala"} el {fmtDM(sel.moved_date)}</div>}
+      <Card style={{padding:"16px 16px 14px"}}>
+        {cerrada&&<div style={{display:"flex",alignItems:"center",gap:8,background:C.greenLight,color:C.green,borderRadius:12,padding:"10px 12px",fontWeight:800,fontSize:13.5,marginBottom:12}}><Icon n="salas" size={18}/>Pasó a {destName} el {fmtDM(sel.moved_date)}</div>}
         {cerrada&&!sel.cycle_id&&isAdmin&&<div style={{background:C.amberLight,borderRadius:12,padding:"12px 13px",marginBottom:12}}>
           <div style={{fontSize:14,fontWeight:800,color:C.amber,marginBottom:4}}>Esta tanda no quedó cargada en la sala</div>
           <div style={{fontSize:13,color:C.textMid,lineHeight:1.45,marginBottom:10}}>Se pasó antes de que existiera “Por ubicar”. Si todavía la tenés que acomodar, mandala ahora y queda lista para ubicar en las mesas.</div>
           <div style={{display:"flex",gap:8}}>
-            <Btn onClick={()=>pasarSala(sel.dest_room||"S1",sel.moved_date||todayISO)} disabled={busy} style={{flex:1,minHeight:46}}>{busy?"...":`Ubicar en ${getRC(roomConfig,sel.dest_room||"S1").display_name}`}</Btn>
+            <Btn onClick={()=>pasarSala(sel.dest_room||"S1",sel.moved_date||todayISO)} disabled={busy} style={{flex:1,minHeight:46}}>{busy?"...":`Ubicar en ${destName}`}</Btn>
             <Btn v="secondary" onClick={devolverVG} disabled={busy} style={{flex:1,minHeight:46}}>Devolver a VG</Btn>
           </div>
         </div>}
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:cerrada?0:14}}>
-          <span style={{fontFamily:MONO,fontSize:34,fontWeight:700,lineHeight:1,color:vgColor(p)}}>{p}%</span>
+          <span style={{fontSize:34,fontWeight:800,lineHeight:1,color:vgColor(p),fontVariantNumeric:"tabular-nums"}}>{p}%</span>
           <div style={{flex:1}}>
             <Bar value={p} max={100} color={vgColor(p)} h={9}/>
-            <div style={{fontSize:12.5,color:C.textSoft,marginTop:5}}>{muertas>0?`${muertas} planta${muertas===1?"":"s"} perdida${muertas===1?"":"s"}`:"Todavía no se murió ninguna"}</div>
+            <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginTop:5}}>{muertas>0?`${muertas} planta${muertas===1?"":"s"} perdida${muertas===1?"":"s"}`:"Todavía no se murió ninguna"}</div>
           </div>
         </div>
         {!cerrada&&<div style={{display:"flex",gap:10}}>
@@ -3898,89 +3980,77 @@ function VGPage({genetics,user,roomConfig=[]}){
       {VG_ORIG.map(o=>{
         const lo=ls.filter(l=>(o.k==="semilla")===(l.origin==="semilla"));
         if(!lo.length)return null;
-        return <Card key={o.k}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:16,fontWeight:900,color:C.text,marginBottom:4}}>
-            <span>{o.l}</span><span style={{fontFamily:MONO,fontSize:18}}>{sumK(lo,"current_count")}</span>
+        return <Card key={o.k} style={{padding:"12px 16px 4px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"2px 0 6px"}}>
+            <span style={{fontSize:15.5,fontWeight:800,color:C.text}}>{o.l}</span><span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{sumK(lo,"current_count")}</span>
           </div>
-          {lo.map((l,idx)=>{
+          {lo.map(l=>{
             const cur=l.current_count||0,ini=l.initial_count||0,perd=ini-cur;const col=genMap[l.genetic_name]||C.green;
-            return <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
+            return <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
               <span style={{width:10,alignSelf:"stretch",minHeight:38,borderRadius:4,background:col,flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:15.5,fontWeight:800,color:C.text}}>{l.genetic_name}<FenoChip txt={fenoTxt(l,phenoMap)}/></div>
-                <div style={{fontSize:12.5,color:C.textSoft}}>Entraron {ini}{perd>0?` (−${perd})`:""}</div>
+                <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Entraron {ini}{perd>0?` (−${perd})`:""}</div>
               </div>
-              <div style={{fontFamily:MONO,fontSize:24,fontWeight:700,color:C.text,minWidth:40,textAlign:"right"}}>{cur}</div>
+              <div style={{fontSize:24,fontWeight:800,color:C.text,minWidth:36,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{cur}</div>
               {!cerrada&&<button onClick={()=>murio(l)} disabled={cur<=0}
-                style={{minHeight:44,padding:"0 11px",borderRadius:10,border:`1.5px solid ${C.border}`,color:C.red,fontWeight:800,fontSize:13,background:C.surface,whiteSpace:"nowrap",cursor:cur>0?"pointer":"default",opacity:cur>0?1:0.35,flexShrink:0}}>−1 murió</button>}
+                style={{minHeight:44,padding:"0 12px",borderRadius:12,border:"none",color:C.red,fontWeight:800,fontSize:13.5,background:C.redLight,whiteSpace:"nowrap",cursor:cur>0?"pointer":"default",opacity:cur>0?1:0.35,flexShrink:0,fontFamily:"inherit"}}>−1 murió</button>}
             </div>;
           })}
         </Card>;
       })}
-      {ls.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:13.5,fontStyle:"italic",padding:"18px 0"}}>Esta tanda no tiene plantas cargadas.</Card>}
+      {ls.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:13.5,padding:"18px 0"}}>Esta tanda no tiene plantas cargadas.</Card>}
 
-      <Card>
-        <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:4}}>Registro de pérdidas</div>
-        {perdidasB.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin pérdidas registradas.</div>}
-        {perdidasB.map((x,idx)=><div key={x.id} style={{display:"flex",gap:8,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
-          <span style={{color:C.textSoft,minWidth:42}}>{fmtDM(x.loss_date)}</span>
-          <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b> <span style={{color:C.textSoft}}>({x.origin})</span> −{x.qty} · {x.author||"—"}</span>
-          <span style={{fontSize:11.5,color:C.textSoft,whiteSpace:"nowrap"}}>{x.method==="reconteo"?"reconteo":x.method==="trasplante"?"trasplante":"−1"}</span>
+      <Fold icon="history" title="Registro de pérdidas" count={perdidasB.length}>
+        {perdidasB.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"4px 0"}}>Sin pérdidas registradas.</div>}
+        {perdidasB.map((x,idx)=><div key={x.id} style={{display:"flex",gap:10,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
+          <span style={{color:C.textSoft,fontWeight:700,minWidth:42}}>{fmtDM(x.loss_date)}</span>
+          <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b> −{x.qty} <span style={{color:C.textSoft}}>· {x.author||"—"}</span></span>
+          <span style={{fontSize:12,color:C.textSoft,fontWeight:700,whiteSpace:"nowrap"}}>{x.method==="reconteo"?"reconteo":x.method==="trasplante"?"trasplante":"murió"}</span>
         </div>)}
-      </Card>
-
-      {isAdmin&&<Btn v="danger" full onClick={()=>setShowDel(true)} style={{minHeight:48}}>Eliminar tanda</Btn>}
+      </Fold>
     </div>;
   }
 
   // ── lista de tandas ──
-  return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {overlay}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",gap:12,paddingTop:8}}>
-      <div>
-        <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>VG</div>
-        <div style={{fontSize:13.5,color:C.textSoft,marginTop:2}}>{plantas} planta{plantas===1?"":"s"} en {abiertas.length} tanda{abiertas.length===1?"":"s"}</div>
-      </div>
-      {isAdmin&&<Btn onClick={()=>{setToast(null);setCounter({mode:"nueva"});}} style={{minHeight:48}}>+ Nueva tanda</Btn>}
-    </div>
+    <PageTitle sub={`${plantas} planta${plantas===1?"":"s"} en ${abiertas.length} tanda${abiertas.length===1?"":"s"}`}
+      right={isAdmin&&<button onClick={()=>{setToast(null);setCounter({mode:"nueva"});}} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva tanda</button>}>VG</PageTitle>
 
     {abiertas.length===0&&<Card style={{textAlign:"center",padding:"26px 18px"}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="pot" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>No hay tandas en VG</div>
-      <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Entran solas cuando cosechás una esquejera{isAdmin?", o creá una con “+ Nueva tanda”.":"."}</div>
+      <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Entran solas cuando cosechás una esquejera{isAdmin?", o creá una con “Nueva tanda”.":"."}</div>
     </Card>}
 
     {abiertas.map(b=>{
       const ls=linesOf(b.id);const vivas=sumK(ls,"current_count");const p=pctOf(ls);const m=sumK(ls,"initial_count")-vivas;const d=daysSince(b.start_date);
-      return <Card key={b.id} onClick={()=>setSelId(sid(b.id))} style={{padding:"16px 18px"}}>
+      return <Card key={b.id} onClick={()=>setSelId(sid(b.id))} style={{padding:"14px 16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
           <div>
-            <div style={{fontSize:18,fontWeight:900,color:C.text}}>Tanda del {fmtDM(b.start_date)}</div>
-            <div style={{fontSize:13,color:C.textSoft}}>{d<=0?"Entró hoy":`${d} día${d===1?"":"s"} en VG`}</div>
+            <div style={{fontSize:17,fontWeight:800,color:C.text}}>Tanda del {fmtDM(b.start_date)}</div>
+            <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{d<=0?"Entró hoy":`${d} día${d===1?"":"s"} en VG`}</div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontFamily:MONO,fontSize:30,fontWeight:700,color:C.text,lineHeight:1}}>{vivas}</div>
-            <div style={{fontSize:12,color:C.textSoft}}>plantas</div>
+            <div style={{fontSize:28,fontWeight:800,color:C.text,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{vivas}</div>
+            <div style={{fontSize:12,color:C.textSoft,fontWeight:600}}>plantas</div>
           </div>
         </div>
-        <div style={{display:"flex",height:12,borderRadius:99,overflow:"hidden",background:C.border,margin:"14px 0 9px",gap:1}}>
-          {ls.filter(l=>(l.current_count||0)>0).map(l=><div key={l.id} style={{flex:l.current_count,minWidth:3,background:genMap[l.genetic_name]||C.green}}/>)}
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:13,color:C.textSoft}}>
+        <div style={{margin:"12px 0 8px"}}><Stripe mix={ls.filter(l=>(l.current_count||0)>0).map(l=>[l.id,l.current_count])} genMap={Object.fromEntries(ls.map(l=>[l.id,genMap[l.genetic_name]||C.green]))} h={10}/></div>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:13,color:C.textSoft,fontWeight:600}}>
           <span>{vgOrigTxt(ls,", ")||"Sin plantas"}</span>
           <span style={{color:vgColor(p),fontWeight:800,whiteSpace:"nowrap"}}>{p}% vivas{m>0?` (−${m})`:""}</span>
         </div>
       </Card>;
     })}
 
-    {cerradas.length>0&&<Accordion title={`Ya pasaron a sala (${cerradas.length})`} icon="✅">
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {cerradas.map(b=>{const ls=linesOf(b.id);return <div key={b.id} onClick={()=>setSelId(sid(b.id))} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"11px 13px",borderRadius:11,background:C.bg,border:`1px solid ${C.border}`,cursor:"pointer"}}>
-          <div><div style={{fontSize:14.5,fontWeight:800,color:C.text}}>Tanda del {fmtDM(b.start_date)}</div><div style={{fontSize:12.5,color:C.textSoft}}>Pasó a {b.dest_room||"sala"} el {fmtDM(b.moved_date)}</div></div>
-          <div style={{textAlign:"right"}}><div style={{fontFamily:MONO,fontSize:17,fontWeight:700,color:C.text}}>{sumK(ls,"current_count")}</div><div style={{fontSize:12,color:C.textSoft}}>{pctOf(ls)}% vivas</div></div>
-        </div>;})}
-      </div>
-    </Accordion>}
+    {cerradas.length>0&&<Fold icon="salas" title="Ya pasaron a sala" count={cerradas.length}>
+      {cerradas.map((b,i)=>{const ls=linesOf(b.id);return <button key={b.id} onClick={()=>setSelId(sid(b.id))} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+        <span><span style={{display:"block",fontSize:14.5,fontWeight:800}}>Tanda del {fmtDM(b.start_date)}</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Pasó a {getRC(roomConfig,b.dest_room||"S1").display_name} el {fmtDM(b.moved_date)}</span></span>
+        <span style={{textAlign:"right"}}><span style={{display:"block",fontSize:17,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{sumK(ls,"current_count")}</span><span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{pctOf(ls)}% vivas</span></span>
+      </button>;})}
+    </Fold>}
   </div>;
 }
 
@@ -4002,6 +4072,7 @@ function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved,onDelete
   const fenosGen=phenos.filter(p=>p.genetic_name===gn).sort((a,b)=>(a.number||0)-(b.number||0));
   const sizes=type==="madre"?["5L","10L","15L"]:["1L","1,5L","2L","3L","4L","5L"];
   const save=async()=>{
+    if(!gn){setErr("Elegí la genética.");return;}
     setSaving(true);setErr(null);
     try{
       const data={type,genetic_name:gn,count:+cnt||0,pot_label:pot,pot_size:potSize||null,status,entry_date:date,notes:notes||null,
@@ -4012,41 +4083,32 @@ function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved,onDelete
       onSaved();
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
-  const chip=(on,color)=>({minHeight:40,minWidth:44,padding:"0 12px",borderRadius:10,cursor:"pointer",fontSize:13.5,fontWeight:800,
-    background:on?color:C.surface,color:on?"#fff":C.textMid,border:`1.5px solid ${on?color:C.border}`});
-  return <Modal title={`${type==="madre"?"🌳 Madre":"🪴 Post-esqueje"} — ${item?"Editar":"Agregar"}`} onClose={onClose}>
-    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12.5,marginBottom:12}}>{err}</div>}
-    <div style={{display:"flex",alignItems:"flex-end",gap:10}}>
+  const fenoOpts=[["","Sin feno"],...fenosGen.map(p=>[sid(p.id),p.code]),["__otro__","Otro"]];
+  return <Sheet title={type==="madre"?(item?"Editar madre":"Nueva madre"):(item?"Editar post-esqueje":"Nuevo post-esqueje")} sub={item?`${item.genetic_name}${item.pot_label?` · maceta ${item.pot_label}`:""}`:null} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{display:"flex",alignItems:"flex-end",gap:10,marginTop:4}}>
       <div style={{flex:1}}><FS label="Genética" value={gn} onChange={e=>{setGn(e.target.value);if(fenoSel!=="__otro__")setFenoSel("");}} options={genetics.map(g=>({value:g.name,label:g.name}))}/></div>
-      <div title="Color de la genética" style={{width:42,height:42,borderRadius:11,background:genMap[gn]||C.green,marginBottom:12,flexShrink:0}}/>
+      <div title="Color de la genética" style={{width:44,height:44,borderRadius:12,background:genMap[gn]||C.green,marginBottom:12,flexShrink:0}}/>
     </div>
-
-    {type==="madre"&&<div style={{marginBottom:14}}>
-      <label style={{fontSize:13.5,color:C.textMid,fontWeight:600,display:"block",marginBottom:6}}>Feno (opcional)</label>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
-        <button onClick={()=>setFenoSel("")} style={chip(!fenoSel,C.green)}>Sin feno</button>
-        {fenosGen.map(p=>{const pid=sid(p.id);return <button key={pid} onClick={()=>setFenoSel(pid)} style={chip(fenoSel===pid,C.purple)}>{p.code}</button>;})}
-        <button onClick={()=>setFenoSel("__otro__")} style={chip(fenoSel==="__otro__",C.purple)}>Otro</button>
-      </div>
-      {fenosGen.length===0&&fenoSel!=="__otro__"&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,lineHeight:1.45}}>Esta genética no tiene búsqueda cargada. Si es una selección vieja, usá “Otro” y anotala (ej: F2).</div>}
-      {fenoSel==="__otro__"&&<div style={{marginTop:8}}><FI value={fenoLabel} onChange={e=>setFenoLabel(e.target.value)} placeholder="Ej: F2"/></div>}
-    </div>}
-
-    <NumField label="Cantidad" value={cnt} onCommit={setCnt} min={0} max={9999}/>
-    <FI label="Maceta / Ubicación" value={pot} onChange={e=>setPot(e.target.value)} placeholder="Ej: M-01"/>
-    <div style={{marginBottom:12}}>
-      <label style={{fontSize:13.5,color:C.textMid,fontWeight:600,display:"block",marginBottom:6}}>Tamaño de maceta (opcional)</label>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {sizes.map(sz=><button key={sz} onClick={()=>setPotSize(potSize===sz?"":sz)} style={{flex:1,minWidth:52,padding:"10px 6px",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700,background:potSize===sz?C.green:C.surface,color:potSize===sz?"#fff":C.textMid,border:`1.5px solid ${potSize===sz?C.green:C.border}`}}>{sz}</button>)}
-      </div>
+    {type==="madre"&&<>
+      <FLabel style={{marginTop:0}}>Feno</FLabel>
+      <div style={{maxHeight:150,overflowY:"auto"}}><Pills options={fenoOpts} value={fenoSel} onChange={setFenoSel} col={C.purple}/></div>
+      {fenosGen.length===0&&fenoSel!=="__otro__"&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:7,lineHeight:1.45}}>Esta genética no tiene búsqueda cargada. Si es una selección vieja, usá “Otro” y anotala (ej: F2).</div>}
+      {fenoSel==="__otro__"&&<div style={{marginTop:10}}><FI value={fenoLabel} onChange={e=>setFenoLabel(e.target.value)} placeholder="Ej: F2"/></div>}
+    </>}
+    <div style={{display:"flex",gap:10,marginTop:12}}>
+      <div style={{width:120}}><NumField label="Cantidad" value={cnt} onCommit={setCnt} min={0} max={9999}/></div>
+      <div style={{flex:1}}><FI label="Maceta / ubicación" value={pot} onChange={e=>setPot(e.target.value)} placeholder="Ej: M-01"/></div>
     </div>
-    <FI label="Fecha de ingreso" type="date" value={date} onChange={e=>setDate(e.target.value)}/>
-    {type==="madre"?<FS label="Estado" value={status} onChange={e=>setStatus(e.target.value)} options={["activa","renovar","inactiva"]}/>
-      :<FS label="Etapa" value={status} onChange={e=>setStatus(e.target.value)} options={["post-esqueje","vegetativo","lista"]}/>}
-    <FT label="Notas / anotaciones (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Observaciones, podas, plagas, riego, etc." rows={3}/>
-    <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-    {item&&onDelete&&<Btn v="danger" full onClick={onDelete} style={{marginTop:10}}>Eliminar madre</Btn>}
-  </Modal>;
+    <FLabel style={{marginTop:0}}>Tamaño de maceta</FLabel>
+    <Pills options={sizes} value={potSize} onChange={v=>setPotSize(potSize===v?"":v)}/>
+    <FLabel>{type==="madre"?"Estado":"Etapa"}</FLabel>
+    <Pills options={type==="madre"?[["activa","Activa"],["renovar","Para renovar"],["inactiva","Inactiva"]]:[["post-esqueje","Post-esqueje"],["vegetativo","Vegetativo"],["lista","Lista"]]} value={status} onChange={setStatus}/>
+    <div style={{marginTop:12}}><FI label="Fecha de ingreso" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+    <FT label="Notas" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Podas, plagas, riego..." rows={2}/>
+    <SheetActions onSave={save} onCancel={onClose} saving={saving}/>
+    {item&&onDelete&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="trash" label={type==="madre"?"Eliminar madre":"Eliminar"} danger onClick={onDelete}/></div>}
+  </Sheet>;
 }
 
 // Cosechar la bandeja: nunca prende el 100%, así que primero se marca qué murió.
@@ -4108,7 +4170,7 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
     }catch(e){setErr(errMsg(e));setBusy(false);}
   };
 
-  return <Modal title={`🌱 Cosechar ${cloner.label}`} onClose={onClose}>
+  return <Sheet title={`Cosechar ${cloner.label}`} sub="Lo que prendió pasa a VG en la tanda de hoy" onClose={onClose} z={270}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12}}>{err}</div>}
     <div style={{fontSize:13.5,color:C.textMid,marginBottom:14,lineHeight:1.55}}>
       Marcá los esquejes que <strong>no</strong> prendieron. El resto pasa a VG en la tanda de hoy.
@@ -4143,10 +4205,10 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
 
     <FT label="Notas de la tanda (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Qué pasó, condiciones, observaciones..." rows={2}/>
     <div style={{display:"flex",gap:10,marginTop:8}}>
-      <Btn onClick={confirmar} disabled={busy} style={{flex:1}}>{busy?"Guardando...":`Cosechar (${totalVivos} a VG)`}</Btn>
+      <Btn onClick={confirmar} disabled={busy} style={{flex:1,minHeight:48}}>{busy?"Guardando...":`Cosechar (${totalVivos} a VG)`}</Btn>
       <Btn onClick={onClose} v="secondary" disabled={busy} style={{flex:1}}>Cancelar</Btn>
     </div>
-  </Modal>;
+  </Sheet>;
 }
 
 // Eliminar la tanda entera: la bandeja falló y no pasa nada a tierra.
@@ -4173,7 +4235,7 @@ function EliminarTandaModal({cloner,cells,slotPhenos,phenoMode,progress,user,onC
       onDone();
     }finally{setBusy(false);}
   };
-  return <Modal title={`🗑 Eliminar tanda — ${cloner.label}`} onClose={onClose}>
+  return <Sheet title="Eliminar tanda" sub={cloner.label} onClose={onClose} z={270}>
     <div style={{background:C.redLight,color:C.red,borderRadius:11,padding:"11px 13px",fontSize:13,marginBottom:14,lineHeight:1.5}}>
       Se borran los {ocupados.length} esquejes de la bandeja y <strong>nada pasa a tierra</strong>. Usalo cuando la tanda falló entera.
     </div>
@@ -4183,7 +4245,7 @@ function EliminarTandaModal({cloner,cells,slotPhenos,phenoMode,progress,user,onC
       <Btn onClick={run} disabled={!ok||busy} style={{flex:1,background:ok?C.red:undefined,borderColor:ok?C.red:undefined}}>{busy?"Borrando...":"Eliminar tanda"}</Btn>
       <Btn onClick={onClose} v="secondary" disabled={busy} style={{flex:1}}>Cancelar</Btn>
     </div>
-  </Modal>;
+  </Sheet>;
 }
 
 function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
@@ -4273,24 +4335,22 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     }finally{setSaving(false);}
   };
   const prog=batchProgress({...cloner,start_date:startDate,ready_days:readyDays},slots);
-  return <Modal title={`🌿 ${cloner.label}`} onClose={onClose}>
+  return <Sheet title={cloner.label} sub={`${clonerRows(cloner.capacity,cloner.cols||CLONER_COLS)} × ${cloner.cols||CLONER_COLS} · ${used} de ${cloner.capacity} lugares`} onClose={onClose}>
     {showCosechar&&<CosecharTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMap={phenoMap} phenoMode={phenoMode} genMap={genMap} progress={prog} user={user} onClose={()=>setShowCosechar(false)} onDone={(n)=>{setShowCosechar(false);onSaved(`Cosechada: ${n} esqueje${n===1?"":"s"} pasaron a VG ✓`);}}/>}
     {showEliminar&&<EliminarTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMode={phenoMode} progress={prog} user={user} onClose={()=>setShowEliminar(false)} onDone={()=>{setShowEliminar(false);onSaved();}}/>}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <span style={{fontSize:13,color:C.textSoft}}>{used}/{cloner.capacity} esquejes</span>
-      <div style={{width:120}}><Bar value={used} max={cloner.capacity} h={8}/></div>
-    </div>
+    <div style={{margin:"2px 0 12px"}}><Bar value={used} max={cloner.capacity} h={8}/></div>
 
     {/* Búsqueda de fenos: numera cada esqueje para poder seguirlo hasta la cata */}
-    {isAdmin&&<div onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:phenoMode?C.purpleLight:C.bg,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
-      <div style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0,transition:"background 0.15s"}}>
-        <div style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
-      </div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:800,color:phenoMode?C.purple:C.textMid}}>🔬 Búsqueda de fenos</div>
-        <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>{phenoMode?"Cada esqueje queda numerado por su posición (A1, B2...).":"Apagado: la bandeja funciona como siempre."}</div>
-      </div>
-    </div>}
+    {isAdmin&&<button onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:12,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:phenoMode?C.purpleLight:C.surfaceAlt,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
+      <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:phenoMode?C.purple:C.surface,color:phenoMode?"#fff":C.textMid}}><Icon n="flask" size={18}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:800,color:phenoMode?C.purple:C.text}}>Búsqueda de fenos</span>
+        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{phenoMode?"Cada esqueje queda con su feno":"Apagada: la bandeja funciona como siempre"}</span>
+      </span>
+      <span style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0}}>
+        <span style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+      </span>
+    </button>}
     {phenoMode&&hunts.length===0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12,lineHeight:1.5}}>
       Todavía no hay ninguna búsqueda creada. Arrancala desde la mesa donde están las semillas y después volvé acá a asignar los esquejes.
     </div>}
@@ -4328,12 +4388,12 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     <div style={{fontSize:11.5,color:C.textSoft,marginTop:-6,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>La fecha vale para toda la bandeja. Si dejás los días vacíos toma {CLONER_READY_DAYS} como referencia.</div>
 
     {used>0&&<div style={{display:"flex",gap:9,marginBottom:14}}>
-      <Btn onClick={()=>setShowCosechar(true)} style={{flex:1,fontSize:12.5}}>🌱 Cosechar tanda</Btn>
-      <Btn onClick={()=>setShowEliminar(true)} v="secondary" style={{flex:1,fontSize:12.5,color:C.red,borderColor:`${C.red}55`}}>🗑 Eliminar tanda</Btn>
+      <Btn onClick={()=>setShowCosechar(true)} style={{flex:1,minHeight:46}}>Cosechar tanda</Btn>
+      <Btn onClick={()=>setShowEliminar(true)} v="secondary" style={{flex:1,minHeight:46,color:C.red,borderColor:`${C.red}55`}}>Eliminar tanda</Btn>
     </div>}
     {!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      {genetics.map(g=><button key={g.name} onClick={()=>setBrush(g.name)} style={{padding:"6px 12px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",background:brush===g.name?genMap[g.name]||C.green:`${genMap[g.name]||C.green}22`,color:brush===g.name?"#fff":genMap[g.name]||C.green,border:`2px solid ${genMap[g.name]||C.green}`}}>{g.name}</button>)}
-      <button onClick={()=>setBrush(null)} style={{padding:"6px 12px",borderRadius:20,fontSize:11,cursor:"pointer",background:brush===null?C.red:C.bg,color:brush===null?"#fff":C.textSoft,border:`2px solid ${brush===null?C.red:C.borderStrong}`}}>Borrar</button>
+      {genetics.map(g=>{const col=genMap[g.name]||C.green;const on=brush===g.name;return <button key={g.name} onClick={()=>setBrush(g.name)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{g.name}</button>;})}
+      <button onClick={()=>setBrush(null)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:brush===null?C.red:C.redLight,color:brush===null?"#fff":C.red,border:`1.5px solid ${C.red}`}}>Borrar</button>
     </div>}
     <div style={{overflowX:"auto",marginBottom:14}}>
       <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint}
@@ -4342,10 +4402,10 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     </div>
     {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:-8,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>El número de cada slot es el feno que le corresponde, igual que en el cuaderno.</div>}
     <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-      {Object.entries(gC).map(([g,n])=><span key={g} style={{background:`${genMap[g]||C.green}22`,color:genMap[g]||C.green,borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:700}}>{g}: {n}</span>)}
+      {Object.entries(gC).map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
     </div>
-    <div style={{display:"flex",gap:10}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar esquejera"}</Btn><Btn onClick={onClose} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-  </Modal>;
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Guardar esquejera"/>
+  </Sheet>;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -5428,6 +5488,16 @@ const crearTareaPlaga=async(r,userName)=>{
   if(t){try{await db.update("pest_logs",r.id,{task_id:sid(t.id)});}catch{/* el enlace es opcional */}}
   return t||null;
 };
+// Completar en Tareas la fumigación de un registro abierto = "Apliqué hoy": se programa la próxima.
+const pestTaskDone=async(task,userName)=>{
+  if(!task||task.source!=="plagas")return null;
+  try{
+    const rs=await db.query("pest_logs",`task_id=eq.${sid(task.id)}&status=eq.abierta`);
+    const r=rs[0];if(!r)return null;
+    await db.update("pest_logs",r.id,{last_applied:todayISO,task_id:null});
+    return await crearTareaPlaga({...r,last_applied:todayISO},userName);
+  }catch{return null;}
+};
 // Saca la tarea pendiente enlazada (si todavía no se hizo).
 const quitarTareaPlaga=async(r)=>{
   if(!r.task_id)return;
@@ -6083,9 +6153,218 @@ function GuiaPage({user,roomConfig,rooms}){
   </div>;
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CONFIGURACIÓN — salas, esquejeras y usuarios. Cada fila abre su hoja.
+// ══════════════════════════════════════════════════════════════════════════════
+function SalaCfgSheet({roomId,rc,exists,user,onClose,onSaved,onTargets}){
+  const [name,setName]=useState(rc.display_name||roomId);
+  const [irr,setIrr]=useState(rc.irrigation_type||"manual");
+  const [fd,setFd]=useState(rc.flower_days??65);
+  const [fl,setFl]=useState(rc.flush_days??20);
+  const [vd,setVd]=useState(rc.veg_days??6);
+  const [area,setArea]=useState(rc.area_m2??"");
+  const [vol,setVol]=useState(rc.volume_l??"");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const num=v=>v===""||v==null?null:+v;
+  const save=async()=>{
+    if(!name.trim()){setErr("Poné un nombre.");return;}
+    setSaving(true);setErr(null);
+    const data={display_name:name.trim(),irrigation_type:irr,flower_days:num(fd)||65,flush_days:num(fl)??20,veg_days:num(vd)??6,area_m2:num(area),volume_l:num(vol)};
+    try{
+      if(exists)await db.updateWhere("room_config","room_id",roomId,data);
+      else await db.insert("room_config",{room_id:roomId,...data});
+      await logA(user.name,`Configuró la sala ${roomId}`,"config");
+      onSaved(`${data.display_name} guardada ✓`);
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title={rc.display_name||roomId} sub="Estos datos arman el recorrido del ciclo y las fechas" onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{marginTop:4}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)} placeholder="Ej: Sala 1"/></div>
+    <FLabel style={{marginTop:0}}>Riego</FLabel>
+    <Pills options={[["automático","Automático"],["manual","Manual"]]} value={irr} onChange={setIrr}/>
+    <div style={{display:"flex",gap:10,marginTop:12}}>
+      <div style={{flex:1}}><NumField label="Días de flora" value={fd} onCommit={setFd} min={30} max={120}/></div>
+      <div style={{flex:1}}><NumField label="Días de lavado" value={fl} onCommit={setFl} min={0} max={40}/></div>
+    </div>
+    <div style={{display:"flex",gap:10}}>
+      <div style={{flex:1}}><NumField label="Días de vege" value={vd} onCommit={setVd} min={0} max={90}/></div>
+      <div style={{flex:1}}><NumField label="Superficie (m²)" value={area} onCommit={setArea} min={0} max={500} placeholder="Ej: 8"/></div>
+    </div>
+    <div style={{width:"50%",paddingRight:5}}><NumField label="Sustrato (litros)" value={vol} onCommit={setVol} min={0} max={50000} placeholder="Ej: 4800"/></div>
+    <SheetActions onSave={save} onCancel={onClose} saving={saving}/>
+    <div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="thermo" label="Objetivos de clima" onClick={onTargets}/></div>
+  </Sheet>;
+}
+
+function EsqCfgSheet({cloner,cloners,used,user,onClose,onSaved}){
+  const cols0=cloner.cols||CLONER_COLS;
+  const [name,setName]=useState(cloner.label||"");
+  const [rows,setRows]=useState(clonerRows(cloner.capacity,cols0));
+  const [cols,setCols]=useState(cols0);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const vacia=used===0;
+  const r=Math.max(1,Math.min(20,+rows||1)), c=Math.max(1,Math.min(10,+cols||1));
+  const save=async()=>{
+    const nm=name.trim();
+    if(!nm){setErr("Poné un nombre.");return;}
+    if(cloners.some(x=>sid(x.id)!==sid(cloner.id)&&String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay otra esquejera con ese nombre.");return;}
+    setSaving(true);setErr(null);
+    try{
+      const data={label:nm};
+      if(vacia){data.capacity=r*c;data.cols=c;}
+      await db.update("cloners",cloner.id,data);
+      await logA(user.name,`Editó esquejera: ${cloner.label}${nm!==cloner.label?` → ${nm}`:""}`,"esquejera");
+      onSaved(`${nm} guardada ✓`);
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  const borrar=async()=>{
+    if(!confirmDel){setConfirmDel(true);return;}
+    setSaving(true);
+    try{await db.delete("cloners",cloner.id);await logA(user.name,`Eliminó esquejera: ${cloner.label}`,"esquejera");onSaved(`${cloner.label} eliminada`);}
+    catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title={cloner.label} sub={vacia?"Vacía":`${used} esqueje${used===1?"":"s"} cargados`} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{marginTop:4}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)}/></div>
+    {vacia?<>
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <div style={{flex:1}}><NumField label="Filas" value={rows} onCommit={v=>setRows(v===""?1:+v)} min={1} max={20}/></div>
+        <div style={{fontSize:20,fontWeight:800,color:C.textSoft,paddingBottom:22}}>×</div>
+        <div style={{flex:1}}><NumField label="Columnas" value={cols} onCommit={v=>setCols(v===""?1:+v)} min={1} max={10}/></div>
+      </div>
+      <div style={{background:C.surfaceAlt,borderRadius:14,padding:"12px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,overflowX:"auto"}}>
+        <ClonerGrid capacity={r*c} cols={c} colorAt={()=>null} cell={16}/>
+        <div style={{fontSize:13,fontWeight:800,color:C.text}}>{r} × {c} = {r*c} lugares</div>
+      </div>
+    </>:<div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45}}>Medida {clonerRows(cloner.capacity,cols0)} × {cols0}. Para cambiarla o borrarla, primero cosechá o vaciá la bandeja.</div>}
+    <SheetActions onSave={save} onCancel={onClose} saving={saving}/>
+    {vacia&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="trash" label={confirmDel?"Tocá de nuevo para eliminar":"Eliminar esquejera"} danger onClick={borrar}/></div>}
+  </Sheet>;
+}
+
+function UserCfgSheet({u,users,me,onClose,onSaved}){
+  const isNew=!u?.id;
+  const [name,setName]=useState(u?.name||"");
+  const [initial,setInitial]=useState(u?.initial||"");
+  const [area,setArea]=useState(u?.area||"");
+  const [role,setRole]=useState(u?.role||"usuario");
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const soyYo=!isNew&&sid(u.id)===sid(me.id);
+  const save=async()=>{
+    const nm=name.trim();
+    if(!nm){setErr("Poné un nombre.");return;}
+    if(users.some(x=>sid(x.id)!==sid(u?.id)&&String(x.name||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay otro usuario con ese nombre.");return;}
+    setSaving(true);setErr(null);
+    const data={name:nm,initial:(initial.trim()||nm[0]).toUpperCase().slice(0,2),area:area.trim()||null,role:soyYo?u.role:role};
+    try{
+      if(isNew){await db.insert("users",data);await logA(me.name,`Agregó usuario: ${nm}`,"config");onSaved(`${nm} agregado ✓`);return;}
+      await db.update("users",u.id,data);
+      // Si cambia el nombre (ej: el rotativo), las tareas pendientes a su nombre pasan al nombre nuevo.
+      let n=0;
+      if(nm!==u.name){
+        const pend=await db.query("tasks",`assignee=eq.${encodeURIComponent(u.name)}&status=eq.pendiente`).catch(()=>[]);
+        for(const t of pend){try{await db.update("tasks",t.id,{assignee:nm});n++;}catch{/* sigue con las demás */}}
+      }
+      await logA(me.name,`Editó usuario: ${u.name}${nm!==u.name?` → ${nm}`:""}`,"config");
+      onSaved(n?`${nm} guardado. ${n} tarea${n===1?"":"s"} pendiente${n===1?"":"s"} pasaron a su nombre ✓`:`${nm} guardado ✓`);
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  const borrar=async()=>{
+    if(!confirmDel){setConfirmDel(true);return;}
+    setSaving(true);
+    try{await db.delete("users",u.id);await logA(me.name,`Eliminó usuario: ${u.name}`,"config");onSaved(`${u.name} eliminado`);}
+    catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title={isNew?"Nuevo usuario":u.name} sub={isNew?null:(u.role==="admin"?"Administrador":"Usuario")} onClose={onClose}>
+    <ErrBox err={err}/>
+    <div style={{display:"flex",gap:10,marginTop:4}}>
+      <div style={{flex:1}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)} placeholder="Ej: Juan"/></div>
+      <div style={{width:92}}><FI label="Inicial" value={initial} onChange={e=>setInitial(e.target.value.slice(0,2))} placeholder={(name.trim()[0]||"J").toUpperCase()}/></div>
+    </div>
+    <FI label="Área o tarea (opcional)" value={area} onChange={e=>setArea(e.target.value)} placeholder="Ej: Riego y limpieza"/>
+    <FLabel style={{marginTop:0}}>Rol</FLabel>
+    {soyYo?<div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>No podés cambiar tu propio rol.</div>
+      :<Pills options={[["usuario","Usuario"],["admin","Administrador"]]} value={role} onChange={setRole}/>}
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label={isNew?"Agregar":"Guardar"}/>
+    {!isNew&&!soyYo&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="trash" label={confirmDel?"Tocá de nuevo para eliminar":"Eliminar usuario"} danger onClick={borrar}/></div>}
+  </Sheet>;
+}
+
+function ConfigPage({user,roomConfig,onChanged,onTargetsChanged}){
+  const isAdmin=user?.role==="admin";
+  const [cloners,setCloners]=useState([]);
+  const [slots,setSlots]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [toast,setToast]=useState(null);
+  const [salaSel,setSalaSel]=useState(null);
+  const [targetsRoom,setTargetsRoom]=useState(null);
+  const [esqSel,setEsqSel]=useState(null);
+  const [newEsq,setNewEsq]=useState(false);
+  const [userSel,setUserSel]=useState(null);
+  const load=useCallback(async()=>{
+    try{
+      const [c,s,u]=await Promise.all([db.get("cloners").catch(()=>[]),db.query("cloner_slots","select=cloner_id").catch(()=>[]),db.get("users").catch(()=>[])]);
+      setCloners([...c].sort((a,b)=>String(a.label||"").localeCompare(String(b.label||""),"es",{numeric:true})));setSlots(s);
+      setUsers([...u].sort((a,b)=>(a.role==="admin"?0:1)-(b.role==="admin"?0:1)||String(a.name).localeCompare(String(b.name))));
+    }finally{setLoading(false);}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  if(!isAdmin)return <PageStub title="Configuración" sub="Solo administradores" icon="sliders" texto="La configuración la manejan Lucas y Alex."/>;
+  if(loading)return <Spin/>;
+  const done=m=>{setSalaSel(null);setEsqSel(null);setNewEsq(false);setUserSel(null);load();onChanged&&onChanged();setToast({msg:m,type:"success"});};
+  const usedOf=cl=>slots.filter(s=>sid(s.cloner_id)===sid(cl.id)).length;
+  const gTitle=(t,right)=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"14px 4px 8px"}}><div style={{fontSize:14,fontWeight:800,color:C.textSoft}}>{t}</div>{right}</div>;
+  const addBtn=(onClick,l)=><button onClick={onClick} style={{display:"flex",alignItems:"center",gap:5,background:C.greenLight,color:C.green,border:"none",borderRadius:12,padding:"7px 12px",fontWeight:800,fontSize:13.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={16}/>{l}</button>;
+  const row=(key,icon,col,title,sub,onClick,i,right)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 14px",minHeight:62,width:"100%",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit",color:C.text}}>
+    <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:col,background:`${col}1F`,fontWeight:800,fontSize:16}}>{icon}</span>
+    <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15.5,fontWeight:700}}>{title}</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sub}</span></span>
+    {right}
+    <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+  </button>;
+  const salaRC=salaSel?getRC(roomConfig,salaSel):null;
+  const tgRC=targetsRoom?getRC(roomConfig,targetsRoom):null;
+
+  return <div style={{display:"flex",flexDirection:"column",paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    {salaSel&&<SalaCfgSheet roomId={salaSel} rc={salaRC} exists={(roomConfig||[]).some(r=>r.room_id===salaSel)} user={user} onClose={()=>setSalaSel(null)} onSaved={done} onTargets={()=>{const r=salaSel;setSalaSel(null);setTargetsRoom(r);}}/>}
+    {targetsRoom&&<TargetsModal roomId={targetsRoom} rc={tgRC} cycle={null} user={user} onClose={()=>setTargetsRoom(null)} onSaved={()=>{setTargetsRoom(null);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
+    {esqSel&&<EsqCfgSheet cloner={esqSel} cloners={cloners} used={usedOf(esqSel)} user={user} onClose={()=>setEsqSel(null)} onSaved={done}/>}
+    {newEsq&&<NuevaEsquejeraSheet cloners={cloners} user={user} onClose={()=>setNewEsq(false)} onSaved={done}/>}
+    {userSel&&<UserCfgSheet u={userSel} users={users} me={user} onClose={()=>setUserSel(null)} onSaved={done}/>}
+
+    <PageTitle sub="Salas, esquejeras y usuarios">Configuración</PageTitle>
+
+    {gTitle("Salas")}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      {["S1","S2"].map((r,i)=>{const rc=getRC(roomConfig,r);
+        return row(r,<Icon n="salas" size={20}/>,C.amber,rc.display_name,`${rc.flower_days} días de flora · riego ${rc.irrigation_type}${rc.area_m2?` · ${rc.area_m2} m²`:""}`,()=>setSalaSel(r),i);})}
+      {row("veg-clima",<Icon n="thermo" size={20}/>,C.green,"Clima de Vege","Objetivos de temperatura y humedad",()=>setTargetsRoom("Vegetativo"),1)}
+    </Card>
+
+    {gTitle("Esquejeras",addBtn(()=>setNewEsq(true),"Agregar"))}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      {cloners.length===0&&<div style={{padding:"16px 14px",fontSize:13.5,color:C.textSoft}}>Sin esquejeras. Tocá “Agregar”.</div>}
+      {cloners.map((cl,i)=>{const n=usedOf(cl);const cols=cl.cols||CLONER_COLS;
+        return row(cl.id,<Icon n="scissors" size={20}/>,C.green,cl.label,`${clonerRows(cl.capacity,cols)} × ${cols} · ${n?`${n} esqueje${n===1?"":"s"}`:"vacía"}`,()=>setEsqSel(cl),i);})}
+    </Card>
+
+    {gTitle("Usuarios",addBtn(()=>setUserSel({}),"Agregar"))}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      {users.map((u,i)=>row(u.id,u.initial||u.name?.[0]||"?",u.role==="admin"?C.green:C.blue,u.name,`${u.role==="admin"?"Administrador":"Usuario"}${u.area?` · ${u.area}`:""}`,()=>setUserSel(u),i,
+        sid(u.id)===sid(user.id)?<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.greenLight,color:C.green}}>Vos</span>:null))}
+    </Card>
+  </div>;
+}
+
 // ── PANTALLAS EN RECONSTRUCCIÓN ──────────────────────────────────────────────
-// Estas dos pantallas no existían en el archivo pero el router las llamaba:
-// al tocarlas la app se caía. Quedan como aviso hasta rehacerlas (etapa 4).
+// Compras salió del menú: queda como aviso por si alguien entra desde un enlace viejo.
 function PageStub({title,sub,icon,texto}){
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     <PageTitle sub={sub}>{title}</PageTitle>
@@ -6094,10 +6373,6 @@ function PageStub({title,sub,icon,texto}){
       <div style={{fontSize:14,color:C.textMid,lineHeight:1.55,marginTop:10}}>{texto}</div>
     </Card>
   </div>;
-}
-function ConfigPage(){
-  return <PageStub title="Configuración" sub="En reconstrucción" icon="sliders"
-    texto="Salas, esquejeras, usuarios y equipamiento se rehacen en la próxima etapa. Mientras tanto, el tema y el tamaño de letra se cambian desde Más."/>;
 }
 function ComprasPage(){
   return <PageStub title="Compras" sub="Fuera de uso" icon="cart"
@@ -6164,7 +6439,7 @@ export default function App(){
       case "guia":         return <GuiaPage user={user} roomConfig={roomConfig} rooms={rooms}/>;
       case "bot":          return <BotPage user={user}/>;
       case "bitacora":     return <BitacoraPage user={user}/>;
-      case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
+      case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} onTargetsChanged={loadTargets}/>;
       case "__more__":     return isAdmin?<MorePageAdmin user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme} onLogout={logout}/>:<MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
       case "salas":        return <SalasTab rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
       default:
