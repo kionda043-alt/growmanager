@@ -200,9 +200,9 @@ const groupMeta = (r) =>
 // Misma forma en la vista general y en el detalle → no se deforma ni se mueven posiciones.
 const CLONER_COLS = 8;                 // columnas = letras A–H (a lo ancho, como en la realidad)
 const COL_LETTERS = ["A","B","C","D","E","F","G","H","I","J"];
-const clonerRows = (cap) => Math.max(1, Math.ceil((cap||0)/CLONER_COLS));
+const clonerRows = (cap,cols=CLONER_COLS) => Math.max(1, Math.ceil((cap||0)/(cols||CLONER_COLS)));
 // La posición se nombra letra + número (ej: "A1"): letra por columna, número por fila.
-const slotCoord = (i) => `${COL_LETTERS[i%CLONER_COLS]||"?"}${Math.floor(i/CLONER_COLS)+1}`;
+const slotCoord = (i,cols=CLONER_COLS) => `${COL_LETTERS[i%(cols||CLONER_COLS)]||"?"}${Math.floor(i/(cols||CLONER_COLS))+1}`;
 
 // ── BÚSQUEDA DE FENOS ────────────────────────────────────────────────────────
 // Un FENO es una planta nacida de semilla, no un esqueje. De una misma planta
@@ -327,20 +327,21 @@ function PBadge({phase}){const m=PM[phase]||PM["floración"];return <Badge label
 function Bar({value,max,color=C.green,h=7}){const p=max>0?Math.min(100,Math.round(value/max*100)):0;return<div style={{background:C.border,borderRadius:99,height:h,overflow:"hidden"}}><div style={{width:`${p}%`,background:color,height:"100%",borderRadius:99,transition:"width 0.5s"}}/></div>;}
 // Grilla de esquejera con forma FIJA: 8 columnas (1-8) × N filas (a, b, c...).
 // Idéntica en la vista general y en el detalle. colorAt(i) da el color del slot i; onPaint(i) la hace interactiva.
-function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false,labelAt=null,ringAt=null}){
-  const rows=clonerRows(capacity);
+function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false,labelAt=null,ringAt=null,cols=CLONER_COLS}){
+  cols=cols||CLONER_COLS;
+  const rows=clonerRows(capacity,cols);
   const interactive=!!onPaint;
   const cellSize=cell||(interactive?34:14);
   const lab=interactive?11:8;
-  return <div style={{display:"inline-grid",gridTemplateColumns:`${interactive?16:10}px repeat(${CLONER_COLS},${cellSize}px)`,gap:interactive?5:3,alignItems:"center",justifyItems:"center"}}>
+  return <div style={{display:"inline-grid",gridTemplateColumns:`${interactive?16:10}px repeat(${cols},${cellSize}px)`,gap:interactive?5:3,alignItems:"center",justifyItems:"center"}}>
     <span/>
-    {Array.from({length:CLONER_COLS},(_,c)=><span key={"h"+c} style={{fontSize:lab,fontWeight:700,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
+    {Array.from({length:cols},(_,c)=><span key={"h"+c} style={{fontSize:lab,fontWeight:700,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
     {Array.from({length:rows},(_,r)=>[
       <span key={"r"+r} style={{fontSize:lab,fontWeight:700,color:C.textSoft}}>{r+1}</span>,
-      ...Array.from({length:CLONER_COLS},(_,c)=>{const i=r*CLONER_COLS+c;const used=i<capacity;const col=used?colorAt(i):null;
-        const lab=labelAt?labelAt(i):(showCoords&&used&&interactive?slotCoord(i):null);
+      ...Array.from({length:cols},(_,c)=>{const i=r*cols+c;const used=i<capacity;const col=used?colorAt(i):null;
+        const lab=labelAt?labelAt(i):(showCoords&&used&&interactive?slotCoord(i,cols):null);
         const ring=ringAt?ringAt(i):false;
-        return <div key={i} onClick={()=>used&&onPaint&&onPaint(i)} title={used?slotCoord(i)+(col?"":" · vacío"):""}
+        return <div key={i} onClick={()=>used&&onPaint&&onPaint(i)} title={used?slotCoord(i,cols)+(col?"":" · vacío"):""}
           style={{width:cellSize,height:cellSize,borderRadius:interactive?6:3,background:used?(col||C.border):"transparent",
             border:used?`${ring?2:1}px solid ${ring?C.purple:(col?"transparent":C.borderStrong)}`:"none",cursor:interactive&&used?"pointer":"default",
             opacity:used?1:0.25,transition:"background 0.08s",
@@ -924,6 +925,17 @@ const GI={
   trash:'<path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="M6.6 7l1 13h8.8l1-13"/><path d="M10.4 11v5.5M13.6 11v5.5"/>',
   edit:'<path d="M4 20h4L19.2 8.8a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m14.6 6.4 3 3"/>',
   filter:'<path d="M4 6h16l-6.2 7.3V19l-3.6-2.1v-3.6Z"/>',
+  recycle:'<path d="M7.5 9.5 10 5.3a2.3 2.3 0 0 1 4 0l1.4 2.4"/><path d="m16.8 11.5 2.3 4a2.3 2.3 0 0 1-2 3.5h-3.3"/><path d="M9.5 19H6.9a2.3 2.3 0 0 1-2-3.5l1.3-2.2"/><path d="m13.2 6.3 2.2 1.4.5-2.6M12.8 21l1-2-2-1.2M5 11.2l1.2 2.1 2.1-1"/>',
+  moon:'<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>',
+  flower:'<circle cx="12" cy="10" r="2.3"/><path d="M12 7.7c0-2.6 1.3-4.2 3-4.2s2.4 2.2 1 4.1M14.2 11.1c2.4.8 3.5 2.6 3 4.2s-3.1 1.6-4.2-.5M9.8 11.1c-2.4.8-3.5 2.6-3 4.2s3.1 1.6 4.2-.5M12 7.7c0-2.6-1.3-4.2-3-4.2S6.6 5.7 8 7.6"/><path d="M12 12.3v8.2"/>',
+  mushroom:'<path d="M3.5 12a8.5 7 0 0 1 17 0Z"/><path d="M9.5 12v5.5a2.5 2.5 0 0 0 5 0V12"/>',
+  target:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  wind:'<path d="M3.5 9h11a2.8 2.8 0 1 0-2.8-2.8"/><path d="M3.5 14.5h14a2.8 2.8 0 1 1-2.8 2.8"/><path d="M3.5 12h6"/>',
+  search:'<circle cx="10.5" cy="10.5" r="6.2"/><path d="m15.2 15.2 5 5"/>',
+  shield:'<path d="M12 3.5 5 6v5.5c0 4.3 2.9 7.6 7 9 4.1-1.4 7-4.7 7-9V6Z"/><path d="m9 12 2.2 2.2L15.3 10"/>',
+  broom:'<path d="M14.5 3.5 11 11"/><path d="M8.2 10.2 13.8 13l-1.9 6.5c-2.5-.6-5.6-2.1-7.4-4.4Z"/><path d="M8.5 16.2 6.8 18"/>',
+  rock:'<path d="M4 18.5 6 11l4.5-4.5 5 1.5L20 13l-1.5 5.5Z"/><path d="M10.5 6.5 12 12l-6 -1M12 12l6.5 1"/>',
+  jar:'<path d="M8 3.5h8v3H8Z"/><path d="M7.5 6.5h9l1 3v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-9Z"/><path d="M6.5 12.5h11"/>',
 };
 function Icon({n,size=22,sw=1.8,color="currentColor",style}){
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
@@ -1425,6 +1437,11 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [showMenu,setShowMenu]=useState(false);
   const [showCharts,setShowCharts]=useState(false);
   const [potMix,setPotMix]=useState({});   // mesa → {genética: plantas}
+  const [poolLines,setPoolLines]=useState([]);   // líneas de las tandas de VG que entraron a este ciclo
+  const [cycleCells,setCycleCells]=useState([]); // todas las celdas del ciclo, para saber qué falta ubicar
+  const [phenoAll,setPhenoAll]=useState({});
+  const [showDescarte,setShowDescarte]=useState(false);
+  const [descBusy,setDescBusy]=useState(false);
 
   const fdays=rc?.flower_days||65;
   const flushDays=rc?.flush_days||20;
@@ -1470,7 +1487,18 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         const mix={};
         allCells.forEach(cell=>{if(!cell.genetic_name)return;const l=lab[sid(cell.pot_id)];if(!l)return;mix[l]=mix[l]||{};mix[l][cell.genetic_name]=(mix[l][cell.genetic_name]||0)+1;});
         setPotMix(mix);
-      }else{setCg([]);setMsRows([]);setPotCounts({});setPotMix({});}
+        setCycleCells(allCells);
+        try{
+          const bs=await db.query("vg_batches",`cycle_id=eq.${sid(c.id)}`);
+          const ids=bs.map(b=>sid(b.id));
+          const ls=ids.length?await db.query("vg_lines",`batch_id=in.(${ids.join(",")})`):[];
+          setPoolLines(ls);
+          if(ls.some(l=>l.pheno_id)||allCells.some(x=>x.pheno_id)){
+            const ps=await db.query("phenos","select=id,code,number").catch(()=>[]);
+            const pm={};ps.forEach(p=>{pm[sid(p.id)]=p;});setPhenoAll(pm);
+          }
+        }catch{setPoolLines([]);/* sin la columna cycle_id todavía: la sala anda igual */}
+      }else{setCg([]);setMsRows([]);setPotCounts({});setPotMix({});setCycleCells([]);setPoolLines([]);}
     }finally{setLoading(false);}
   },[roomId]);
 
@@ -1521,6 +1549,8 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const doneT=tasks.filter(t=>t.status==="completada");
   const byRoom=groupTasks(pendingT);
   const totalPlants=Object.values(potCounts).reduce((a,b)=>a+(b||0),0);
+  const pool=buildPool(poolLines,cycleCells);
+  const poolLeft=pool.reduce((a,p)=>a+p.left,0);
 
   if(!cycle)return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
@@ -1564,12 +1594,15 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     {showClose&&<CloseCycleModal cycle={cycle} roomId={roomId} rc={rc} cg={cg} potCounts={potCounts} wLog={wLog} nLog={nLog} user={user} onClose={()=>setShowClose(false)} onSaved={()=>{setShowClose(false);load();setToast({msg:"Ciclo cerrado y archivado ✓",type:"success"});}}/>}
     {showTargets&&<TargetsModal roomId={roomId} rc={rc} cycle={cycle} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
 
+      {showDescarte&&<ConfirmModal title={`¿Dar por perdidas ${poolLeft} planta${poolLeft===1?"":"s"}?`} busy={descBusy} confirmLabel="Dar por perdidas" busyLabel="Guardando..." onClose={()=>setShowDescarte(false)}
+        onConfirm={async()=>{setDescBusy(true);try{const n=await descartarSobrantes({cycleId:cycle.id,pool,user:user.name});setShowDescarte(false);await load();setToast({msg:`${n} planta${n===1?"":"s"} anotada${n===1?"":"s"} como pérdida de trasplante`,type:"success"});}catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setDescBusy(false);}}}
+        text="Se descuentan de la tanda en VG como pérdida de trasplante y el “por ubicar” queda en cero. Hacelo cuando ya acomodaste todo lo que prendió."/>}
       {showMenu&&<Sheet title={roomName} onClose={()=>setShowMenu(false)}>
         {menu.map(([ic,l,fn],i)=><SheetRow key={l} i={i} icon={ic} label={l} onClick={()=>{setShowMenu(false);fn();}}/>)}
         <SheetRow i={1} icon="stop" label="Cerrar ciclo" danger onClick={()=>{setShowMenu(false);setShowClose(true);}}/>
       </Sheet>}
       {selPot&&<Sheet onClose={()=>setSelPot(null)}>
-        <div style={{margin:"-16px -4px 0"}}><PotEditor roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/></div>
+        <PotEditor inSheet roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} pool={pool} cycleCells={cycleCells} phenoAll={phenoAll} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/>
       </Sheet>}
 
       <div style={{background:heroBg,borderRadius:22,padding:"16px 18px 12px",border:`1px solid ${C.border}`}}>
@@ -1584,6 +1617,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         <div style={{display:"flex",gap:18,flexWrap:"wrap",marginTop:8,fontSize:14,fontWeight:700,color:C.textMid}}>
           <span>{isVeg?(left>0?<><b style={{color:C.text,fontSize:16}}>{left}</b> días para pasar a flora</>:"Toca pasar a flora"):(left>0?<><b style={{color:left<=7?C.red:C.text,fontSize:16}}>{left}</b> días para la cosecha</>:left===0?"Cosecha hoy":"Cosecha pasada")}</span>
           <span><b style={{color:C.text,fontSize:16}}>{totalPlants}</b> plantas</span>
+          {poolLeft>0&&<span style={{color:C.amber}}><b style={{fontSize:16}}>{poolLeft}</b> por ubicar</span>}
         </div>
         <div style={{position:"relative",height:marks.length?66:26,margin:"16px 6px 0"}}>
           <span style={{position:"absolute",left:0,right:0,top:9,height:4,borderRadius:4,background:C.borderStrong}}/>
@@ -1606,6 +1640,19 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         {showCharts&&<ChartsBlock climate={climate} clRange={clRange} setClRange={setClRange} tg={tg} onManual={()=>setShowClimate(true)}/>}
       </Card>
 
+      {poolLeft>0&&<Card style={{padding:"14px 16px",border:`1.5px solid ${C.amber}66`}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.amberLight,color:C.amber,flexShrink:0}}><Icon n="pot" size={22}/></span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:16,fontWeight:800,color:C.text}}>{poolLeft} planta{poolLeft===1?"":"s"} por ubicar</div>
+            <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Llegaron de VG. Tocá una mesa, Editar, y usalas como pincel.</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:"6px 12px",flexWrap:"wrap",marginTop:10}}>
+          {pool.filter(p=>p.left>0).map(p=>{const f=p.pheno_id?(phenoAll[p.pheno_id]?.code||"Feno"):p.pheno_label;return <span key={p.key} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[p.genetic_name]||C.green}}/>{p.genetic_name}{f&&<FenoChip txt={f}/>}<b style={{color:C.text,marginLeft:2}}>{p.left}</b></span>;})}
+        </div>
+        <button onClick={()=>setShowDescarte(true)} style={{marginTop:10,background:"transparent",border:"none",color:C.textSoft,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textDecoration:"underline"}}>Ya acomodé todo: dar por perdidas las que sobran</button>
+      </Card>}
       <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"10px 2px 0"}}>
         <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesas</div>
         <span style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Tocá una para editarla</span>
@@ -1824,7 +1871,7 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
     try{ await onCreate({genetic_name:gen,prefix:prefix.trim().toUpperCase()||"F",count:n,autofill}); }
     catch(e){setErr(errMsg(e));setBusy(false);}
   };
-  return <Modal title="🔬 Nueva búsqueda de fenos" onClose={onClose}>
+  return <Modal title="Nueva búsqueda de fenos" onClose={onClose} z={300}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12}}>{err}</div>}
     <div style={{fontSize:13,color:C.textSoft,marginBottom:14,lineHeight:1.55}}>
       Cada semilla es un feno distinto. Se crean todos ahora y después les vas asignando esquejes en las bandejas.
@@ -1855,22 +1902,27 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
 }
 
 // POT EDITOR
-function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved}){
+function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved,pool=[],cycleCells=[],phenoAll={},inSheet=false}){
   const pot=ROOM_POTS[roomId]?.find(p=>p.label===potLabel);
   const isAdmin=user?.role==="admin";
-  const [gridW,setGridW]=useState(pot?.circular?3:4);
-  const [gridH,setGridH]=useState(pot?.circular?4:6);
-  const [cells,setCells]=useState(()=>Array((pot?.circular?3:4)*(pot?.circular?4:6)).fill(null));
+  const W0=pot?.circular?3:4, H0=pot?.circular?4:6;
+  const [gridW,setGridW]=useState(W0);
+  const [gridH,setGridH]=useState(H0);
+  const [cells,setCells]=useState(()=>Array(W0*H0).fill(null));
   const [brush,setBrush]=useState(cycleGenetics[0]?.genetic_name||null);
+  // Pincel "por ubicar": una línea de la tanda que llegó de VG (genética + feno si tiene).
+  const [brushPool,setBrushPool]=useState(()=>pool.find(p=>p.left>0)?.key||null);
   const [potId,setPotId]=useState(null);
   const [saving,setSaving]=useState(false);
   const [toastLocal,setToastLocal]=useState(null);
   const [editing,setEditing]=useState(false);   // arranca en modo lectura: no se pinta hasta tocar "Editar"
   const [snapshot,setSnapshot]=useState(null);   // copia para poder Cancelar sin perder lo guardado
+  const [showSize,setShowSize]=useState(false);
   // Búsqueda de fenos: el modo queda prendido en la mesa hasta que un admin lo apague.
   const [phenoMode,setPhenoMode]=useState(false);
-  const [cellPhenos,setCellPhenos]=useState(()=>Array((pot?.circular?3:4)*(pot?.circular?4:6)).fill(null)); // pheno_id por celda
-  const [phenoMap,setPhenoMap]=useState({});    // id -> feno
+  const [cellPhenos,setCellPhenos]=useState(()=>Array(W0*H0).fill(null)); // pheno_id por celda
+  const [cellLabels,setCellLabels]=useState(()=>Array(W0*H0).fill(null)); // feno escrito a mano (sin id)
+  const [phenoMap,setPhenoMap]=useState({});    // id -> feno de la búsqueda de esta mesa
   const [hunt,setHunt]=useState(null);          // búsqueda activa en esta mesa
   const [huntPhenos,setHuntPhenos]=useState([]);// los N fenos de esa búsqueda, ordenados
   const [showNueva,setShowNueva]=useState(false);
@@ -1897,17 +1949,16 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       let p=pots[0];
       if(!p){
         // Auto-crear la fila del macetón si no existe
-        try{const ins=await db.insert("pots",{room_id:roomId,pot_label:potLabel,circular:!!pot?.circular,grid_w:gridW,grid_h:gridH});p=ins[0];}catch(e){setToastLocal(errMsg(e));return;}
+        try{const ins=await db.insert("pots",{room_id:roomId,pot_label:potLabel,circular:!!pot?.circular,grid_w:W0,grid_h:H0});p=ins[0];}catch(e){setToastLocal(errMsg(e));return;}
       }
       setPotId(p.id);
       setPhenoMode(!!p.pheno_mode);
-      const w=p.grid_w||gridW, h=p.grid_h||gridH;
+      const w=p.grid_w||W0, h=p.grid_h||H0;
       setGridW(w); setGridH(h);
       db.query("pot_cells",`pot_id=eq.${p.id}&cycle_id=eq.${cycle.id}&order=cell_index.asc`).then(existingCells=>{
-        const arr=Array(w*h).fill(null);
-        const ph=Array(w*h).fill(null);
-        existingCells.forEach(c=>{if(c.cell_index<arr.length){arr[c.cell_index]=c.genetic_name;ph[c.cell_index]=sid(c.pheno_id);}});
-        setCells(arr);setCellPhenos(ph);
+        const arr=Array(w*h).fill(null), ph=Array(w*h).fill(null), lb=Array(w*h).fill(null);
+        existingCells.forEach(c=>{if(c.cell_index<arr.length){arr[c.cell_index]=c.genetic_name;ph[c.cell_index]=sid(c.pheno_id);lb[c.cell_index]=c.pheno_label||null;}});
+        setCells(arr);setCellPhenos(ph);setCellLabels(lb);
       }).catch(()=>{});
       reloadHunt(p.id);
     }).catch(e=>setToastLocal(errMsg(e)));
@@ -1916,8 +1967,23 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   // Al cambiar el tamaño de la grilla, conservamos lo que ya estaba cargado (recorta o agrega vacías).
   const updateGrid=(w,h)=>{
     const remap=prev=>{const n=Array(w*h).fill(null);for(let r=0;r<Math.min(h,gridH);r++)for(let c=0;c<Math.min(w,gridW);c++)n[r*w+c]=prev[r*gridW+c]||null;return n;};
-    setCells(remap);setCellPhenos(remap);
+    setCells(remap);setCellPhenos(remap);setCellLabels(remap);
     setGridW(w);setGridH(h);
+  };
+
+  // ── Por ubicar: lo que llegó de VG menos lo que ya está en otras mesas y en esta ──
+  const keyAt=i=>poolKey(cells[i],cellPhenos[i],cellLabels[i]);
+  const elsewhere={};
+  cycleCells.forEach(c=>{if(!c.genetic_name||!potId||sid(c.pot_id)===sid(potId))return;const k=poolKey(c.genetic_name,c.pheno_id,c.pheno_label);elsewhere[k]=(elsewhere[k]||0)+1;});
+  const here={};cells.forEach((g,i)=>{if(!g)return;const k=keyAt(i);here[k]=(here[k]||0)+1;});
+  const poolItems=(potId?pool:[]).map(p=>({...p,left:Math.max(0,p.arrived-(elsewhere[p.key]||0)-(here[p.key]||0))}));
+  const poolLeft=poolItems.reduce((a,p)=>a+p.left,0);
+  const fenoDe=(pid,lab)=>pid?(phenoMap[sid(pid)]?.code||phenoAll[sid(pid)]?.code||"Feno"):(lab||null);
+
+  const setCell=(i,g,pid,lab)=>{
+    setCells(prev=>{const n=[...prev];n[i]=g;return n;});
+    setCellPhenos(prev=>{const n=[...prev];n[i]=pid||null;return n;});
+    setCellLabels(prev=>{const n=[...prev];n[i]=lab||null;return n;});
   };
   const paint=i=>{
     if(!editing)return;
@@ -1925,15 +1991,19 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       // El pincel es un feno concreto. Volver a tocar la misma celda la vacía.
       const ya=cellPhenos[i]===brushPheno;
       const p=phenoMap[brushPheno];
-      setCells(prev=>{const n=[...prev];n[i]=ya?null:(p?.genetic_name||hunt.genetic_name);return n;});
-      setCellPhenos(prev=>{const n=[...prev];n[i]=ya?null:brushPheno;return n;});
+      setCell(i,ya?null:(p?.genetic_name||hunt.genetic_name),ya?null:brushPheno,null);
       return;
     }
-    const borrando=cells[i]===brush;
-    setCells(prev=>{const n=[...prev];n[i]=borrando?null:brush;return n;});
-    setCellPhenos(prev=>{const n=[...prev];n[i]=null;return n;});
+    if(brushPool){
+      const it=poolItems.find(p=>p.key===brushPool);if(!it)return;
+      if(cells[i]&&keyAt(i)===it.key){setCell(i,null,null,null);return;}   // tocar de nuevo la saca
+      if(it.left<=0){const f=fenoDe(it.pheno_id,it.pheno_label);setToastLocal(`No quedan más ${it.genetic_name}${f?` ${f}`:""} por ubicar`);return;}
+      setCell(i,it.genetic_name,it.pheno_id,it.pheno_label);
+      return;
+    }
+    const borrando=brush!==null&&cells[i]===brush&&!cellPhenos[i]&&!cellLabels[i];
+    setCell(i,borrando?null:brush,null,null);
   };
-  // Trae una tanda de esquejera: asigna sus fenos en orden a las celdas libres de la mesa.
   // Crea la búsqueda y sus N fenos, y opcionalmente los ubica por número en la mesa.
   const crearBusqueda=async({genetic_name,prefix,count,autofill})=>{
     if(!potId)throw new Error("La mesa todavía no terminó de cargar");
@@ -1950,35 +2020,40 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     }));
     const ps=await db.insert("phenos",filas);
     if(autofill){
-      const nc=[...cells], np=[...cellPhenos];
+      const nc=[...cells], np=[...cellPhenos], nl=[...cellLabels];
       ps.forEach(p=>{
         const idx=seedIndex(p.number,gridW,gridH);
         if(idx<0||idx>=nc.length)return;        // más fenos que lugares: quedan sin ubicar
-        nc[idx]=genetic_name; np[idx]=sid(p.id);
+        nc[idx]=genetic_name; np[idx]=sid(p.id); nl[idx]=null;
       });
-      setCells(nc);setCellPhenos(np);
+      setCells(nc);setCellPhenos(np);setCellLabels(nl);
     }
     setHunt(h);setHuntPhenos(ps);
     const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
     setBrushPheno(ps[0]?sid(ps[0].id):null);
     setPhenoMode(true);
-    try{await db.update("pots",potId,{pheno_mode:true});}catch{}
+    try{await db.update("pots",potId,{pheno_mode:true});}catch{/* se reintenta al guardar */}
     setShowNueva(false);
     setToastLocal(autofill?`${ps.length} fenos creados y ubicados. Tocá Guardar para confirmar.`:`${ps.length} fenos creados.`);
   };
 
-  const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],gridW,gridH,phenoMode});setEditing(true);};
-  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setEditing(false);};
+  const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],cellLabels:[...cellLabels],gridW,gridH,phenoMode});setEditing(true);};
+  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setCellLabels(snapshot.cellLabels);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setEditing(false);setShowSize(false);};
 
   const save=async()=>{
-    if(!potId){setToastLocal("Cargando macetón, esperá un segundo y reintentá");return;}
+    if(!potId){setToastLocal("Cargando la mesa, esperá un segundo y reintentá");return;}
     setSaving(true);
     try{
       await db.update("pots",potId,{grid_w:gridW,grid_h:gridH,pheno_mode:phenoMode});
-      // Los fenos ya existen (se crean al abrir la búsqueda). Acá solo se guarda
-      // en qué celda está cada uno, así que no se crea ni se borra ningún feno.
+      // Los fenos ya existen: acá solo se guarda en qué celda está cada uno.
+      // El feno viaja con la planta aunque la mesa no esté en modo búsqueda.
       await db.deleteQuery("pot_cells",`pot_id=eq.${potId}&cycle_id=eq.${cycle.id}`);
-      const newCells=cells.map((g,i)=>({pot_id:potId,cycle_id:cycle.id,cell_index:i,genetic_name:g,pheno_id:(phenoMode?cellPhenos[i]:null)||null,updated_at:new Date().toISOString()})).filter(c=>c.genetic_name);
+      const anyLab=cellLabels.some(Boolean);
+      const newCells=cells.map((g,i)=>{
+        const r={pot_id:potId,cycle_id:cycle.id,cell_index:i,genetic_name:g,pheno_id:cellPhenos[i]||null,updated_at:new Date().toISOString()};
+        if(anyLab)r.pheno_label=cellLabels[i]||null;
+        return r;
+      }).filter(c=>c.genetic_name);
       if(newCells.length>0)await db.insert("pot_cells",newCells);
       if(phenoMode&&hunt)await logA(user?.name||"sistema",`Fenos actualizados en ${roomId} · Mesa ${potLabel}`,"phenos");
       onSaved();
@@ -1989,127 +2064,146 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     if(!phenoMode&&!hunt){setShowNueva(true);return;}   // sin búsqueda todavía: hay que crearla
     const next=!phenoMode;
     setPhenoMode(next);
-    if(potId){try{await db.update("pots",potId,{pheno_mode:next});}catch{}}
+    if(potId){try{await db.update("pots",potId,{pheno_mode:next});}catch{/* queda en pantalla */}}
   };
 
-  const summary=cycleGenetics.map(g=>({...g,count:cells.filter(c=>c===g.genetic_name).length})).filter(g=>g.count>0);
+  // Resumen: genéticas presentes y, adentro, los fenos que viajaron con la planta.
+  const summary={};
+  cells.forEach((g,i)=>{if(!g)return;const s=summary[g]=summary[g]||{n:0,f:{}};s.n++;const f=fenoDe(cellPhenos[i],cellLabels[i]);if(f)s.f[f]=(s.f[f]||0)+1;});
+  const sumRows=Object.entries(summary).sort((a,b)=>b[1].n-a[1].n);
   const total=cells.filter(Boolean).length;
   const ubicados=new Set(cellPhenos.filter(Boolean)).size;
   const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
 
-  return <div style={{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16}}>
+  const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
+    background:on?col:`${col}1F`,color:on?"#fff":col,border:`1.5px solid ${col}`}}>{children}</button>;
+  const lbl=t=><div style={{fontSize:12.5,fontWeight:800,color:C.textSoft,margin:"2px 0 7px"}}>{t}</div>;
+  const wrap=inSheet?{}:{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16};
+  const sz=phenoMode?36:34;
+
+  return <div style={wrap}>
     {toastLocal&&<Toast msg={toastLocal} type="error" onClose={()=>setToastLocal(null)}/>}
     {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} genetics={genetics} gridW={gridW} gridH={gridH} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-      <div style={{fontSize:15,fontWeight:800,color:C.text}}>Macetón {potLabel} {pot?.circular?"— circular":"— 2×1m"}{editing&&<span style={{fontSize:12,fontWeight:700,color:C.green,marginLeft:8}}>● editando</span>}</div>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        {isAdmin&&!editing&&<button onClick={startEdit} style={{fontSize:12.5,fontWeight:700,color:C.green,background:C.greenLight,border:`1px solid ${C.green}55`,borderRadius:9,padding:"6px 13px",cursor:"pointer"}}>✎ Editar mesa</button>}
-        <button onClick={onClose} style={{background:"transparent",border:"none",fontSize:24,cursor:"pointer",color:C.textSoft}}>×</button>
+
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+      <span style={{width:46,height:46,borderRadius:pot?.circular?"50%":14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:editing?C.greenLight:C.surfaceAlt,color:editing?C.green:C.text,fontSize:21,fontWeight:800}}>{potLabel}</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesa {potLabel}</div>
+        <div style={{fontSize:13,color:editing?C.green:C.textSoft,fontWeight:700}}>{editing?"Editando":pot?.circular?"Circular":"2 × 1 m"} · {total} planta{total===1?"":"s"}</div>
       </div>
+      {isAdmin&&!editing&&<button onClick={startEdit} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:12,padding:"10px 13px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}><Icon n="edit" size={17}/>Editar</button>}
+      <button onClick={onClose} aria-label="Cerrar" style={{width:40,height:40,borderRadius:12,border:"none",background:"transparent",color:C.textSoft,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={20}/></button>
     </div>
 
+    {/* Por ubicar: lo que llegó de VG a esta sala y todavía no tiene lugar */}
+    {poolItems.length>0&&!phenoMode&&(editing||poolLeft>0)&&<div style={{background:C.amberLight,borderRadius:14,padding:"11px 12px",marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:800,color:C.amber,marginBottom:editing?9:0}}>
+        <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}
+      </div>
+      {!editing&&isAdmin&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:3}}>Tocá Editar y usalas como pincel.</div>}
+      {editing&&<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+        {poolItems.map(it=>{const col=genMap[it.genetic_name]||C.green;const f=fenoDe(it.pheno_id,it.pheno_label);const on=brushPool===it.key;
+          return chip(on,col,<>{it.genetic_name}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.25)":C.purpleLight,color:on?"#fff":C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
+      </div>}
+    </div>}
+
     {/* Búsqueda de fenos: cada semilla es un feno numerado (DS-1, DS-2...) */}
-    {isAdmin&&<div onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:phenoMode?C.purpleLight:C.bg,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
-      <div style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0,transition:"background 0.15s"}}>
-        <div style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
-      </div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:13,fontWeight:800,color:phenoMode?C.purple:C.textMid}}>🔬 Búsqueda de fenos</div>
-        <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>{hunt?`${hunt.prefix}-1 a ${hunt.prefix}-${hunt.total} · ${hunt.genetic_name}`:"Tocá para arrancar una búsqueda de semillas."}</div>
-      </div>
-    </div>}
-    {phenoMode&&hunt&&<div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:12,padding:"11px 13px",marginBottom:12}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,color:C.textSoft,marginBottom:sinUbicar>0?7:0}}>
-        <span><strong style={{color:C.text}}>{ubicados}</strong> de {hunt.total} ubicados</span>
-        <span>{hunt.prefix}-1 … {hunt.prefix}-{hunt.total}</span>
-      </div>
-      {sinUbicar>0&&<div style={{fontSize:11.5,color:C.amber,lineHeight:1.45}}>{sinUbicar} feno{sinUbicar>1?"s":""} sin lugar en esta mesa.</div>}
+    {isAdmin&&<button onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:12,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:phenoMode?C.purpleLight:C.surfaceAlt,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
+      <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:phenoMode?C.purple:C.surface,color:phenoMode?"#fff":C.textMid}}><Icon n="flask" size={18}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:800,color:phenoMode?C.purple:C.text}}>Búsqueda de fenos</span>
+        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{hunt?`${hunt.prefix}-1 a ${hunt.prefix}-${hunt.total} · ${hunt.genetic_name}`:"Tocá para arrancar una búsqueda de semillas"}</span>
+      </span>
+      <span style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0}}>
+        <span style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+      </span>
+    </button>}
+    {phenoMode&&hunt&&<div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:13,color:C.textSoft,fontWeight:600,margin:"-4px 2px 12px"}}>
+      <span><b style={{color:C.text}}>{ubicados}</b> de {hunt.total} ubicados</span>
+      {sinUbicar>0&&<span style={{color:C.amber,fontWeight:800}}>{sinUbicar} sin lugar</span>}
     </div>}
 
-    {!editing&&<div style={{fontSize:12,color:C.textSoft,marginBottom:12,fontStyle:"italic"}}>{isAdmin?"Modo lectura. Tocá “✎ Editar mesa” para cambiar la distribución.":"Solo los administradores pueden editar la distribución de las mesas."}</div>}
-
-    {editing&&<div style={{display:"flex",gap:14,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-      <span style={{fontSize:12,color:C.textSoft}}>Distribución:</span>
-      {[{l:"Ancho",v:gridW,set:v=>updateGrid(v===""?1:v,gridH),max:pot?.circular?4:8},{l:"Largo",v:gridH,set:v=>updateGrid(gridW,v===""?1:v),max:pot?.circular?4:10}].map(f=><label key={f.l} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:C.textMid}}>
-        {f.l}<NumField value={f.v} onCommit={f.set} min={1} max={f.max} compact/>
-      </label>)}
-      <span style={{fontSize:12,color:C.textMid,fontWeight:700}}>{total}/{gridW*gridH} plantas</span>
-    </div>}
-
-    {/* En modo feno el pincel es un feno concreto, no una genética */}
     {editing&&phenoMode&&hunt&&<div style={{marginBottom:12}}>
-      <div style={{fontSize:12,color:C.textSoft,marginBottom:7}}>Tocá un feno y después las celdas donde va:</div>
+      {lbl("Tocá un feno y después las celdas donde va")}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
         {huntPhenos.map(p=>{
-          const pid=sid(p.id);
-          const n=cellPhenos.filter(x=>x===pid).length;
-          const on=brushPheno===pid;
+          const pid=sid(p.id);const n=cellPhenos.filter(x=>x===pid).length;const on=brushPheno===pid;
           return <button key={pid} onClick={()=>setBrushPheno(pid)} title={p.code}
-            style={{minWidth:38,padding:"6px 8px",borderRadius:9,fontSize:12.5,fontWeight:800,cursor:"pointer",
-              background:on?C.purple:(n>0?C.purpleLight:C.bg),color:on?"#fff":(n>0?C.purple:C.textSoft),
+            style={{minWidth:40,padding:"7px 8px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
+              background:on?C.purple:(n>0?C.purpleLight:C.surfaceAlt),color:on?"#fff":(n>0?C.purple:C.textSoft),
               border:`1.5px solid ${on?C.purple:(n>0?C.purple+"55":C.border)}`}}>{p.number}{n>1?<sup style={{fontSize:8.5}}>×{n}</sup>:null}</button>;
         })}
       </div>
       <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
-        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);}});setCells(nc);setCellPhenos(np);}}
-          style={{padding:"7px 12px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>↕ Ubicar por número</button>
-        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));}}
-          style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
+        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos],nl=[...cellLabels];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);nl[idx]=null;}});setCells(nc);setCellPhenos(np);setCellLabels(nl);}}
+          style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>Ubicar por número</button>
+        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}}
+          style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
       </div>
     </div>}
 
-    {editing&&!phenoMode&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      {cycleGenetics.map(g=><button key={g.genetic_name} onClick={()=>setBrush(g.genetic_name)} style={{padding:"7px 14px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",background:brush===g.genetic_name?genMap[g.genetic_name]||C.green:`${genMap[g.genetic_name]||C.green}22`,color:brush===g.genetic_name?"#fff":genMap[g.genetic_name]||C.green,border:`2px solid ${genMap[g.genetic_name]||C.green}`}}>{g.genetic_name}</button>)}
-      <button onClick={()=>setBrush(null)} style={{padding:"7px 14px",borderRadius:20,fontSize:12,cursor:"pointer",background:brush===null?C.red:C.bg,color:brush===null?"#fff":C.textSoft,border:`2px solid ${brush===null?C.red:C.borderStrong}`}}>Borrar</button>
-      <button onClick={()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));}} style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Llenar</button>
-      <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));}} style={{padding:"7px 10px",borderRadius:20,fontSize:12,cursor:"pointer",background:C.bg,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
+    {editing&&!phenoMode&&<div style={{marginBottom:12}}>
+      {cycleGenetics.length>0&&lbl("Genéticas del ciclo")}
+      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+        {cycleGenetics.map(g=>{const col=genMap[g.genetic_name]||C.green;return chip(!brushPool&&brush===g.genetic_name,col,g.genetic_name,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);})}
+        {chip(!brushPool&&brush===null,C.red,"Borrar",()=>{setBrushPool(null);setBrush(null);},"__borrar__")}
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
+        {!brushPool&&brush&&<button onClick={()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Llenar con {brush}</button>}
+        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
+        <button onClick={()=>setShowSize(s=>!s)} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:showSize?C.greenLight:C.surfaceAlt,color:showSize?C.green:C.textMid,border:`1px solid ${showSize?C.green:C.border}`}}><Icon n="sliders" size={15}/>Medidas {gridW}×{gridH}</button>
+      </div>
+    </div>}
+    {editing&&(showSize||phenoMode)&&<div style={{display:"flex",gap:14,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+      {[{l:"Ancho",v:gridW,set:v=>updateGrid(v===""?1:v,gridH),max:pot?.circular?4:8},{l:"Largo",v:gridH,set:v=>updateGrid(gridW,v===""?1:v),max:pot?.circular?4:10}].map(f=><label key={f.l} style={{display:"flex",alignItems:"center",gap:6,fontSize:13.5,fontWeight:700,color:C.textMid}}>
+        {f.l}<NumField value={f.v} onCommit={f.set} min={1} max={f.max} compact/>
+      </label>)}
+      <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{total}/{gridW*gridH} lugares</span>
     </div>}
 
-    <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-      <div style={{flex:1,overflowX:"auto"}}>
-        {/* En modo feno cada celda muestra el número del feno que vive ahí, como en el cuaderno */}
-        <div style={{display:"inline-grid",gridTemplateColumns:phenoMode?`16px repeat(${gridW},36px)`:`repeat(${gridW},32px)`,gap:phenoMode?5:4,alignItems:"center",justifyItems:"center"}}>
-          {phenoMode&&<span/>}
-          {phenoMode&&Array.from({length:gridW},(_,c)=><span key={"ch"+c} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
-          {cells.map((cell,i)=>{
-            const first=phenoMode&&i%gridW===0;
-            const ph=cellPhenos[i]?phenoMap[cellPhenos[i]]:null;
-            const sz=phenoMode?36:32;
-            const sel=phenoMode&&editing&&cellPhenos[i]&&cellPhenos[i]===brushPheno;
-            const box=<div key={i} onClick={()=>paint(i)} title={phenoMode?(ph?.code||`Vacío · pos ${seedNum(i,gridW,gridH)}`):""}
-              style={{width:sz,height:sz,borderRadius:7,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.border,
-                border:`2px solid ${sel?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
-                display:"flex",alignItems:"center",justifyContent:"center",opacity:editing||cell?1:0.85,
-                fontSize:ph&&ph.number>99?10:12.5,fontWeight:900,color:ph?"rgba(0,0,0,0.72)":C.textSoft,letterSpacing:"-0.03em"}}>
-              {phenoMode
-                ? (ph?ph.number:<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>)
-                : (cell?<div style={{width:10,height:10,borderRadius:"50%",background:"rgba(255,255,255,0.4)"}}/>:null)}
-            </div>;
-            return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
-          })}
-        </div>
-        {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:8,fontStyle:"italic",lineHeight:1.45}}>Los números se cuentan desde abajo a la izquierda, igual que en el cuaderno. El gris tenue es la posición libre.</div>}
-      </div>
-      <div style={{minWidth:130}}>
-        <div style={{fontSize:10,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Resumen</div>
-        {summary.length===0&&<div style={{fontSize:11.5,color:C.textSoft,fontStyle:"italic",marginBottom:10,lineHeight:1.5}}>{editing?"Elegí una genética arriba y tocá las celdas para cargarla.":"Esta maceta todavía no tiene genéticas cargadas."}</div>}
-        {summary.map(g=><div key={g.genetic_name} style={{marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}><div style={{width:10,height:10,borderRadius:"50%",background:genMap[g.genetic_name]||C.green,flexShrink:0}}/><span style={{fontSize:12,color:C.text,fontWeight:600}}>{g.genetic_name}</span></div>
-          <div style={{fontSize:28,fontWeight:900,color:C.text,fontFamily:H,lineHeight:1}}>{g.count}</div>
-          <div style={{fontSize:10,color:C.textSoft}}>plantas</div>
-        </div>)}
-        <Divider/>
-        <div style={{fontSize:11,color:C.textSoft}}>Total</div>
-        <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:H}}>{total}</div>
-        {editing&&<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
-          <Btn onClick={save} disabled={saving} full style={{padding:12}}>{saving?"Guardando...":"Guardar"}</Btn>
-          <Btn onClick={cancelEdit} v="secondary" disabled={saving} full>Cancelar</Btn>
-        </div>}
+    <div style={{overflowX:"auto",display:"flex",justifyContent:"center",padding:"4px 0"}}>
+      {/* En modo feno cada celda muestra el número del feno, como en el cuaderno */}
+      <div style={{display:"inline-grid",gridTemplateColumns:phenoMode?`16px repeat(${gridW},${sz}px)`:`repeat(${gridW},${sz}px)`,gap:5,alignItems:"center",justifyItems:"center"}}>
+        {phenoMode&&<span/>}
+        {phenoMode&&Array.from({length:gridW},(_,c)=><span key={"ch"+c} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
+        {cells.map((cell,i)=>{
+          const first=phenoMode&&i%gridW===0;
+          const ph=cellPhenos[i]?(phenoMap[cellPhenos[i]]||phenoAll[cellPhenos[i]]):null;
+          const sel=phenoMode&&editing&&cellPhenos[i]&&cellPhenos[i]===brushPheno;
+          const conFeno=!phenoMode&&(cellPhenos[i]||cellLabels[i]);
+          const txt=phenoMode?(ph?ph.number:null):(ph?ph.number:(cellLabels[i]?String(cellLabels[i]).slice(0,4):null));
+          const box=<div key={i} onClick={()=>paint(i)} title={ph?.code||cellLabels[i]||(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:"")}
+            style={{width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.surfaceAlt,
+              border:`2px solid ${sel||conFeno?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:txt&&String(txt).length>2?9.5:12.5,fontWeight:800,color:cell?"rgba(0,0,0,0.72)":C.textSoft,letterSpacing:"-0.03em",overflow:"hidden"}}>
+            {txt!=null?txt:(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:(cell?<span style={{width:9,height:9,borderRadius:"50%",background:"rgba(255,255,255,0.45)"}}/>:null))}
+          </div>;
+          return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
+        })}
       </div>
     </div>
+    {phenoMode&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,lineHeight:1.45,textAlign:"center"}}>Los números se cuentan desde abajo a la izquierda, como en el cuaderno.</div>}
+    {!phenoMode&&cells.some((c,i)=>c&&(cellPhenos[i]||cellLabels[i]))&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,textAlign:"center"}}>Borde violeta: la planta lleva su feno.</div>}
+
+    <div style={{marginTop:12,borderTop:`1px solid ${C.border}`}}>
+      {sumRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"12px 0 0"}}>{editing?"Elegí un pincel arriba y tocá las celdas.":"Esta mesa todavía no tiene plantas cargadas."}</div>}
+      {sumRows.map(([g,s],k)=><div key={g} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:k?`1px solid ${C.border}`:"none"}}>
+        <span style={{width:10,alignSelf:"stretch",minHeight:26,borderRadius:4,background:genMap[g]||C.green,flexShrink:0}}/>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14.5,fontWeight:800,color:C.text}}>{g}</span>
+          {Object.keys(s.f).length>0&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700}}>{Object.entries(s.f).map(([f,n])=>n>1?`${f} ×${n}`:f).join(" · ")}</span>}
+        </span>
+        <span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{s.n}</span>
+      </div>)}
+    </div>
+
+    {editing&&<div style={{display:"flex",gap:10,marginTop:14}}>
+      <Btn onClick={save} disabled={saving} style={{flex:1,minHeight:48}}>{saving?"Guardando...":"Guardar mesa"}</Btn>
+      <Btn onClick={cancelEdit} v="secondary" disabled={saving} style={{flex:1,minHeight:48}}>Cancelar</Btn>
+    </div>}
   </div>;
 }
-
 // MODALS
 function WaterModal({roomId,user,onClose,onSaved}){
   const [method,setMethod]=useState("manual");
@@ -3074,12 +3168,51 @@ function MadresPage({genetics,user}){
 }
 
 // ── ESQUEJERAS ───────────────────────────────────────────────────────────────
+// Alta de esquejera: nombre y medida en filas × columnas (las columnas son letras A, B, C...).
+function NuevaEsquejeraSheet({cloners,user,onClose,onSaved}){
+  const [name,setName]=useState(`Esquejera ${cloners.length+1}`);
+  const [rows,setRows]=useState(6);
+  const [cols,setCols]=useState(8);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const r=Math.max(1,Math.min(20,+rows||1)), c=Math.max(1,Math.min(10,+cols||1));
+  const save=async()=>{
+    const nm=name.trim();
+    if(!nm){setErr("Poné un nombre.");return;}
+    if(cloners.some(x=>String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay una esquejera con ese nombre.");return;}
+    setSaving(true);setErr(null);
+    try{
+      await db.insert("cloners",{label:nm,capacity:r*c,cols:c});
+      await logA(user.name,`Agregó esquejera: ${nm} (${r}×${c})`,"esquejera");
+      onSaved(`${nm} agregada: ${r*c} lugares ✓`);
+    }catch(e){setErr(errMsg(e));setSaving(false);}
+  };
+  return <Sheet title="Nueva esquejera" sub="Las columnas van con letras y las filas con números, como en la bandeja." onClose={onClose}>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:10}}>{err}</div>}
+    <FI label="Nombre" value={name} onChange={e=>setName(e.target.value)} placeholder="Ej: Esquejera 4"/>
+    <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+      <div style={{flex:1}}><NumField label="Filas" value={rows} onCommit={v=>setRows(v===""?1:+v)} min={1} max={20}/></div>
+      <div style={{fontSize:20,fontWeight:800,color:C.textSoft,paddingBottom:22}}>×</div>
+      <div style={{flex:1}}><NumField label="Columnas" value={cols} onCommit={v=>setCols(v===""?1:+v)} min={1} max={10}/></div>
+    </div>
+    <div style={{background:C.surfaceAlt,borderRadius:14,padding:"12px 10px",marginBottom:14,display:"flex",flexDirection:"column",alignItems:"center",gap:8,overflowX:"auto"}}>
+      <ClonerGrid capacity={r*c} cols={c} colorAt={()=>null} cell={16}/>
+      <div style={{fontSize:13,fontWeight:800,color:C.text}}>{r} × {c} = {r*c} lugares</div>
+    </div>
+    <div style={{display:"flex",gap:10}}>
+      <Btn onClick={save} disabled={saving} style={{flex:1,minHeight:48}}>{saving?"Guardando...":"Agregar"}</Btn>
+      <Btn onClick={onClose} v="secondary" disabled={saving} style={{flex:1,minHeight:48}}>Cancelar</Btn>
+    </div>
+  </Sheet>;
+}
 function EsquejerasPage({genetics,user}){
   const [cloners,setCloners]=useState([]);
   const [clSlots,setClSlots]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [showEsp,setShowEsp]=useState(null);
+  const [showNew,setShowNew]=useState(false);
+  const isAdmin=user?.role==="admin";
   const load=useCallback(()=>{
     setLoading(true);
     Promise.all([db.get("cloners"),db.get("cloner_slots")])
@@ -3095,7 +3228,9 @@ function EsquejerasPage({genetics,user}){
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {espC&&<EsquejeraModal cloner={espC} slots={clSlots.filter(s=>sid(s.cloner_id)===sid(espC.id))} genetics={genetics} user={user} onClose={()=>setShowEsp(null)} onSaved={(msg)=>{setShowEsp(null);load();setToast({msg:typeof msg==="string"?msg:"Esquejera guardada ✓",type:"success"});}}/>}
 
-    <PageTitle sub={`${usados} esqueje${usados===1?"":"s"} en ${cloners.length} bandeja${cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.`}>Esquejeras</PageTitle>
+    {showNew&&<NuevaEsquejeraSheet cloners={cloners} user={user} onClose={()=>setShowNew(false)} onSaved={m=>{setShowNew(false);load();setToast({msg:m,type:"success"});}}/>}
+    <PageTitle sub={`${usados} esqueje${usados===1?"":"s"} en ${cloners.length} bandeja${cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.`}
+      right={isAdmin&&<button onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Esquejeras</PageTitle>
 
     {cloners.map(cl=>{
       const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));
@@ -3121,7 +3256,7 @@ function EsquejerasPage({genetics,user}){
         </>}
       </Card>;
     })}
-    {cloners.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,padding:"20px 0"}}>Sin esquejeras configuradas. Se crean en Configuración.</Card>}
+    {cloners.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,padding:"20px 0"}}>{isAdmin?"Sin esquejeras. Tocá “Agregar” para cargar la primera.":"Sin esquejeras cargadas."}</Card>}
   </div>;
 }
 
@@ -3491,7 +3626,68 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
   </div>;
 }
 
-function VGPage({genetics,user}){
+// ══════════════════════════════════════════════════════════════════════════════
+// VG → SALA: una tanda que pasa a una sala queda "por ubicar" en el ciclo de esa
+// sala. El stock (genética + feno) ya está en la sala y se acomoda mesa por mesa.
+// Por ubicar = lo que llegó por tandas − lo que ya está dibujado en las mesas.
+// ══════════════════════════════════════════════════════════════════════════════
+const poolKey=(g,pid,lab)=>`${g||""}|${pid?sid(pid):""}|${pid?"":(lab||"")}`;
+const buildPool=(lines=[],cells=[])=>{
+  const acc={};
+  lines.forEach(l=>{
+    const n=l.current_count||0;if(n<=0||!l.genetic_name)return;
+    const k=poolKey(l.genetic_name,l.pheno_id,l.pheno_label);
+    acc[k]=acc[k]||{key:k,genetic_name:l.genetic_name,pheno_id:l.pheno_id?sid(l.pheno_id):null,pheno_label:l.pheno_id?null:(l.pheno_label||null),arrived:0,placed:0};
+    acc[k].arrived+=n;
+  });
+  cells.forEach(c=>{if(!c.genetic_name)return;const k=poolKey(c.genetic_name,c.pheno_id,c.pheno_label);if(acc[k])acc[k].placed++;});
+  return Object.values(acc).map(p=>({...p,left:Math.max(0,p.arrived-p.placed)})).sort((a,b)=>b.left-a.left||a.genetic_name.localeCompare(b.genetic_name));
+};
+// Estado de una sala para recibir una tanda: sin ciclo (se abre en vege), en vege (se suma) o en flora (no recibe).
+const salaRecibe=(cyc)=>!cyc?{ok:true,txt:"Sin ciclo: se abre en vegetativo"}
+  :cyc.phase==="vegetativo"?{ok:true,txt:`En vegetativo desde ${fmtDM(cyc.veg_start||cyc.created_at)}: se suma`}
+  :{ok:false,txt:`En ${cyc.phase}: no recibe tandas`};
+async function enviarTandaASala({batch,lines,room,date,rc,user}){
+  const cs=await db.query("cycles",`room_id=eq.${room}&active=eq.true&order=created_at.desc`);
+  let c=cs[0]||null;
+  if(c&&c.phase!=="vegetativo")throw new Error(`${rc.display_name} está en ${c.phase}. Solo recibe tandas en vegetativo o sin ciclo.`);
+  const vd=+rc.veg_days||6, fd=+rc.flower_days||65;
+  if(!c){
+    const ins=await db.insert("cycles",{room_id:room,phase:"vegetativo",veg_start:date,veg_end:addDays(date,vd),flower_start:addDays(date,vd),estimated_harvest:addDays(date,vd+fd),irrigation_type:rc.irrigation_type||(room==="S1"?"automático":"manual"),active:true});
+    c=ins[0];
+    await logA(user,`Abrió ciclo en vegetativo en ${room} al pasar la tanda del ${fmtDM(batch.start_date)}`,"cycle");
+  }
+  const cg=await db.query("cycle_genetics",`cycle_id=eq.${c.id}`);
+  const have=new Set(cg.map(x=>x.genetic_name));
+  const nuevas=[...new Set(lines.filter(l=>(l.current_count||0)>0).map(l=>l.genetic_name))].filter(g=>g&&!have.has(g));
+  if(nuevas.length)await db.insert("cycle_genetics",nuevas.map(g=>({cycle_id:c.id,genetic_name:g,plant_count:0})));
+  await db.update("vg_batches",batch.id,{status:"sala",dest_room:room,moved_date:date,cycle_id:sid(c.id)});
+  const n=lines.reduce((a,l)=>a+(l.current_count||0),0);
+  await logA(user,`Pasó la tanda de VG del ${fmtDM(batch.start_date)} a ${room} (${n} plantas por ubicar)`,"vg");
+  return c;
+}
+// Lo que sobró sin lugar se descuenta de la tanda como pérdida de trasplante.
+async function descartarSobrantes({cycleId,pool,user}){
+  const bs=await db.query("vg_batches",`cycle_id=eq.${sid(cycleId)}`);
+  const bids=bs.map(b=>sid(b.id));
+  const ls=bids.length?await db.query("vg_lines",`batch_id=in.(${bids.join(",")})&order=created_at.asc`):[];
+  let total=0;const losses=[];
+  for(const p of pool){
+    let rest=p.left;if(rest<=0)continue;
+    for(const l of ls.filter(x=>poolKey(x.genetic_name,x.pheno_id,x.pheno_label)===p.key)){
+      if(rest<=0)break;
+      const cur=l.current_count||0;const q=Math.min(cur,rest);if(q<=0)continue;
+      await db.update("vg_lines",l.id,{current_count:cur-q});l.current_count=cur-q;
+      losses.push({batch_id:sid(l.batch_id),line_id:sid(l.id),genetic_name:l.genetic_name,origin:l.origin,qty:q,method:"trasplante",loss_date:todayISO,author:user});
+      rest-=q;total+=q;
+    }
+  }
+  if(losses.length)await db.insert("vg_losses",losses);
+  if(total)await logA(user,`Dio por perdidas ${total} plantas sin lugar al trasplante`,"vg");
+  return total;
+}
+
+function VGPage({genetics,user,roomConfig=[]}){
   const isAdmin=user?.role==="admin";
   const [batches,setBatches]=useState([]);
   const [lines,setLines]=useState([]);
@@ -3505,6 +3701,7 @@ function VGPage({genetics,user}){
   const [showSala,setShowSala]=useState(false);
   const [sala,setSala]=useState("S1");
   const [salaDate,setSalaDate]=useState(todayISO);
+  const [salaCycles,setSalaCycles]=useState({});   // ciclo activo de cada sala, para saber si recibe
   const [showDel,setShowDel]=useState(false);
   const [busy,setBusy]=useState(false);
   const [toast,setToast]=useState(null);
@@ -3591,13 +3788,31 @@ function VGPage({genetics,user}){
       }});
     }catch(e){setToast({msg:errMsg(e),type:"error"});load(true);}
   };
-  const pasarSala=async()=>{
+  const abrirPase=async()=>{
+    setSalaDate(todayISO);setShowSala(true);
+    try{
+      const cs=await db.query("cycles","active=eq.true&order=created_at.desc");
+      const m={};cs.forEach(c=>{if(!m[c.room_id])m[c.room_id]=c;});setSalaCycles(m);
+      setSala(["S1","S2"].find(r=>salaRecibe(m[r]).ok)||"S1");
+    }catch{setSalaCycles({});setSala("S1");}
+  };
+  // Pasa la tanda a la sala: abre o usa el ciclo en vege y deja el stock "por ubicar".
+  const pasarSala=async(room,date)=>{
     if(!sel)return;setBusy(true);
     try{
-      await db.update("vg_batches",sel.id,{status:"sala",dest_room:sala,moved_date:salaDate||todayISO});
-      await logA(autor,`Pasó la tanda de VG del ${fmtDM(sel.start_date)} a ${sala}`,"vg");
+      const rc=getRC(roomConfig,room);
+      await enviarTandaASala({batch:sel,lines:linesOf(sel.id),room,date:date||todayISO,rc,user:autor});
       setShowSala(false);setSelId(null);await load(true);
-      setToast({msg:`Tanda del ${fmtDM(sel.start_date)} pasó a ${sala}`,type:"success"});
+      setToast({msg:`Tanda del ${fmtDM(sel.start_date)} en ${rc.display_name}: queda por ubicar en las mesas ✓`,type:"success"});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
+  };
+  const devolverVG=async()=>{
+    if(!sel)return;setBusy(true);
+    try{
+      await db.update("vg_batches",sel.id,{status:"vg",dest_room:null,moved_date:null,cycle_id:null});
+      await logA(autor,`Devolvió a VG la tanda del ${fmtDM(sel.start_date)}`,"vg");
+      await load(true);
+      setToast({msg:`Tanda del ${fmtDM(sel.start_date)} de vuelta en VG`,type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
   };
   const eliminar=async()=>{
@@ -3629,17 +3844,25 @@ function VGPage({genetics,user}){
     const origTxt=vgOrigTxt(ls," y ");
     return <div style={{display:"flex",flexDirection:"column",gap:14,paddingBottom:32}}>
       {overlay}
-      {showSala&&<Modal title="Pasar a sala" onClose={()=>{if(!busy)setShowSala(false);}}>
-        <div style={{fontSize:14,color:C.textMid,lineHeight:1.55,marginBottom:14}}>Entran {vivas} planta{vivas===1?"":"s"}{origTxt?`: ${origTxt}`:""}. Después pintás las mesas como siempre.</div>
-        <div style={{display:"flex",gap:10,marginBottom:14}}>
-          {["S1","S2"].map(r=><button key={r} onClick={()=>setSala(r)} style={{flex:1,minHeight:60,borderRadius:13,border:`2px solid ${sala===r?C.green:C.border}`,background:sala===r?C.greenLight:C.bg,color:sala===r?C.green:C.text,fontWeight:900,fontSize:18,cursor:"pointer"}}>{r==="S1"?"Sala 1":"Sala 2"}</button>)}
+      {showSala&&<Sheet title="Pasar a sala" sub={`Entran ${vivas} planta${vivas===1?"":"s"}${origTxt?`: ${origTxt}`:""}`} onClose={()=>{if(!busy)setShowSala(false);}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+          {["S1","S2"].map(r=>{const st=salaRecibe(salaCycles[r]);const on=sala===r&&st.ok;
+            return <button key={r} disabled={!st.ok} onClick={()=>setSala(r)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:14,cursor:st.ok?"pointer":"default",fontFamily:"inherit",textAlign:"left",background:on?C.greenLight:C.surfaceAlt,border:`2px solid ${on?C.green:C.border}`,opacity:st.ok?1:0.55,color:C.text}}>
+              <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:on?C.green:C.surface,color:on?C.onAccent:C.textMid}}><Icon n="salas" size={20}/></span>
+              <span style={{flex:1,minWidth:0}}>
+                <span style={{display:"block",fontSize:16,fontWeight:800}}>{getRC(roomConfig,r).display_name}</span>
+                <span style={{display:"block",fontSize:12.5,color:st.ok?C.textSoft:C.red,fontWeight:700}}>{st.txt}</span>
+              </span>
+              {on&&<span style={{color:C.green}}><Icon n="check" size={20} sw={2.4}/></span>}
+            </button>;})}
         </div>
-        <FI label="Fecha" type="date" value={salaDate} onChange={e=>setSalaDate(e.target.value)}/>
-        <div style={{display:"flex",gap:10,marginTop:4}}>
-          <Btn onClick={pasarSala} disabled={busy} style={{flex:1}}>{busy?"Guardando...":`Pasar a ${sala}`}</Btn>
-          <Btn v="secondary" onClick={()=>setShowSala(false)} disabled={busy} style={{flex:1}}>Cancelar</Btn>
+        <FI label="Fecha del trasplante" type="date" value={salaDate} onChange={e=>setSalaDate(e.target.value)}/>
+        <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,lineHeight:1.45,marginBottom:12}}>Las plantas quedan “por ubicar” en la sala, con su genética y su feno. Después las acomodás mesa por mesa.</div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn onClick={()=>pasarSala(sala,salaDate)} disabled={busy||!salaRecibe(salaCycles[sala]).ok} style={{flex:1,minHeight:48}}>{busy?"Pasando...":`Pasar a ${getRC(roomConfig,sala).display_name}`}</Btn>
+          <Btn v="secondary" onClick={()=>setShowSala(false)} disabled={busy} style={{flex:1,minHeight:48}}>Cancelar</Btn>
         </div>
-      </Modal>}
+      </Sheet>}
       {showDel&&<ConfirmModal title={`¿Eliminar la tanda del ${fmtDM(sel.start_date)}?`} busy={busy} onClose={()=>setShowDel(false)} onConfirm={eliminar} confirmLabel="Eliminar tanda"
         text={`Se borran las ${vivas} planta${vivas===1?"":"s"} de la tanda y ${perdidasB.length} registro${perdidasB.length===1?"":"s"} de pérdidas. No se puede deshacer.`}/>}
 
@@ -3650,7 +3873,15 @@ function VGPage({genetics,user}){
       </div>
 
       <Card>
-        {cerrada&&<div style={{background:C.greenLight,color:C.green,borderRadius:11,padding:"10px 12px",fontWeight:700,fontSize:13.5,marginBottom:12}}>Pasó a {sel.dest_room||"sala"} el {fmtDM(sel.moved_date)}</div>}
+        {cerrada&&<div style={{background:C.greenLight,color:C.green,borderRadius:11,padding:"10px 12px",fontWeight:700,fontSize:13.5,marginBottom:12}}>Pasó a {getRC(roomConfig,sel.dest_room).display_name||sel.dest_room||"sala"} el {fmtDM(sel.moved_date)}</div>}
+        {cerrada&&!sel.cycle_id&&isAdmin&&<div style={{background:C.amberLight,borderRadius:12,padding:"12px 13px",marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:800,color:C.amber,marginBottom:4}}>Esta tanda no quedó cargada en la sala</div>
+          <div style={{fontSize:13,color:C.textMid,lineHeight:1.45,marginBottom:10}}>Se pasó antes de que existiera “Por ubicar”. Si todavía la tenés que acomodar, mandala ahora y queda lista para ubicar en las mesas.</div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={()=>pasarSala(sel.dest_room||"S1",sel.moved_date||todayISO)} disabled={busy} style={{flex:1,minHeight:46}}>{busy?"...":`Ubicar en ${getRC(roomConfig,sel.dest_room||"S1").display_name}`}</Btn>
+            <Btn v="secondary" onClick={devolverVG} disabled={busy} style={{flex:1,minHeight:46}}>Devolver a VG</Btn>
+          </div>
+        </div>}
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:cerrada?0:14}}>
           <span style={{fontFamily:MONO,fontSize:34,fontWeight:700,lineHeight:1,color:vgColor(p)}}>{p}%</span>
           <div style={{flex:1}}>
@@ -3660,7 +3891,7 @@ function VGPage({genetics,user}){
         </div>
         {!cerrada&&<div style={{display:"flex",gap:10}}>
           <Btn v="secondary" onClick={()=>{setToast(null);setCounter({mode:"recuento",batch:sel});}} style={{flex:1,minHeight:48}}>Recontar</Btn>
-          {isAdmin&&<Btn onClick={()=>{setSala("S1");setSalaDate(todayISO);setShowSala(true);}} style={{flex:1,minHeight:48}}>Pasar a sala</Btn>}
+          {isAdmin&&<Btn onClick={abrirPase} style={{flex:1,minHeight:48}}>Pasar a sala</Btn>}
         </div>}
       </Card>
 
@@ -3694,7 +3925,7 @@ function VGPage({genetics,user}){
         {perdidasB.map((x,idx)=><div key={x.id} style={{display:"flex",gap:8,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
           <span style={{color:C.textSoft,minWidth:42}}>{fmtDM(x.loss_date)}</span>
           <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b> <span style={{color:C.textSoft}}>({x.origin})</span> −{x.qty} · {x.author||"—"}</span>
-          <span style={{fontSize:11.5,color:C.textSoft,whiteSpace:"nowrap"}}>{x.method==="reconteo"?"reconteo":"−1"}</span>
+          <span style={{fontSize:11.5,color:C.textSoft,whiteSpace:"nowrap"}}>{x.method==="reconteo"?"reconteo":x.method==="trasplante"?"trasplante":"−1"}</span>
         </div>)}
       </Card>
 
@@ -3887,10 +4118,10 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
       ? <>
           <div style={{fontSize:12,color:C.textSoft,marginBottom:8}}>Tocá los que se murieron:</div>
           <div style={{overflowX:"auto",marginBottom:14}}>
-            <ClonerGrid capacity={cells.length}
+            <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS}
               colorAt={i=>cells[i]?(muertos.has(i)?C.borderStrong:(genMap[cells[i]]||C.green)):null}
               onPaint={i=>cells[i]&&toggle(i)}
-              labelAt={i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:(cells[i]?slotCoord(i):null);}}/>
+              labelAt={i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:(cells[i]?slotCoord(i,cloner.cols||CLONER_COLS):null);}}/>
           </div>
         </>
       : <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
@@ -4105,7 +4336,7 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
       <button onClick={()=>setBrush(null)} style={{padding:"6px 12px",borderRadius:20,fontSize:11,cursor:"pointer",background:brush===null?C.red:C.bg,color:brush===null?"#fff":C.textSoft,border:`2px solid ${brush===null?C.red:C.borderStrong}`}}>Borrar</button>
     </div>}
     <div style={{overflowX:"auto",marginBottom:14}}>
-      <ClonerGrid capacity={cells.length} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint}
+      <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint}
         labelAt={phenoMode?(i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}):null}
         ringAt={phenoMode?(i=>slotPhenos[i]&&slotPhenos[i]===brushPheno):null}/>
     </div>
@@ -5178,62 +5409,188 @@ function BitacoraPage({user}){
 }
 
 // PLAGAS
-function PlagasPage({user,rooms}){
-  const [records,setRecords]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [showForm,setShowForm]=useState(false);
-  const [toast,setToast]=useState(null);
-  const [newR,setNewR]=useState({room_id:"S1",pest_type:"",product:"",frequency_days:2,notes:"",detected_at:todayISO});
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAGAS — registro por problema. Arriba lo que toca aplicar; lo resuelto, plegado.
+// Cada registro abierto con frecuencia crea su tarea de fumigación en Tareas.
+// ══════════════════════════════════════════════════════════════════════════════
+const PEST_OPTS=["Trips","Araña roja","Oídio","Bichos bolita"];
+const PEST_PRODUCTS=["Neem","Mamboretá","Bt"];
+const PEST_FREQ=[{d:0,l:"Una vez"},{d:1,l:"Diaria"},{d:2,l:"Cada 2 días"},{d:3,l:"Cada 3 días"},{d:7,l:"Semanal"}];
+const PEST_ROOMS=[["S1","Sala 1"],["S2","Sala 2"],["Vegetativo","Vege"]];
+const pestRoomName=r=>(PEST_ROOMS.find(x=>x[0]===r)||[r,r||"—"])[1];
+const pestNext=r=>(+r.frequency_days>0)?addDays(r.last_applied||r.detected_at||todayISO,+r.frequency_days):null;
+const pestFreqTxt=d=>{const f=PEST_FREQ.find(x=>x.d===+d);return f?f.l:`Cada ${d} días`;};
+// Crea la tarea de la próxima aplicación y la deja enlazada al registro.
+const crearTareaPlaga=async(r,userName)=>{
+  const due=pestNext(r);if(!due)return null;
+  const ins=await db.insert("tasks",{title:`Fumigar ${pestRoomName(r.room_id)}: ${r.pest_type}${r.product?` (${r.product})`:""}`,room_id:r.room_id,rooms:r.room_id,type:"fumigacion",assignee:userName,due_date:due,priority:"normal",status:"pendiente",source:"plagas",instructions:r.notes||null,auto_generated:true,created_by:`plagas (${userName})`});
+  const t=ins?.[0];
+  if(t){try{await db.update("pest_logs",r.id,{task_id:sid(t.id)});}catch{/* el enlace es opcional */}}
+  return t||null;
+};
+// Saca la tarea pendiente enlazada (si todavía no se hizo).
+const quitarTareaPlaga=async(r)=>{
+  if(!r.task_id)return;
+  try{const ts=await db.query("tasks",`id=eq.${r.task_id}`);if(ts[0]&&ts[0].status!=="completada")await db.delete("tasks",r.task_id);}catch{/* ya no existe */}
+};
+
+function PestNewSheet({user,onClose,onSaved}){
+  const [room,setRoom]=useState("S1");
+  const [pest,setPest]=useState("");
+  const [otraPlaga,setOtraPlaga]=useState(false);
+  const [prod,setProd]=useState("");
+  const [otroProd,setOtroProd]=useState(false);
+  const [date,setDate]=useState(todayISO);
+  const [freq,setFreq]=useState(2);
+  const [notes,setNotes]=useState("");
   const [saving,setSaving]=useState(false);
-  useEffect(()=>{db.query("activity_log","entity_type=eq.pest&order=created_at.desc&limit=50").then(data=>{setRecords(data.map(d=>({...d,...(d.details||{})})));}).finally(()=>setLoading(false));},[]);
+  const [err,setErr]=useState(null);
   const save=async()=>{
-    if(!newR.pest_type.trim())return;
-    setSaving(true);
+    if(!pest.trim()){setErr("Elegí o escribí la plaga.");return;}
+    setSaving(true);setErr(null);
     try{
-      await db.insert("activity_log",{user_name:user.name,action:`Registró plaga: ${newR.pest_type} en ${newR.room_id}`,entity_type:"pest",details:newR});
-      setRecords(prev=>[{user_name:user.name,action:`Registró: ${newR.pest_type}`,created_at:new Date().toISOString(),...newR},...prev]);
-      setShowForm(false);
-      setToast({msg:"Registro guardado ✓",type:"success"});
-    }finally{setSaving(false);}
+      const data={room_id:room,pest_type:pest.trim(),product:prod.trim()||null,detected_at:date||todayISO,last_applied:date||todayISO,frequency_days:+freq||0,notes:notes.trim()||null,status:"abierta",created_by:user.name};
+      const ins=await db.insert("pest_logs",data);
+      const r=ins[0];
+      const t=await crearTareaPlaga(r,user.name);
+      await logA(user.name,`Registró plaga: ${data.pest_type} en ${room}`,"pest");
+      onSaved(t?`Registrado. Tarea de fumigación para el ${fmtDM(t.due_date)} ✓`:"Registrado ✓");
+    }catch(e){setErr(errMsg(e));setSaving(false);}
   };
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Plagas</div>
-      <Btn onClick={()=>setShowForm(!showForm)}>+ Registrar</Btn>
+  const pill=(on,l,fn,key,col=C.green)=><button key={key||l} onClick={fn} style={{padding:"9px 14px",borderRadius:99,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",background:on?col:C.surface,color:on?C.onAccent:C.textMid,border:`1.5px solid ${on?col:C.border}`}}>{l}</button>;
+  const lbl=t=><div style={{fontSize:13,fontWeight:800,color:C.textSoft,margin:"12px 0 7px"}}>{t}</div>;
+  return <Sheet title="Registrar plaga" onClose={onClose}>
+    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:6}}>{err}</div>}
+    {lbl("Dónde")}
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{PEST_ROOMS.map(([k,l])=>pill(room===k,l,()=>setRoom(k),k))}</div>
+    {lbl("Qué apareció")}
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+      {PEST_OPTS.map(p=>pill(!otraPlaga&&pest===p,p,()=>{setOtraPlaga(false);setPest(p);},p,C.red))}
+      {pill(otraPlaga,"Otra",()=>{setOtraPlaga(true);setPest("");},"__otra__",C.red)}
     </div>
-    {showForm&&<Card>
-      <SL>Nuevo registro</SL>
-      <FS label="Sala" value={newR.room_id} onChange={e=>setNewR(p=>({...p,room_id:e.target.value}))} options={[...(rooms||["S1","S2"]),"Vegetativo"]}/>
-      <FI label="Tipo de plaga / problema *" value={newR.pest_type} onChange={e=>setNewR(p=>({...p,pest_type:e.target.value}))} placeholder="Ej: Araña roja, Trips, Oídio"/>
-      <FI label="Producto usado" value={newR.product} onChange={e=>setNewR(p=>({...p,product:e.target.value}))} placeholder="Ej: Aceite de Neem"/>
-      <FI label="Fecha de detección" type="date" value={newR.detected_at} onChange={e=>setNewR(p=>({...p,detected_at:e.target.value}))}/>
-      <NumField label="Próxima aplicación (días)" value={newR.frequency_days} onCommit={v=>setNewR(p=>({...p,frequency_days:v===""?0:v}))} min={0} max={365}/>
-      <FI label="Notas" value={newR.notes} onChange={e=>setNewR(p=>({...p,notes:e.target.value}))} placeholder="Severidad, observaciones"/>
-      <div style={{display:"flex",gap:10,marginTop:8}}><Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={()=>setShowForm(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-    </Card>}
-    {loading?<Spin/>:<div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {records.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"24px 0"}}>Sin registros de plagas 🌿</div>}
-      {records.map((r,i)=>{
-        const nextApp=r.detected_at&&r.frequency_days?addDays(r.detected_at,r.frequency_days):null;
-        const dNext=nextApp?daysTo(nextApp):null;
-        return <Card key={i} style={{padding:"16px 18px"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-            <div><div style={{fontSize:15,fontWeight:800,color:C.text}}>🔬 {r.pest_type}</div><div style={{fontSize:12,color:C.textSoft}}>{r.room_id} · {r.user_name} · {r.detected_at?fmtDate(r.detected_at):fmtDate(r.created_at)}</div></div>
-            <Badge label={r.room_id} color={C.purple} bg={C.purpleLight}/>
-          </div>
-          {r.product&&<div style={{fontSize:13,color:C.textMid,marginBottom:6}}>💊 {r.product}</div>}
-          {r.notes&&<div style={{fontSize:12,color:C.textSoft,fontStyle:"italic",marginBottom:8}}>{r.notes}</div>}
-          {nextApp&&<div style={{background:dNext!==null&&dNext<=0?C.redLight:C.amberLight,borderRadius:8,padding:"8px 12px",display:"flex",justifyContent:"space-between"}}>
-            <span style={{fontSize:12,color:dNext!==null&&dNext<=0?C.red:C.amber,fontWeight:600}}>Próx. aplicación: {fmtDate(nextApp)}</span>
-            <span style={{fontSize:12,fontWeight:700,color:dNext!==null&&dNext<=0?C.red:C.amber}}>{dNext!==null&&dNext<=0?"Vencida":`en ${dNext}d`}</span>
-          </div>}
-        </Card>;
-      })}
-    </div>}
-  </div>;
+    {otraPlaga&&<div style={{marginTop:10}}><FI value={pest} onChange={e=>setPest(e.target.value)} placeholder="Ej: pulgón, mosca blanca"/></div>}
+    {lbl("Producto")}
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+      {PEST_PRODUCTS.map(p=>pill(!otroProd&&prod===p,p,()=>{setOtroProd(false);setProd(prod===p?"":p);},p))}
+      {pill(otroProd,"Otro",()=>{setOtroProd(true);setProd("");},"__otro__")}
+    </div>
+    {otroProd&&<div style={{marginTop:10}}><FI value={prod} onChange={e=>setProd(e.target.value)} placeholder="Ej: jabón potásico"/></div>}
+    {lbl("Cada cuánto se aplica")}
+    <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{PEST_FREQ.map(f=>pill(+freq===f.d,f.l,()=>setFreq(f.d),"f"+f.d))}</div>
+    <div style={{display:"flex",gap:10,marginTop:12}}>
+      <div style={{flex:1}}><FI label="Fecha" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+      <div style={{width:130}}><NumField label="Otra (días)" value={freq} onCommit={v=>setFreq(v===""?0:+v)} min={0} max={60}/></div>
+    </div>
+    <FT label="Notas" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Severidad, dónde lo viste..." rows={2}/>
+    <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginBottom:12,lineHeight:1.45}}>{+freq>0?`Se crea la tarea de fumigación para el ${fmtDM(addDays(date||todayISO,+freq))} en Tareas.`:"Una sola aplicación: no se crea tarea."}</div>
+    <div style={{display:"flex",gap:10}}>
+      <Btn onClick={save} disabled={saving} style={{flex:1,minHeight:48}}>{saving?"Guardando...":"Registrar"}</Btn>
+      <Btn onClick={onClose} v="secondary" disabled={saving} style={{flex:1,minHeight:48}}>Cancelar</Btn>
+    </div>
+  </Sheet>;
 }
 
+function PlagasPage({user,rooms}){
+  const isAdmin=user?.role==="admin";
+  const [recs,setRecs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [loadErr,setLoadErr]=useState(null);
+  const [showNew,setShowNew]=useState(false);
+  const [sel,setSel]=useState(null);
+  const [delR,setDelR]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [toast,setToast]=useState(null);
+  const load=useCallback(async()=>{
+    try{setRecs(await db.query("pest_logs","order=detected_at.desc,created_at.desc"));setLoadErr(null);}
+    catch(e){setLoadErr(errMsg(e));}
+    finally{setLoading(false);}
+  },[]);
+  useEffect(()=>{load();},[load]);
+  if(loading)return <Spin/>;
+  if(loadErr)return <Card style={{marginTop:12}}>
+    <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:6}}>No pude leer los registros de plagas</div>
+    <div style={{fontSize:13.5,color:C.textMid,lineHeight:1.5,marginBottom:10}}>Casi seguro falta correr el SQL de esta actualización en Supabase.</div>
+    <div style={{fontSize:12,color:C.red,fontFamily:MONO,wordBreak:"break-word"}}>{loadErr}</div>
+  </Card>;
+
+  const abiertas=recs.filter(r=>r.status!=="resuelta").map(r=>({...r,next:pestNext(r)}))
+    .sort((a,b)=>(a.next?0:1)-(b.next?0:1)||String(a.next||"").localeCompare(String(b.next||"")));
+  const resueltas=recs.filter(r=>r.status==="resuelta");
+  const urgentes=abiertas.filter(r=>r.next&&-daysSince(r.next)<=0).length;
+
+  const act=async(fn,msg)=>{setBusy(true);try{await fn();setSel(null);await load();setToast({msg,type:"success"});}catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}};
+  const aplicado=r=>act(async()=>{
+    if(r.task_id){try{await db.update("tasks",r.task_id,{status:"completada",completed_at:new Date().toISOString()});}catch{/* sin tarea */}}
+    const upd={...r,last_applied:todayISO};
+    await db.update("pest_logs",r.id,{last_applied:todayISO,task_id:null});
+    await crearTareaPlaga(upd,user.name);
+    await logA(user.name,`Aplicó ${r.product||"tratamiento"} contra ${r.pest_type} en ${r.room_id}`,"pest");
+  },`Aplicación registrada. Próxima: ${fmtDM(addDays(todayISO,+r.frequency_days))} ✓`);
+  const resolver=r=>act(async()=>{
+    await quitarTareaPlaga(r);
+    await db.update("pest_logs",r.id,{status:"resuelta",resolved_at:new Date().toISOString(),task_id:null});
+    await logA(user.name,`Cerró plaga: ${r.pest_type} en ${r.room_id}`,"pest");
+  },"Marcada como resuelta ✓");
+  const borrar=async()=>{
+    const r=delR;if(!r)return;
+    setBusy(true);
+    try{await quitarTareaPlaga(r);await db.delete("pest_logs",r.id);await logA(user.name,`Eliminó registro de plaga: ${r.pest_type}`,"pest");setDelR(null);setSel(null);await load();setToast({msg:"Registro eliminado",type:"success"});}
+    catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
+  };
+
+  const estado=r=>{
+    if(!r.next)return {t:"Seguimiento",c:C.textSoft,bg:C.surfaceAlt};
+    const d=-daysSince(r.next);
+    return d<0?{t:"Vencida",c:C.red,bg:C.redLight}:d===0?{t:"Hoy",c:C.amber,bg:C.amberLight}:{t:`En ${d} día${d===1?"":"s"}`,c:C.textMid,bg:C.surfaceAlt};
+  };
+  const row=(r,i,cerrada)=>{const e=cerrada?{t:"Resuelta",c:C.green,bg:C.greenLight}:estado(r);
+    return <button key={r.id} onClick={()=>setSel(r)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"11px 14px",minHeight:62,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+      <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:e.bg,color:e.c}}><Icon n="bug" size={20}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:15.5,fontWeight:800}}>{r.pest_type}</span>
+        <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pestRoomName(r.room_id)} · {r.product||"sin producto"} · {cerrada?`desde ${fmtDM(r.detected_at)}`:pestFreqTxt(r.frequency_days)}</span>
+      </span>
+      <span style={{fontSize:12,fontWeight:800,padding:"4px 10px",borderRadius:99,background:e.bg,color:e.c,whiteSpace:"nowrap"}}>{e.t}</span>
+    </button>;};
+
+  const selNext=sel?pestNext(sel):null;
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
+    {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    {showNew&&<PestNewSheet user={user} onClose={()=>setShowNew(false)} onSaved={m=>{setShowNew(false);load();setToast({msg:m,type:"success"});}}/>}
+    {sel&&!delR&&<Sheet title={sel.pest_type} sub={`${pestRoomName(sel.room_id)} · desde ${fmtDM(sel.detected_at)}${sel.created_by?` · ${sel.created_by}`:""}`} onClose={()=>setSel(null)}>
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {[["Producto",sel.product||"—"],["Frecuencia",pestFreqTxt(sel.frequency_days)],[sel.status==="resuelta"?"Resuelta":"Próxima",sel.status==="resuelta"?fmtDM(sel.resolved_at):(selNext?fmtDM(selNext):"—")]].map(([l,v])=>
+          <div key={l} style={{flex:1,background:C.surfaceAlt,borderRadius:12,padding:"9px 10px",minWidth:0}}>
+            <div style={{fontSize:11.5,color:C.textSoft,fontWeight:700}}>{l}</div>
+            <div style={{fontSize:14.5,fontWeight:800,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v}</div>
+          </div>)}
+      </div>
+      {sel.last_applied&&sel.status!=="resuelta"&&<div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>Última aplicación: {fmtDM(sel.last_applied)}</div>}
+      {sel.notes&&<div style={{fontSize:14,color:C.text,lineHeight:1.5,background:C.surfaceAlt,borderRadius:12,padding:"10px 12px",marginBottom:12}}>{sel.notes}</div>}
+      {sel.status!=="resuelta"&&<div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:6}}>
+        {+sel.frequency_days>0&&<Btn onClick={()=>aplicado(sel)} disabled={busy} full style={{minHeight:48}}>{busy?"Guardando...":"Apliqué hoy"}</Btn>}
+        <Btn onClick={()=>resolver(sel)} v="secondary" disabled={busy} full style={{minHeight:48}}>Marcar resuelta</Btn>
+      </div>}
+      {isAdmin&&<div style={{borderTop:`1px solid ${C.border}`,marginTop:8}}><SheetRow icon="trash" label="Eliminar registro" danger onClick={()=>setDelR(sel)}/></div>}
+    </Sheet>}
+    {delR&&<ConfirmModal title="¿Eliminar este registro?" busy={busy} onClose={()=>setDelR(null)} onConfirm={borrar}
+      text={`Se borra ${delR.pest_type} en ${pestRoomName(delR.room_id)} y su tarea de fumigación pendiente. No se puede deshacer.`}/>}
+
+    <PageTitle sub={abiertas.length?`${abiertas.length} abierta${abiertas.length===1?"":"s"}${urgentes?` · ${urgentes} para hoy o vencida${urgentes===1?"":"s"}`:""}`:"Sin plagas abiertas"}
+      right={<button onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Registrar</button>}>Plagas</PageTitle>
+
+    {abiertas.length>0
+      ? <Card style={{padding:0,overflow:"hidden"}}>{abiertas.map((r,i)=>row(r,i,false))}</Card>
+      : <Card style={{textAlign:"center",padding:"26px 18px"}}>
+          <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="leaf" size={30}/></div>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Todo limpio</div>
+          <div style={{fontSize:13,color:C.textSoft}}>Cuando aparezca algo, tocá “Registrar”.</div>
+        </Card>}
+    {resueltas.length>0&&<Fold icon="history" title="Resueltas" count={resueltas.length}>
+      <div style={{margin:"0 -14px"}}>{resueltas.map((r,i)=>row(r,i,true))}</div>
+    </Fold>}
+  </div>;
+}
 function BotChat({user,currentPage,compact=false}){
   const [msgs,setMsgs]=useState([{role:"assistant",content:`¡Hola ${user.name}! Soy el asistente de GrowManager. Puedo registrar riegos, nutrición y clima, completar tareas, anotar madres y crear tareas o compras. Para crear/editar genéticas o cambiar de fase te voy a pedir confirmación. Probá: "regué 15 min en S1" o "¿qué tareas hay hoy?".`}]);
   const [input,setInput]=useState("");
@@ -5591,7 +5948,11 @@ const GUIDE_DIAG=[
   {sintoma:"Crecimiento lento tras el trasplante",causa:"Raíz sin colonizar / biología baja",accion:"Reforzar micorrizas + radicular, ACT suave, humedad pareja"},
 ];
 
-// GUÍA PAGE
+// Íconos de línea para los bloques de la guía (los datos de GUIDE traen emojis).
+const GUIDE_ICON={"♻️":"recycle","✂️":"scissors","🌑":"moon","🌱":"vege","🌸":"flower","🌾":"harvest","🌿":"leaf","🍂":"leaf","🍄":"mushroom","🎯":"target","💧":"drop","💨":"wind","🔍":"search","🔬":"bug","🗓️":"calendar","🚿":"water","🛑":"stop","🛡️":"shield","🧹":"broom","🪨":"rock","🫖":"flask","🫙":"jar"};
+const TASK_ICON={riego:"water",nutricion:"flask",fumigacion:"spray",poda:"scissors",limpieza:"broom",revision:"search",cosecha:"harvest",lavado:"water"};
+
+// GUÍA PAGE — la etapa se detecta sola por sala; lo que hay que hacer, a la vista; lo demás, plegado.
 function GuiaPage({user,roomConfig,rooms}){
   const [cycles,setCycles]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -5599,10 +5960,8 @@ function GuiaPage({user,roomConfig,rooms}){
   const [manualStage,setManualStage]=useState(null);
   const [toast,setToast]=useState(null);
   const [adding,setAdding]=useState(null);
-  const [showDiag,setShowDiag]=useState(false);
   const [genResetSaving,setGenResetSaving]=useState(false);
-  const [comprasSaving,setComprasSaving]=useState(false);
-  useEffect(()=>{db.query("cycles","active=eq.true").then(setCycles).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{db.query("cycles","active=eq.true").then(setCycles).catch(()=>setCycles([])).finally(()=>setLoading(false));},[]);
   if(loading)return <Spin/>;
 
   const cyc=cycles.find(c=>c.room_id===selRoom);
@@ -5610,13 +5969,13 @@ function GuiaPage({user,roomConfig,rooms}){
   const autoStage=stageKey(cyc,rc);
   const stage=manualStage||autoStage||"reset";
   const g=GUIDE[stage];
-  const dia=cyc&&cyc.flower_start?daysFrom(cyc.flower_start):null;
+  const dia=cyc&&cyc.flower_start&&cyc.phase==="floración"?daysSince(cyc.flower_start):null;
   const isAuto=!manualStage||manualStage===autoStage;
 
   const addTask=async(st)=>{
     setAdding(st.title);
     try{
-      const payload={title:st.title,room_id:selRoom,rooms:selRoom,type:st.type,assignee:user.name,due_date:todayISO,priority:st.priority||"normal",status:"pendiente",source:"guia",instructions:`Sugerencia de la Guía Living Soil · etapa: ${STAGE_SHORT[stage]}`,created_by:`guía (${user.name})`};
+      const payload={title:st.title,room_id:selRoom,rooms:selRoom,type:st.type,assignee:user.name,due_date:todayISO,priority:st.priority||"normal",status:"pendiente",source:"guia",instructions:`Sugerencia de la Guía · etapa: ${STAGE_SHORT[stage]}`,created_by:`guía (${user.name})`};
       await db.insert("tasks",payload);
       await logA(user.name,`Agregó tarea de guía: ${st.title} (${selRoom})`,"task");
       setToast({msg:"Agregada a Tareas de hoy ✓",type:"success"});
@@ -5628,143 +5987,99 @@ function GuiaPage({user,roomConfig,rooms}){
     try{
       const n=await generateResetTasks(selRoom,todayISO,user.name,`guía (${user.name})`);
       await db.updateWhere("room_config","room_id",selRoom,{last_reset_at:new Date().toISOString()});
-      setToast({msg:n>0?`Cronograma generado: ${n} tareas (día 1-5) ✓`:"El cronograma ya estaba creado",type:"success"});
+      setToast({msg:n>0?`Cronograma generado: ${n} tareas (día 1 a 5) ✓`:"El cronograma ya estaba creado",type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}
     finally{setGenResetSaving(false);}
   };
-  const addCompras=async(names,category)=>{
-    setComprasSaving(true);
-    try{
-      const pend=await db.query("shopping_items","status=eq.pendiente");
-      const have=new Set((pend||[]).map(p=>(p.name||"").toLowerCase()));
-      let n=0;
-      for(const nm of names){ if(have.has(nm.toLowerCase()))continue; await db.insert("shopping_items",{name:nm,category,quantity:null,notes:`Sugerido por la Guía · ${STAGE_SHORT[stage]}`,status:"pendiente",requested_by:user.name}); n++; }
-      await logA(user.name,`Agregó ${n} insumo(s) a compras desde la guía`,"compras");
-      setToast({msg:n>0?`${n} ítem(s) a compras ✓`:"Ya estaban en la lista",type:"success"});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setComprasSaving(false);}
-  };
+  const tag=(t,col)=><div style={{fontSize:12,fontWeight:800,color:col,margin:"10px 0 3px"}}>{t}</div>;
+  const pillS=(on)=>({padding:"8px 13px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",background:on?C.teal:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.teal:C.border}`});
 
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-    <div style={{paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Guía de cultivo 📖</div>
-      <div style={{fontSize:14,color:C.textSoft,marginTop:4}}>Suelo vivo de alta rotación (No-Veg). La etapa se detecta sola por sala; entre ciclos arranca en Reset Express.</div>
-    </div>
+    <PageTitle sub="Suelo vivo de alta rotación. La etapa se detecta sola por sala.">Guía</PageTitle>
 
-    {/* Selector de sala */}
-    <div style={{display:"flex",gap:8}}>
-      {rooms.map(r=>{const c=cycles.find(x=>x.room_id===r);const sk=stageKey(c,getRC(roomConfig,r));const on=selRoom===r;return <button key={r} onClick={()=>{setSelRoom(r);setManualStage(null);}} style={{flex:1,padding:"12px 10px",borderRadius:12,cursor:"pointer",background:on?C.teal:C.surface,color:on?"#fff":C.textMid,border:`1.5px solid ${on?C.teal:C.border}`,textAlign:"left"}}>
-        <div style={{fontSize:15,fontWeight:800}}>{getRC(roomConfig,r).display_name}</div>
-        <div style={{fontSize:12.5,opacity:on?0.92:0.75,marginTop:2}}>{sk?STAGE_SHORT[sk]:"Sin ciclo · Reset Express"}</div>
+    {/* Sala */}
+    <div role="tablist" style={{display:"flex",background:C.surfaceAlt,borderRadius:16,padding:4,border:`1px solid ${C.border}`}}>
+      {rooms.map(r=>{const on=r===selRoom;return <button key={r} role="tab" aria-selected={on} onClick={()=>{setSelRoom(r);setManualStage(null);}} style={{flex:1,padding:"10px 8px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>
+        <span style={{display:"block",fontSize:15,fontWeight:800}}>{getRC(roomConfig,r).display_name}</span>
+        <span style={{display:"block",fontSize:12,fontWeight:700,opacity:0.8}}>{(()=>{const sk=stageKey(cycles.find(x=>x.room_id===r),getRC(roomConfig,r));return sk?STAGE_SHORT[sk]:"Sin ciclo";})()}</span>
       </button>;})}
     </div>
 
-    {/* Etapa actual + navegación manual */}
-    <Card style={{padding:"16px 18px",borderLeft:`5px solid ${C.teal}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
-        <span style={{fontSize:12,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:"0.08em"}}>
-          {isAuto?"Etapa actual":"Viendo etapa"}{dia!=null&&autoStage===stage?` · día ${dia} de flora`:""}
+    {/* Etapa */}
+    <Card style={{padding:"16px 16px 14px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+        <span style={{fontSize:12.5,fontWeight:800,padding:"4px 11px",borderRadius:99,background:C.tealLight,color:C.teal}}>{isAuto?"Etapa actual":"Viendo otra etapa"}{isAuto&&dia!=null?` · día ${dia} de flora`:""}</span>
+        {!isAuto&&autoStage&&<button onClick={()=>setManualStage(null)} style={{fontSize:13,fontWeight:800,color:C.teal,background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"4px 0"}}>Volver a la actual</button>}
+      </div>
+      <div style={{fontSize:20,fontWeight:800,color:C.text,margin:"10px 0 6px",lineHeight:1.25}}>{g.title}</div>
+      <div style={{fontSize:14.5,color:C.textMid,lineHeight:1.55}}>{g.tip}</div>
+      <div className="gm-rail" style={{display:"flex",gap:6,overflowX:"auto",marginTop:12,scrollbarWidth:"none",paddingBottom:2}}>
+        {STAGE_ALL.map(sk=><button key={sk} onClick={()=>setManualStage(sk)} style={pillS(stage===sk)}>{STAGE_SHORT[sk]}</button>)}
+      </div>
+    </Card>
+
+    {/* Qué hacer: tareas sugeridas a la vista */}
+    <Card style={{padding:"14px 14px 8px"}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,padding:"0 2px 6px"}}>
+        <div style={{fontSize:16,fontWeight:800,color:C.text}}>Qué hacer en {rc.display_name}</div>
+        <span style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Se suman a hoy</span>
+      </div>
+      {stage==="reset"&&<Btn onClick={genReset} disabled={genResetSaving} full style={{margin:"4px 0 8px",background:C.teal,minHeight:46}}>{genResetSaving?"Generando...":"Generar cronograma del Reset (día 1 a 5)"}</Btn>}
+      {g.tasks.map((st,i)=>{const tm=TM[st.type]||TM.revision;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 2px",borderTop:`1px solid ${C.border}`}}>
+        <span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:C.tealLight,color:C.teal}}><Icon n={TASK_ICON[st.type]||"tareas"} size={19}/></span>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14.5,fontWeight:700,color:C.text}}>{st.title}</span>
+          <span style={{display:"block",fontSize:12.5,color:st.priority==="alta"?C.amber:C.textSoft,fontWeight:700}}>{tm.label}{st.priority==="alta"?" · prioridad alta":""}</span>
         </span>
-        {!isAuto&&autoStage&&<button onClick={()=>setManualStage(null)} style={{fontSize:12,fontWeight:700,color:C.teal,background:C.tealLight,border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>↺ Volver a la actual</button>}
-      </div>
-      <div style={{fontSize:21,fontWeight:900,color:C.text,fontFamily:H,marginBottom:6}}>{g.title}</div>
+        <button onClick={()=>addTask(st)} disabled={adding===st.title} aria-label={`Agregar ${st.title}`} style={{width:40,height:40,borderRadius:12,border:"none",cursor:"pointer",background:C.teal,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:adding===st.title?0.5:1}}><Icon n="plus" size={20}/></button>
+      </div>;})}
+    </Card>
+
+    {/* Cómo y por qué: cada bloque plegado */}
+    <div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"8px 4px 0"}}>Cómo y por qué</div>
+    {g.blocks.map((b,i)=><Fold key={`${stage}-${i}`} icon={GUIDE_ICON[b.icon]||"leaf"} title={b.title}>
+      {tag("Por qué",C.teal)}
+      <div style={{fontSize:14.5,color:C.textMid,lineHeight:1.6}}>{b.why}</div>
+      {tag("Cómo",C.green)}
+      <div style={{fontSize:14.5,color:C.text,lineHeight:1.6}}>{b.how}</div>
+    </Fold>)}
+
+    <div style={{height:2}}/>
+    <Fold key={`intro-${stage}`} icon="book" title="Sobre esta etapa">
       <div style={{fontSize:14.5,color:C.textMid,lineHeight:1.6}}>{g.intro}</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:14}}>
-        {STAGE_ALL.map(sk=><button key={sk} onClick={()=>setManualStage(sk)} style={{padding:"6px 12px",borderRadius:20,fontSize:12.5,fontWeight:700,cursor:"pointer",background:stage===sk?C.teal:C.surface,color:stage===sk?"#fff":C.textMid,border:`1.5px solid ${stage===sk?C.teal:C.border}`}}>{STAGE_SHORT[sk]}</button>)}
-      </div>
-    </Card>
-
-    {/* Bloques: qué + por qué + cómo */}
-    {g.blocks.map((b,i)=><Card key={i} style={{padding:"16px 18px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-        <div style={{width:40,height:40,borderRadius:11,background:C.tealLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21,flexShrink:0}}>{b.icon}</div>
-        <div style={{fontSize:16,fontWeight:800,color:C.text}}>{b.title}</div>
-      </div>
-      <div style={{marginBottom:8}}>
-        <div style={{fontSize:11.5,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Por qué</div>
-        <div style={{fontSize:14.5,color:C.textMid,lineHeight:1.6}}>{b.why}</div>
-      </div>
-      <div>
-        <div style={{fontSize:11.5,fontWeight:800,color:C.green,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Cómo</div>
-        <div style={{fontSize:14.5,color:C.text,lineHeight:1.6}}>{b.how}</div>
-      </div>
-    </Card>)}
-
-    {/* Dosis orientativas por cama de 800 L y por m² */}
-    {g.doses&&<Card style={{padding:"16px 18px"}}>
-      <SL>📋 Dosis orientativas (cama 800 L)</SL>
-      <div style={{display:"flex",flexDirection:"column",gap:0,border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:6,padding:"8px 10px",background:C.surfaceAlt,fontSize:11,fontWeight:800,color:C.textMid,textTransform:"uppercase",letterSpacing:"0.04em"}}>
-          <div>Insumo</div><div>Por cama</div><div>Por m²</div>
+    </Fold>
+    {g.doses&&<Fold key={`dosis-${stage}`} icon="flask" title="Dosis orientativas" count={g.doses.length}>
+      {g.doses.map((d,i)=><div key={i} style={{padding:"9px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10}}>
+          <span style={{fontSize:14,fontWeight:800,color:C.text}}>{d.item}</span>
+          <span style={{fontSize:14,fontWeight:800,color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{d.cama}</span>
         </div>
-        {g.doses.map((d,i)=><div key={i} style={{padding:"9px 10px",borderTop:`1px solid ${C.border}`,background:i%2?C.bg:C.surface}}>
-          <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr",gap:6,alignItems:"center"}}>
-            <div style={{fontSize:13,fontWeight:700,color:C.text}}>{d.item}</div>
-            <div style={{fontSize:13,color:C.textMid,fontWeight:600}}>{d.cama}</div>
-            <div style={{fontSize:13,color:C.textMid,fontWeight:600}}>{d.m2}</div>
-          </div>
-          <div style={{fontSize:11.5,color:C.textSoft,marginTop:3}}>{d.efecto}</div>
-        </div>)}
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:2}}>
+          <span>{d.efecto}</span><span style={{whiteSpace:"nowrap"}}>{d.m2!=="—"?d.m2:""}</span>
+        </div>
+      </div>)}
+      <div style={{fontSize:12,color:C.textSoft,marginTop:8,lineHeight:1.5}}>Por cama de ~800 L (2 × 1 × 0,4 m){rc.area_m2?` · ${rc.display_name}: ${rc.area_m2} m²${rc.volume_l?`, ${rc.volume_l} L`:""}`:""}. Ajustá según cómo responde el suelo.</div>
+    </Fold>}
+    <Fold key={`ins-${stage}`} icon="leaf" title="Insumos">
+      <div style={{fontSize:12.5,fontWeight:800,color:C.green,margin:"2px 0 8px"}}>Lo que ya usás</div>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+        {g.products.tengo.map((p,i)=><span key={i} style={{background:C.greenLight,color:C.green,borderRadius:99,padding:"5px 12px",fontSize:13,fontWeight:700}}>{p}</span>)}
       </div>
-      {rc.area_m2&&<div style={{fontSize:12,color:C.teal,fontWeight:700,marginTop:10}}>📐 {rc.display_name}: {rc.area_m2} m² configurados{rc.volume_l?` · ${rc.volume_l} L de sustrato`:""}</div>}
-      <Btn onClick={()=>addCompras(g.doses.map(d=>d.item),"fertilizantes")} disabled={comprasSaving} v="secondary" full style={{marginTop:12,fontSize:13}}>{comprasSaving?"...":"🛒 Sumar estos insumos a compras"}</Btn>
-      <div style={{fontSize:11.5,color:C.textSoft,fontStyle:"italic",marginTop:8,lineHeight:1.5}}>Valores orientativos para una cama de ~800 L (2×1×0,4 m). Ajustá según cómo responde tu suelo y la lectura de las plantas.</div>
-    </Card>}
-
-    {/* Productos: lo que tenés + propuestas */}
-    <Card style={{padding:"16px 18px"}}>
-      <SL>🧪 Insumos para esta etapa</SL>
-      <div style={{fontSize:12.5,fontWeight:800,color:C.green,marginBottom:8}}>Lo que ya usás</div>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:14}}>
-        {g.products.tengo.map((p,i)=><span key={i} style={{background:C.greenLight,color:C.green,borderRadius:20,padding:"5px 12px",fontSize:13,fontWeight:700,border:`1px solid ${C.green}33`}}>✓ {p}</span>)}
-      </div>
-      <div style={{fontSize:12.5,fontWeight:800,color:C.purple,marginBottom:8}}>Para sumar / evaluar (orgánico)</div>
+      <div style={{fontSize:12.5,fontWeight:800,color:C.purple,marginBottom:8}}>Para sumar o evaluar</div>
       <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-        {g.products.proponer.map((p,i)=><span key={i} style={{background:C.purpleLight,color:C.purple,borderRadius:20,padding:"5px 12px",fontSize:13,fontWeight:700,border:`1px dashed ${C.purple}66`}}>+ {p}</span>)}
+        {g.products.proponer.map((p,i)=><span key={i} style={{background:C.purpleLight,color:C.purple,borderRadius:99,padding:"5px 12px",fontSize:13,fontWeight:700}}>{p}</span>)}
       </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
-        <Btn onClick={()=>addCompras(g.products.tengo,"insumos")} disabled={comprasSaving} v="secondary" style={{flex:1,fontSize:12.5}}>{comprasSaving?"...":"🛒 Reponer lo que uso"}</Btn>
-        <Btn onClick={()=>addCompras(g.products.proponer,"insumos")} disabled={comprasSaving} v="secondary" style={{flex:1,fontSize:12.5}}>{comprasSaving?"...":"🛒 Sumar propuestas"}</Btn>
-      </div>
-      <div style={{fontSize:12,color:C.textSoft,fontStyle:"italic",marginTop:12,lineHeight:1.5}}>Las propuestas son orientativas y complementarias a tu manejo orgánico. Probá de a poco y observá cómo responde tu suelo.</div>
-    </Card>
+    </Fold>
+    <Fold icon="search" title="Diagnóstico rápido" count={GUIDE_DIAG.length}>
+      {GUIDE_DIAG.map((d,i)=><div key={i} style={{padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+        <div style={{fontSize:14.5,fontWeight:800,color:C.text,marginBottom:3}}>{d.sintoma}</div>
+        <div style={{fontSize:13,color:C.textMid,lineHeight:1.5}}><b style={{color:C.amber}}>Causa:</b> {d.causa}</div>
+        <div style={{fontSize:13,color:C.textMid,lineHeight:1.5}}><b style={{color:C.green}}>Qué hacer:</b> {d.accion}</div>
+      </div>)}
+    </Fold>
 
-    {/* Tareas sugeridas → se agregan con estilo "Guía" */}
-    <Card style={{padding:"16px 18px",border:`1.5px solid ${C.teal}33`}}>
-      <SL style={{color:C.teal}}>🌱 Tareas sugeridas para {rc.display_name}</SL>
-      <div style={{fontSize:13,color:C.textSoft,marginBottom:12,lineHeight:1.5}}>Tocá para agregarlas a las tareas de hoy. Aparecen marcadas en color como sugerencias de la guía.</div>
-      {stage==="reset"&&<Btn onClick={genReset} disabled={genResetSaving} full style={{marginBottom:12,background:C.teal}}>{genResetSaving?"Generando...":"🗓️ Generar cronograma completo (día 1 a 5)"}</Btn>}
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {g.tasks.map((st,i)=>{const tm=TM[st.type]||TM.revision;return <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:C.tealLight,border:`1px solid ${C.teal}33`}}>
-          <div style={{width:34,height:34,borderRadius:9,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>{tm.icon}</div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14.5,fontWeight:700,color:C.text}}>{st.title}</div>
-            <div style={{fontSize:12,color:C.textSoft,marginTop:2}}>{tm.label}{st.priority==="alta"?" · prioridad alta":""}</div>
-          </div>
-          <Btn onClick={()=>addTask(st)} disabled={adding===st.title} style={{padding:"8px 14px",fontSize:13,background:C.teal}}>{adding===st.title?"...":"+ Agregar"}</Btn>
-        </div>;})}
-      </div>
-    </Card>
-
-    {/* Diagnóstico rápido */}
-    <Card style={{padding:"16px 18px"}}>
-      <button onClick={()=>setShowDiag(!showDiag)} style={{width:"100%",background:"transparent",border:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",padding:0}}>
-        <SL style={{marginBottom:0}}>🔍 Diagnóstico rápido</SL>
-        <span style={{fontSize:13,color:C.textSoft}}>{showDiag?"▲":"▼"}</span>
-      </button>
-      {showDiag&&<div style={{display:"flex",flexDirection:"column",gap:10,marginTop:14}}>
-        {GUIDE_DIAG.map((d,i)=><div key={i} style={{background:C.bg,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.border}`}}>
-          <div style={{fontSize:13.5,fontWeight:800,color:C.text,marginBottom:4}}>⚠ {d.sintoma}</div>
-          <div style={{fontSize:12.5,color:C.textSoft,marginBottom:2}}><span style={{fontWeight:700,color:C.amber}}>Causa:</span> {d.causa}</div>
-          <div style={{fontSize:12.5,color:C.textMid}}><span style={{fontWeight:700,color:C.green}}>Acción:</span> {d.accion}</div>
-        </div>)}
-      </div>}
-    </Card>
-
-    <div style={{fontSize:11.5,color:C.textSoft,textAlign:"center",fontStyle:"italic",lineHeight:1.5,padding:"0 8px"}}>
-      Guía orientativa de cultivo orgánico en suelo vivo. No reemplaza tu criterio ni la observación directa de las plantas.
-    </div>
+    <div style={{fontSize:12,color:C.textSoft,textAlign:"center",lineHeight:1.5,padding:"4px 8px"}}>Guía orientativa. No reemplaza tu criterio ni la observación de las plantas.</div>
   </div>;
 }
 
@@ -5837,7 +6152,7 @@ export default function App(){
       case "vegetativo":   return <VegetativoPage genetics={genetics} user={user} targets={targets} onTargetsChanged={loadTargets} setPage={setPage}/>;
       case "veg_madres":   return <MadresPage genetics={genetics} user={user}/>;
       case "veg_esquejeras":return <EsquejerasPage genetics={genetics} user={user}/>;
-      case "veg_vg":       return <VGPage genetics={genetics} user={user}/>;
+      case "veg_vg":       return <VGPage genetics={genetics} user={user} roomConfig={roomConfig}/>;
       case "tareas":       return isAdmin?<TareasPageV2 user={user} rooms={rooms}/>:<TareasPage user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
       case "fenos":        return <FenosPage user={user} genetics={genetics}/>;
