@@ -1854,8 +1854,10 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const elsewhere={};
   cycleCells.forEach(c=>{if(!c.genetic_name||!potId||sid(c.pot_id)===sid(potId))return;const k=poolKey(c.genetic_name,c.origin,c.pheno_id,c.pheno_label);elsewhere[k]=(elsewhere[k]||0)+1;});
   const here={};cells.forEach((g,i)=>{if(!g)return;const k=keyAt(i);here[k]=(here[k]||0)+1;});
-  const poolItems=(potId?pool:[]).map(p=>({...p,left:Math.max(0,p.arrived-(elsewhere[p.key]||0)-(here[p.key]||0))}));
+  const poolItems=(potId?pool:[]).map(p=>{const puestas=(elsewhere[p.key]||0)+(here[p.key]||0);
+    return {...p,left:Math.max(0,p.arrived-puestas),extra:Math.max(0,puestas-p.arrived)};});
   const poolLeft=poolItems.reduce((a,p)=>a+p.left,0);
+  const poolExtra=poolItems.reduce((a,p)=>a+p.extra,0);
   const fenoDe=(pid,lab)=>pid?(phenoMap[sid(pid)]?.code||phenoAll[sid(pid)]?.code||"Feno"):(lab||null);
 
   const setCell=(i,g,pid,lab,org)=>{
@@ -1876,7 +1878,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     if(brushPool){
       const it=poolItems.find(p=>p.key===brushPool);if(!it)return;
       if(cells[i]&&keyAt(i)===it.key){setCell(i,null,null,null,null);return;}   // tocar de nuevo la saca
-      if(it.left<=0){const f=fenoDe(it.pheno_id,it.pheno_label);setToastLocal(`No quedan más ${it.genetic_name}${f?` ${f}`:""} por ubicar`);return;}
+      // Si ya no quedan de esa línea, igual se pinta: queda contada como fuera de la tanda
+      // (stock viejo, plantas que trajiste de otro lado, tandas que nunca se cargaron).
       setCell(i,it.genetic_name,it.pheno_id,it.pheno_label,it.origin);
       return;
     }
@@ -1892,6 +1895,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       await logA(user?.name||"sistema",`Sumó ${g.name} al ciclo de ${roomId} desde la mesa ${potLabel}`,"cycle");
       setBrushPool(null);setBrush(g.name);setShowExtra(false);
       setToastLocal(`${g.name} sumada al ciclo. Ya podés pintarla.`);
+      setShowOtras(true);
     }catch(e){setToastLocal(errMsg(e));}
     finally{setExtraBusy(null);}
   };
@@ -1962,11 +1966,12 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   // Resumen: genéticas presentes, con cuántas son de esqueje y cuántas de semilla.
   const summary={};
   cells.forEach((g,i)=>{if(!g)return;const s=summary[g]=summary[g]||{n:0,sem:0,f:{}};s.n++;if((cellOrigins[i]||"esqueje")==="semilla")s.sem++;const f=fenoDe(cellPhenos[i],cellLabels[i]);if(f)s.f[f]=(s.f[f]||0)+1;});
+  const extraGen={};poolItems.forEach(p=>{if(p.extra>0)extraGen[p.genetic_name]=(extraGen[p.genetic_name]||0)+p.extra;});
   const sumRows=Object.entries(summary).sort((a,b)=>b[1].n-a[1].n);
   const total=cells.filter(Boolean).length;
   const ubicados=new Set(cellPhenos.filter(Boolean)).size;
   const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
-  const extras=genetics.filter(g=>!cycleGenetics.some(c=>c.genetic_name===g.name));
+  const enCiclo=n=>cycleGenetics.some(c=>c.genetic_name===n);
 
   const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,cursor:"pointer",fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",
     background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{children}</button>;
@@ -1978,15 +1983,16 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   return <div style={wrap}>
     {toastLocal&&<Toast msg={toastLocal} type="error" onClose={()=>setToastLocal(null)}/>}
     {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} genetics={genetics} gridW={gridW} gridH={gridH} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
-    {showExtra&&<Sheet title="Agregar genética" sub="Para lo que trajiste y no venía en la tanda" onClose={()=>setShowExtra(false)} z={300}>
-      {extras.length===0
-        ? <div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0 10px"}}>Ya están todas las genéticas cargadas en este ciclo.</div>
-        : <>
-          <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10,lineHeight:1.45}}>Se suma al ciclo y queda lista para pintar. No descuenta del “por ubicar”.</div>
-          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-            {extras.map(g=>{const col=g.color||C.green;return <button key={g.name} onClick={()=>sumarGenetica(g)} disabled={!!extraBusy} style={{display:"flex",alignItems:"center",gap:6,padding:"9px 13px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:extraBusy===g.name?0.5:1}}><Icon n="plus" size={15}/>{g.name}</button>;})}
-          </div>
-        </>}
+    {showExtra&&<Sheet title="Agregar genética" sub="Cualquier genética, esté o no en la tanda" onClose={()=>setShowExtra(false)} z={300}>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10,lineHeight:1.45}}>Tocá una y queda como pincel. Si no venía en la tanda se suma al ciclo y las plantas quedan anotadas como fuera de la tanda.</div>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+        {[...genetics].sort((a,b)=>String(a.name).localeCompare(String(b.name),"es")).map(g=>{
+          const col=g.color||C.green;const ya=enCiclo(g.name);
+          return <button key={g.name} onClick={()=>ya?(setBrushPool(null),setBrush(g.name),setShowExtra(false)):sumarGenetica(g)} disabled={!!extraBusy}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"9px 13px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:extraBusy===g.name?0.5:1}}>
+            {!ya&&<Icon n="plus" size={15}/>}{g.name}{ya&&<span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,background:C.surfaceAlt,color:C.textMid,textTransform:"uppercase"}}>en el ciclo</span>}
+          </button>;})}
+      </div>
       <Btn v="secondary" full onClick={()=>setShowExtra(false)} style={{marginTop:16,minHeight:48}}>Cerrar</Btn>
     </Sheet>}
 
@@ -2003,12 +2009,12 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     {/* Por ubicar: lo que llegó de VG a esta sala y todavía no tiene lugar */}
     {poolItems.length>0&&!phenoMode&&(editing||poolLeft>0)&&<div style={{background:C.amberLight,borderRadius:14,padding:"11px 12px",marginBottom:12}}>
       <div style={{display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:800,color:C.amber,marginBottom:editing?9:0}}>
-        <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}{editing&&<span style={{fontSize:12.5,fontWeight:700,color:C.textMid,marginLeft:4}}>· tocá una y después las celdas</span>}
+        <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}{poolExtra>0&&<span style={{fontSize:12.5,fontWeight:800,color:C.textMid}}>· {poolExtra} fuera de la tanda</span>}{editing&&<span style={{fontSize:12.5,fontWeight:700,color:C.textMid,marginLeft:4}}>· tocá una y después las celdas</span>}
       </div>
       {!editing&&isAdmin&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:3}}>Tocá Editar y usalas como pincel.</div>}
       {editing&&<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
         {poolItems.map(it=>{const col=genMap[it.genetic_name]||C.green;const f=fenoDe(it.pheno_id,it.pheno_label);const on=brushPool===it.key;
-          return chip(on,col,<>{it.genetic_name}{it.origin==="semilla"&&miniBadge("semilla",on,col)}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
+          return chip(on,col,<>{it.genetic_name}{it.origin==="semilla"&&miniBadge("semilla",on,col)}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span>{it.extra>0&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.surfaceAlt,color:on?inkFill(col):C.textMid}}>+{it.extra}</span>}</>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
       </div>}
     </div>}
 
@@ -2117,7 +2123,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
         <span style={{width:10,alignSelf:"stretch",minHeight:26,borderRadius:4,background:genMap[g]||C.green,flexShrink:0}}/>
         <span style={{flex:1,minWidth:0}}>
           <span style={{display:"block",fontSize:14.5,fontWeight:800,color:C.text}}>{g}</span>
-          {s.sem>0&&<span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:700}}>{s.n-s.sem} esqueje{s.n-s.sem===1?"":"s"} · {s.sem} semilla{s.sem===1?"":"s"}</span>}
+          {(s.sem>0||extraGen[g])&&<span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:700}}>{s.sem>0?`${s.n-s.sem} esqueje${s.n-s.sem===1?"":"s"} · ${s.sem} semilla${s.sem===1?"":"s"}`:""}{s.sem>0&&extraGen[g]?" · ":""}{extraGen[g]?`${extraGen[g]} fuera de la tanda`:""}</span>}
           {Object.keys(s.f).length>0&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700}}>{Object.entries(s.f).map(([f,n])=>n>1?`${f} ×${n}`:f).join(" · ")}</span>}
         </span>
         <span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{s.n}</span>
