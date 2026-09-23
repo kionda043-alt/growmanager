@@ -852,7 +852,7 @@ function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"],targets}){
 function MorePageUser({user,setPage,textScale,setTextScale,theme,setTheme,onLogout}){
   const groups=[
     {t:"Cultivo",c:C.green,items:[["guia","book","Guía","Qué hacer en cada etapa"],["plagas","bug","Plagas","Registro y próximas aplicaciones"]]},
-    {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"]]},
+    {t:"Registro",c:C.blue,items:[["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"]]},
   ];
   const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
   const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
@@ -871,6 +871,14 @@ function MorePageUser({user,setPage,textScale,setTextScale,theme,setTheme,onLogo
       <div style={{flex:1,minWidth:0}}><div style={{fontSize:18,fontWeight:800,color:C.text}}>{user.name}</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{user.area||"Usuario"}</div></div>
       <button onClick={onLogout} style={{fontSize:13.5,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:12,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit"}}>Cambiar</button>
     </Card>
+    <button onClick={()=>setPage("bitacora")} style={{display:"flex",alignItems:"center",gap:14,width:"100%",marginTop:16,padding:"16px 16px",borderRadius:18,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:C.greenLight,border:`1.5px solid ${C.green}55`,color:C.text}}>
+      <span style={{width:46,height:46,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:C.green,color:C.onAccent}}><Icon n="notebook" size={24}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:17,fontWeight:800}}>Bitácora</span>
+        <span style={{display:"block",fontSize:13,color:C.textMid,fontWeight:600,lineHeight:1.4}}>Dejá una nota de lo que viste: la leen los administradores.</span>
+      </span>
+      <span style={{color:C.green}}><Icon n="chev" size={20}/></span>
+    </button>
     {groups.map(g=><div key={g.t}>{gTitle(g.t)}<Card style={{padding:0,overflow:"hidden"}}>{g.items.map(([id,n,l,d],i)=>row(id,n,l,d,g.c,i))}</Card></div>)}
     {gTitle("Ajustes")}
     <Card style={{padding:0,overflow:"hidden"}}>
@@ -1689,7 +1697,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
       </Fold>
       <Fold icon="calendar" title="Fechas clave">
         {milestones.map((m,i)=>{const r=msRows.find(x=>x.label===m.label);const doneM=r?r.done:false;const dL=daysTo(m.date);
-          return <button key={m.label} onClick={()=>toggleMilestone(m)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+          return <button key={m.label} onClick={()=>{if(isAdmin)toggleMilestone(m);}} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:isAdmin?"pointer":"default",fontFamily:"inherit",textAlign:"left",color:C.text}}>
             <span style={{width:26,height:26,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:doneM?C.green:"transparent",boxShadow:doneM?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:C.onAccent}}>{doneM&&<Icon n="check" size={16} sw={2.6}/>}</span>
             <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15,fontWeight:700,color:doneM?C.textSoft:C.text,textDecoration:doneM?"line-through":"none"}}>{m.label}</span><span style={{fontSize:12.5,color:m.date===todayISO?C.amber:C.textSoft,fontWeight:600}}>{m.date===todayISO?"Hoy":dL>0?`En ${dL} días`:"Pasada"}</span></span>
             <span style={{fontSize:14.5,fontWeight:800,color:C.textMid}}>{fmtDM(m.date)}</span>
@@ -2967,7 +2975,7 @@ function MadresPage({genetics,user}){
   const madreRow=(m,i)=>{
     const d=daysSince(m.entry_date);const st=madreEstado(m);const col=genMap[m.genetic_name]||C.green;const f=fenoTxt(m,phenoMap);
     const dCol=st==="renovar"?C.red:st==="proxima"?C.amber:C.text;
-    return <button key={m.id} onClick={()=>setEditItem(m)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+    return <button key={m.id} onClick={()=>{if(isAdmin)setEditItem(m);}} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
       <span style={{width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:`${col}1F`,color:col,fontSize:f&&f.length>5?10.5:12.5,fontWeight:800,textAlign:"center",lineHeight:1.05,padding:2,wordBreak:"break-all"}}>{f||<Icon n="tree" size={20}/>}</span>
       <span style={{flex:1,minWidth:0}}>
         <span style={{display:"block",fontSize:15,fontWeight:700}}>{m.pot_label?`Maceta ${m.pot_label}`:"Sin maceta"}{f?` · ${f}`:""}{(m.count||0)>1?` · ${m.count} pl.`:""}</span>
@@ -3214,12 +3222,13 @@ function TareasPageV2({user,rooms}){
           <Btn v="secondary" onClick={()=>posponer(sel,3)} style={{flex:1,minHeight:48}}>En 3 días</Btn>
         </div>
         {sel.instructions&&<Btn v="secondary" full onClick={()=>{setInfo(sel);setSel(null);}} style={{minHeight:48}}>Ver instrucciones</Btn>}
-        {isAdmin&&<Btn v="secondary" full onClick={()=>{setEditT(sel);setSel(null);}} style={{minHeight:48}}>Editar</Btn>}
-        {isAdmin&&<Btn v="danger" full onClick={()=>{setDelT(sel);setSel(null);}} style={{minHeight:48}}>Borrar</Btn>}
+        {(isAdmin||sel.created_by===user.name)&&<Btn v="secondary" full onClick={()=>{setEditT(sel);setSel(null);}} style={{minHeight:48}}>Editar</Btn>}
+        {(isAdmin||sel.created_by===user.name)&&<Btn v="danger" full onClick={()=>{setDelT(sel);setSel(null);}} style={{minHeight:48}}>Borrar</Btn>}
+        {!isAdmin&&sel.created_by!==user.name&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,textAlign:"center",lineHeight:1.45}}>Esta tarea la cargó {sel.created_by||"el sistema"}: la podés hacer, pero no editarla ni borrarla.</div>}
       </div>
     </Sheet>}
 
-    <PageTitle right={isAdmin&&<button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva</button>}>Tareas</PageTitle>
+    <PageTitle right={<button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva</button>}>Tareas</PageTitle>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"12px 2px 0"}}>
       <span style={{fontSize:13.5,color:C.textSoft,fontWeight:600}}>{list.length} pendiente{list.length===1?"":"s"}</span>
       <div style={{display:"inline-flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
@@ -3240,7 +3249,7 @@ function TareasPageV2({user,rooms}){
     {list.length===0&&<Card style={{padding:"26px 18px",textAlign:"center",marginTop:18}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="ok" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 2px"}}>Nada pendiente acá</div>
-      <div style={{fontSize:13,color:C.textSoft}}>{place!=="Todos"||who!=="todas"?"Probá con otro filtro.":(isAdmin?"Creá una con “Nueva”.":"Cuando te asignen algo aparece acá.")}</div>
+      <div style={{fontSize:13,color:C.textSoft}}>{place!=="Todos"||who!=="todas"?"Probá con otro filtro.":"Creá una con “Nueva”."}</div>
     </Card>}
 
     {hechas.length>0&&<div style={{marginTop:22}}>
@@ -3742,7 +3751,7 @@ function VGPage({genetics,user,roomConfig=[]}){
             <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginTop:5}}>{muertas>0?`${muertas} planta${muertas===1?"":"s"} perdida${muertas===1?"":"s"}`:"Todavía no se murió ninguna"}</div>
           </div>
         </div>
-        {!cerrada&&<div style={{display:"flex",gap:10}}>
+        {!cerrada&&isAdmin&&<div style={{display:"flex",gap:10}}>
           <Btn v="secondary" onClick={()=>{setToast(null);setCounter({mode:"recuento",batch:sel});}} style={{flex:1,minHeight:48}}>Recontar</Btn>
           {isAdmin&&<Btn onClick={abrirPase} style={{flex:1,minHeight:48}}>Pasar a sala</Btn>}
         </div>}
@@ -3764,7 +3773,7 @@ function VGPage({genetics,user,roomConfig=[]}){
                 <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Entraron {ini}{perd>0?` (−${perd})`:""}</div>
               </div>
               <div style={{fontSize:24,fontWeight:800,color:C.text,minWidth:36,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{cur}</div>
-              {!cerrada&&<button onClick={()=>murio(l)} disabled={cur<=0}
+              {!cerrada&&isAdmin&&<button onClick={()=>murio(l)} disabled={cur<=0}
                 style={{minHeight:44,padding:"0 12px",borderRadius:12,border:"none",color:C.red,fontWeight:800,fontSize:13.5,background:C.redLight,whiteSpace:"nowrap",cursor:cur>0?"pointer":"default",opacity:cur>0?1:0.35,flexShrink:0,fontFamily:"inherit"}}>−1 murió</button>}
             </div>;
           })}
@@ -4152,22 +4161,22 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
       <Bar value={Math.min(prog.day,prog.total)} max={prog.total} color={prog.color} h={7}/>
     </div>}
 
-    <div style={{display:"flex",gap:10,marginBottom:4}}>
+    {isAdmin&&<div style={{display:"flex",gap:10,marginBottom:4}}>
       <div style={{flex:1}}><FI label="Inicio de la tanda" type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}/></div>
       <div style={{width:112}}><NumField label="Días al corte" value={readyDays} onCommit={v=>setReadyDays(Math.max(1,+v||CLONER_READY_DAYS))} min={1} max={60}/></div>
-    </div>
-    <div style={{fontSize:11.5,color:C.textSoft,marginTop:-6,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>La fecha vale para toda la bandeja. Si dejás los días vacíos toma {CLONER_READY_DAYS} como referencia.</div>
+    </div>}
+    {isAdmin&&<div style={{fontSize:11.5,color:C.textSoft,marginTop:-6,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>La fecha vale para toda la bandeja. Si dejás los días vacíos toma {CLONER_READY_DAYS} como referencia.</div>}
 
-    {used>0&&<div style={{display:"flex",gap:9,marginBottom:14}}>
+    {isAdmin&&used>0&&<div style={{display:"flex",gap:9,marginBottom:14}}>
       <Btn onClick={()=>setShowCosechar(true)} style={{flex:1,minHeight:46}}>Cosechar tanda</Btn>
       <Btn onClick={()=>setShowEliminar(true)} v="secondary" style={{flex:1,minHeight:46,color:C.red,borderColor:`${C.red}55`}}>Eliminar tanda</Btn>
     </div>}
-    {!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+    {isAdmin&&!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
       {genetics.map(g=>{const col=genMap[g.name]||C.green;const on=brush===g.name;return <button key={g.name} onClick={()=>setBrush(g.name)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{g.name}</button>;})}
       <button onClick={()=>setBrush(null)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:brush===null?C.red:C.redLight,color:brush===null?"#fff":C.red,border:`1.5px solid ${C.red}`}}>Borrar</button>
     </div>}
     <div style={{overflowX:"auto",marginBottom:14}}>
-      <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={paint}
+      <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={isAdmin?paint:null}
         labelAt={phenoMode?(i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}):null}
         ringAt={phenoMode?(i=>slotPhenos[i]&&slotPhenos[i]===brushPheno):null}/>
     </div>
@@ -4175,7 +4184,9 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
       {Object.entries(gC).map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
     </div>
-    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Guardar esquejera"/>
+    {isAdmin
+      ? <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Guardar esquejera"/>
+      : <Btn v="secondary" full onClick={onClose} style={{minHeight:48,marginTop:2}}>Cerrar</Btn>}
   </Sheet>;
 }
 
@@ -4527,14 +4538,14 @@ function GeneticasPage({genetics,setGenetics,user}){
       setDelG(null);setSel(null);setToast({msg:"Genética eliminada",type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
   };
-  const row=(g,i)=><button key={g.id} onClick={()=>setSel(g)} style={{display:"flex",alignItems:"center",gap:13,width:"100%",padding:"12px 14px",minHeight:62,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+  const row=(g,i)=><button key={g.id} onClick={()=>{if(isAdmin)setSel(g);}} style={{display:"flex",alignItems:"center",gap:13,width:"100%",padding:"12px 14px",minHeight:62,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
     <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:g.color||C.green,color:"#fff",fontSize:17,fontWeight:800,fontFamily:H}}>{(g.name||"?")[0]}</span>
     <span style={{flex:1,minWidth:0}}>
       <span style={{display:"block",fontSize:15.5,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
       <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{g.flower_days?`~${g.flower_days} días`:"Sin días de flora"}{g.height?` · ${g.height}`:""}</span>
     </span>
     {g.pheno_prefix&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.purpleLight,color:C.purple}}>{g.pheno_prefix}</span>}
-    <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+    {isAdmin&&<span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>}
   </button>;
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
@@ -5154,6 +5165,7 @@ function CalendarioPage({user,roomConfig}){
 // BITÁCORA — notas del día, agrupadas por fecha
 // ══════════════════════════════════════════════════════════════════════════════
 function BitacoraPage({user}){
+  const isAdmin=user?.role==="admin";
   const [entries,setEntries]=useState([]);
   const [loading,setLoading]=useState(true);
   const [draft,setDraft]=useState("");
@@ -5204,7 +5216,7 @@ function BitacoraPage({user}){
     {delE&&<ConfirmModal title="¿Borrar esta nota?" text="No se puede deshacer." busy={busy} onClose={()=>setDelE(null)} onConfirm={borrar}/>}
     {sel&&!delE&&<Sheet title={dLabel(sel.entry_date)} sub={`${sel.author||"—"}${sel.entry_date!==todayISO?` · ${fmtDM(sel.entry_date)}`:""}`} onClose={()=>setSel(null)}>
       <div style={{fontSize:15,color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap",marginTop:8}}>{sel.content}</div>
-      <Btn v="danger" full onClick={()=>setDelE(sel)} style={{marginTop:18,minHeight:48}}>Borrar nota</Btn>
+      {(isAdmin||sel.author===user.name)&&<Btn v="danger" full onClick={()=>setDelE(sel)} style={{marginTop:18,minHeight:48}}>Borrar nota</Btn>}
     </Sheet>}
     {showNew&&<Sheet title="Nueva nota" sub="Lo que hiciste y lo que viste hoy." onClose={()=>setShowNew(false)}>
       <div style={{marginTop:12}}><FI label="Fecha" type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></div>
