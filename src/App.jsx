@@ -683,83 +683,9 @@ function LoginScreen({onLogin}){
 }
 
 // TOP BAR
-function TopBar({user,page,setPage,onLogout,wide}){
-  const isHome=["dashboard","mi_turno"].includes(page);
-  const homeP=user.role==="admin"?"dashboard":"mi_turno";
-  const UserBtn=<button onClick={onLogout} title="Cerrar sesión" style={{display:"flex",alignItems:"center",gap:8,background:C.bg,borderRadius:12,padding:"6px 12px",border:`1px solid ${C.border}`,cursor:"pointer"}}>
-    <div style={{width:28,height:28,borderRadius:"50%",background:C.green,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:13,fontWeight:900}}>{user.initial}</div>
-    <span style={{fontSize:14,fontWeight:700,color:C.text}}>{user.name}</span>
-  </button>;
-  if(wide){
-    return <header style={{display:"flex",alignItems:"center",justifyContent:"flex-end",height:58,padding:"0 28px",position:"sticky",top:0,zIndex:80,background:C.bg+"E6",backdropFilter:"blur(6px)"}}>{UserBtn}</header>;
-  }
-  return <header style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"0 16px",height:58,display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 0 #DCE4D7"}}>
-    {!isHome&&page!=="__more__"&&<button onClick={()=>setPage(page.startsWith("veg_")?"vegetativo":homeP)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:24,color:C.textMid,padding:"4px 2px",lineHeight:1}}>←</button>}
-    <div style={{display:"flex",alignItems:"center",gap:9,flex:1}}>
-      <div style={{width:32,height:32,borderRadius:9,background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>🌿</div>
-      <span style={{fontSize:17,fontWeight:900,color:C.text,fontFamily:H}}>GrowManager</span>
-    </div>
-    {UserBtn}
-  </header>;
-}
 
-function NavBar({user,page,setPage,wide}){
-  const isAdmin=user.role==="admin";
-  // Accesos principales (barra inferior en mobile) y secundarios (en "Más" / sidebar)
-  const primary=isAdmin
-    ?[{id:"dashboard",l:"Inicio",i:"⌂"},{id:"sala_S1",l:"S1",i:"🌿"},{id:"sala_S2",l:"S2",i:"🌿"},{id:"tareas",l:"Tareas",i:"✓"},{id:"guia",l:"Guía",i:"📖"}]
-    :[{id:"mi_turno",l:"Mi turno",i:"🌿"},{id:"tareas",l:"Tareas",i:"✓"},{id:"guia",l:"Guía",i:"📖"},{id:"sala_S1",l:"S1",i:"🏠"},{id:"sala_S2",l:"S2",i:"🏠"}];
-  const secondary=isAdmin
-    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"bitacora",l:"Bitácora",i:"📓"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"fenos",l:"Fenos",i:"🔬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"historial",l:"Historial",i:"📜"},{id:"plagas",l:"Plagas",i:"🐛"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
-    :[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"historial",l:"Historial",i:"📜"},{id:"bot",l:"Asistente",i:"🤖"}];
-
-  // ----- SIDEBAR (PC) -----
-  if(wide){
-    const Sec=({title})=> <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 8px 8px"}}>{title}</div>;
-    const Item=(n)=>{const on=page===n.id||(n.id==="vegetativo"&&page.startsWith("veg_"));return <button key={n.id} onClick={()=>setPage(n.id)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",textAlign:"left",padding:"11px 14px",borderRadius:12,cursor:"pointer",fontSize:15,fontWeight:on?800:600,background:on?C.green:"transparent",color:on?"#fff":C.textMid,border:"none",marginBottom:2,transition:"all 0.12s"}}><span style={{fontSize:18,width:22,textAlign:"center"}}>{n.i}</span>{n.l}</button>;};
-    return <nav style={{width:212,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,height:"100vh",position:"sticky",top:0,overflowY:"auto",padding:"14px 10px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 8px 12px"}}>
-        <div style={{width:36,height:36,borderRadius:10,background:C.green,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19}}>🌿</div>
-        <span style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:H}}>GrowManager</span>
-      </div>
-      <Sec title="Principal"/>
-      {primary.map(Item)}
-      <Sec title="Gestión"/>
-      {secondary.map(Item)}
-    </nav>;
-  }
-
-  // ----- BARRA INFERIOR (mobile/tablet) -----
-  const moreActive=secondary.some(s=>s.id===page)||page.startsWith("veg_");
-  return <nav style={{position:"fixed",bottom:0,left:0,right:0,zIndex:90,background:C.surface,borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 12px rgba(0,0,0,0.06)",display:"flex",justifyContent:"space-around",padding:"6px 4px 8px",maxWidth:480,margin:"0 auto"}}>
-    {primary.map(n=>{const on=page===n.id;return <button key={n.id} onClick={()=>setPage(n.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"transparent",border:"none",cursor:"pointer",padding:"4px 0"}}>
-      <span style={{fontSize:20,filter:on?"none":"grayscale(0.4)",opacity:on?1:0.7}}>{n.i}</span>
-      <span style={{fontSize:11,fontWeight:on?800:600,color:on?C.green:C.textSoft}}>{n.l}</span>
-    </button>;})}
-    <button onClick={()=>setPage("__more__")} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"transparent",border:"none",cursor:"pointer",padding:"4px 0"}}>
-      <span style={{fontSize:20,opacity:moreActive||page==="__more__"?1:0.7}}>⋯</span>
-      <span style={{fontSize:11,fontWeight:moreActive||page==="__more__"?800:600,color:moreActive||page==="__more__"?C.green:C.textSoft}}>Más</span>
-    </button>
-  </nav>;
-}
 
 // Pantalla "Más" (mobile): accesos secundarios + ajuste de tamaño de texto
-function MorePage({user,setPage,textScale,setTextScale,theme,setTheme}){
-  const isAdmin=user.role==="admin";
-  const items=isAdmin
-    ?[{id:"calendario",l:"Agenda",i:"📅"},{id:"bitacora",l:"Bitácora",i:"📓"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"geneticas",l:"Genéticas",i:"🧬"},{id:"fenos",l:"Fenos",i:"🔬"},{id:"estadisticas",l:"Estadísticas",i:"📊"},{id:"historial",l:"Historial",i:"📜"},{id:"plagas",l:"Plagas",i:"🐛"},{id:"bot",l:"Asistente",i:"🤖"},{id:"configuracion",l:"Configuración",i:"⚙"}]
-    :[{id:"calendario",l:"Agenda",i:"📅"},{id:"vegetativo",l:"Vegetativo",i:"🌱"},{id:"compras",l:"Compras",i:"🛒"},{id:"historial",l:"Historial",i:"📜"},{id:"bot",l:"Asistente",i:"🤖"}];
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H,paddingTop:8}}>Más</div>
-    <ThemeControl theme={theme} setTheme={setTheme}/>
-    <TextScaleControl textScale={textScale} setTextScale={setTextScale}/>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-      {items.map(n=><Card key={n.id} onClick={()=>setPage(n.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"18px 18px"}}>
-        <span style={{fontSize:26}}>{n.i}</span><span style={{fontSize:15.5,fontWeight:700,color:C.text}}>{n.l}</span>
-      </Card>)}
-    </div>
-  </div>;
-}
 
 // Elegir tema. El claro existe porque con las luces de sala prendidas
 // la pantalla oscura no se llega a leer.
@@ -790,95 +716,175 @@ function TextScaleControl({textScale,setTextScale}){
   </Card>;
 }
 
-// MI TURNO
+// ══════════════════════════════════════════════════════════════════════════════
+// MI TURNO — lo que tenés que hacer hoy, el estado de las salas y poco más.
+// ══════════════════════════════════════════════════════════════════════════════
 function MiTurno({user,setPage,roomConfig,rooms=["S1","S2"],targets}){
   const [tasks,setTasks]=useState([]);
+  const [done,setDone]=useState([]);
   const [cycles,setCycles]=useState([]);
   const [climate,setClimate]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
-  const [showDone,setShowDone]=useState(false);
-  const [infoTask,setInfoTask]=useState(null);
-  useEffect(()=>{
+  const [sel,setSel]=useState(null);
+  const load=useCallback(()=>{
+    const me=encodeURIComponent(user.name);
     Promise.all([
-      db.query("tasks",`due_date=eq.${todayISO}&assignee=eq.${encodeURIComponent(user.name)}&order=priority.desc,created_at.asc`),
+      db.query("tasks",`assignee=eq.${me}&status=eq.pendiente&due_date=lte.${todayISO}&order=due_date.asc,priority.desc`),
+      db.query("tasks",`assignee=eq.${me}&status=eq.completada&completed_at=gte.${todayISO}&order=completed_at.desc`),
       db.query("cycles","active=eq.true"),
       db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-2)}&order=recorded_at.desc`),
-    ]).then(([t,c,cl])=>{setTasks(t);setCycles(c);setClimate(cl);}).finally(()=>setLoading(false));
+    ]).then(([p,d,c,cl])=>{setTasks(p);setDone(d);setCycles(c);setClimate(cl);}).catch(()=>{}).finally(()=>setLoading(false));
   },[user.name]);
-  const lastClimate=rid=>{const x=climate.find(c=>c.room_id===rid);return x?{temp:x.temperature,humidity:x.humidity}:{temp:null,humidity:null};};
-  const toggle=async task=>{
-    const ns=task.status==="completada"?"pendiente":"completada";
-    await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
-    if(ns==="completada")await pestTaskDone(task,user.name);
-    if(ns==="completada"&&task.recurrent&&task.recurrent_days){
-      await db.insert("tasks",{title:task.title,room_id:task.room_id,type:task.type,assignee:task.assignee,due_date:addDays(task.due_date,task.recurrent_days),status:"pendiente",priority:task.priority,recurrent:true,recurrent_days:task.recurrent_days,created_by:"sistema"});
-    }
-    await logA(user.name,`${ns==="completada"?"Completó":"Reabrió"}: ${task.title}`,"task");
-    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:ns}:t));
-    const undo=async()=>{
-      await db.update("tasks",task.id,{status:task.status,completed_at:task.status==="completada"?task.completed_at:null});
-      setTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:task.status}:t));
-    };
-    setToast({msg:ns==="completada"?"Completada ✓":"Reabierta",type:"success",undo});
-  };
+  useEffect(()=>{load();},[load]);
   if(loading)return <Spin/>;
-  const pending=tasks.filter(t=>t.status==="pendiente");
-  const done=tasks.filter(t=>t.status==="completada");
-  const byRoom=groupTasks(pending);
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
+
+  const completar=async t=>{
+    setTasks(prev=>prev.filter(x=>x.id!==t.id));
+    const hecho={...t,status:"completada",completed_at:new Date().toISOString()};
+    setDone(prev=>[hecho,...prev]);setSel(null);
+    try{
+      await db.update("tasks",t.id,{status:"completada",completed_at:hecho.completed_at});
+      let next=await pestTaskDone(t,user.name);
+      if(!next&&t.recurrent&&t.recurrent_days){
+        await db.insert("tasks",{title:t.title,room_id:t.room_id,rooms:t.rooms||t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,instructions:t.instructions||null,created_by:"sistema"});
+      }
+      await logA(user.name,`Completó: ${t.title}`,"task");
+      setToast({msg:`${t.title}: hecha`,type:"success",undo:async()=>{try{await db.update("tasks",t.id,{status:"pendiente",completed_at:null});}catch{}load();}});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});load();}
+  };
+  const reabrir=async t=>{
+    setSel(null);
+    try{await db.update("tasks",t.id,{status:"pendiente",completed_at:null});load();setToast({msg:`${t.title}: reabierta`,type:"success"});}
+    catch(e){setToast({msg:errMsg(e),type:"error"});}
+  };
+
+  const lastClimate=rid=>climate.find(c=>c.room_id===rid)||null;
+  const atrasadas=tasks.filter(t=>t.due_date<todayISO).length;
+  const totalHoy=tasks.length+done.length;
+  const roomShort=r=>r==="Vegetativo"?"Vege":(getRC(roomConfig,r).display_name||r||"General");
+
+  const taskRow=(t,i,hecha)=>{
+    const tm=TM[t.type]||TM.revision;
+    const tarde=!hecha&&t.due_date<todayISO;
+    return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",minHeight:62,borderTop:i?`1px solid ${C.border}`:"none"}}>
+      <button onClick={()=>hecha?reabrir(t):completar(t)} aria-label={hecha?"Reabrir":"Marcar hecha"} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+        background:hecha?C.green:"transparent",boxShadow:hecha?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:hecha?C.onAccent:"transparent"}}><Icon n="check" size={18} sw={2.4}/></button>
+      <button onClick={()=>setSel({...t,hecha})} style={{flex:1,minWidth:0,background:"transparent",border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit",padding:0,color:C.text}}>
+        <span style={{display:"block",fontSize:15,fontWeight:700,color:hecha?C.textSoft:C.text,textDecoration:hecha?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</span>
+        <span style={{display:"block",fontSize:12.5,fontWeight:700,color:tarde?C.red:C.textSoft}}>{roomShort(t.room_id)} · {tm.label}{tarde?` · atrasada (${fmtDM(t.due_date)})`:""}{t.priority==="alta"&&!tarde?" · urgente":""}</span>
+      </button>
+      <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+    </div>;
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
-    <div style={{padding:"20px 0 4px"}}>
-      <div style={{fontSize:13,color:C.textSoft,textTransform:"capitalize"}}>{fmtFull(TODAY)}</div>
-      <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:H,marginTop:4}}>Hola, <span style={{color:C.green}}>{user.name}</span> 🌿</div>
-      <div style={{fontSize:14,color:C.textSoft,marginTop:4}}>{pending.length>0?`Tenés ${pending.length} tarea${pending.length>1?"s":""} para hoy`:"¡Todo al día! 👌"}</div>
+    {sel&&<Sheet title={sel.title} sub={`${roomShort(sel.room_id)} · ${(TM[sel.type]||TM.revision).label}`} onClose={()=>setSel(null)}>
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        <span style={{fontSize:12.5,fontWeight:800,padding:"5px 11px",borderRadius:99,background:C.surfaceAlt,color:C.textMid}}>{sel.due_date===todayISO?"Para hoy":sel.due_date<todayISO?`Atrasada · ${fmtDM(sel.due_date)}`:`Para el ${fmtDM(sel.due_date)}`}</span>
+        {sel.priority==="alta"&&<span style={{fontSize:12.5,fontWeight:800,padding:"5px 11px",borderRadius:99,background:C.amberLight,color:C.amber}}>Urgente</span>}
+      </div>
+      {sel.instructions&&<div style={{fontSize:14.5,color:C.text,lineHeight:1.55,background:C.surfaceAlt,borderRadius:12,padding:"11px 13px",marginBottom:12}}>{sel.instructions}</div>}
+      <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginBottom:12}}>{sel.created_by?`Cargada por ${sel.created_by}`:"Tarea del sistema"}</div>
+      {sel.hecha
+        ? <Btn v="secondary" full onClick={()=>reabrir(sel)} style={{minHeight:50}}>Reabrir</Btn>
+        : <Btn full onClick={()=>completar(sel)} style={{minHeight:50}}>Marcar hecha</Btn>}
+    </Sheet>}
+
+    <div style={{padding:"6px 2px 0"}}>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:700,textTransform:"capitalize"}}>{fmtFull(TODAY)}</div>
+      <div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",margin:"2px 0 3px"}}>Hola, {user.name}</div>
+      <div style={{fontSize:14.5,color:atrasadas?C.red:C.textSoft,fontWeight:700}}>
+        {tasks.length===0?(totalHoy?"Listo por hoy":"Sin tareas asignadas"):`${tasks.length} tarea${tasks.length===1?"":"s"} para hacer${atrasadas?` · ${atrasadas} atrasada${atrasadas===1?"":"s"}`:""}`}
+      </div>
     </div>
-    <Card style={{padding:"16px 18px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}><SL style={{marginBottom:0}}>Tu progreso</SL><span style={{fontSize:13,fontWeight:700,color:C.green}}>{done.length}/{tasks.length}</span></div>
-      <Bar value={done.length} max={tasks.length||1} h={12}/>
-      <div style={{fontSize:12,color:C.textSoft,marginTop:8}}>{tasks.length>0?Math.round(done.length/tasks.length*100):0}% completado</div>
+
+    {totalHoy>0&&<Card style={{padding:"14px 16px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:9}}>
+        <span style={{fontSize:15,fontWeight:800,color:C.text}}>Tu día</span>
+        <span style={{fontSize:14,fontWeight:800,color:C.green}}>{done.length}/{totalHoy}</span>
+      </div>
+      <Bar value={done.length} max={totalHoy||1} h={10}/>
+    </Card>}
+
+    {tasks.length>0
+      ? <Card style={{padding:0,overflow:"hidden"}}>{tasks.map((t,i)=>taskRow(t,i,false))}</Card>
+      : <Card style={{textAlign:"center",padding:"26px 18px"}}>
+          <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="ok" size={32}/></div>
+          <div style={{fontSize:15.5,fontWeight:800,color:C.text,margin:"8px 0 4px"}}>{totalHoy?"Terminaste todo":"Nada asignado por ahora"}</div>
+          <div style={{fontSize:13,color:C.textSoft}}>Si aparece algo nuevo, lo vas a ver acá.</div>
+        </Card>}
+
+    <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"8px 2px 0"}}>
+      <div style={{fontSize:18,fontWeight:800,color:C.text}}>Salas</div>
+      <button onClick={()=>setPage&&setPage("guia")} style={{background:"transparent",border:"none",color:C.green,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",padding:"6px 0"}}>Ver la guía</button>
+    </div>
+    <Card style={{padding:0,overflow:"hidden"}}>
+      {rooms.map((rid,i)=>{
+        const c=cycles.find(x=>x.room_id===rid);
+        const rc=getRC(roomConfig,rid);
+        const cl=lastClimate(rid);
+        const sk=stageKey(c,rc);
+        const tg=getTargets(targets,rid,c,rc);
+        const lt=climLevel(cl?.temperature,tg.temp,CLIM_TOL.temp), lh=climLevel(cl?.humidity,tg.hum,CLIM_TOL.hum);
+        const dias=c?(c.phase==="floración"&&c.flower_start?daysSince(c.flower_start):(c.veg_start?daysSince(c.veg_start):null)):null;
+        return <button key={rid} onClick={()=>setPage&&setPage(`sala_${rid}`)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",minHeight:64,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+          <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:C.greenLight,color:C.green}}><Icon n="salas" size={20}/></span>
+          <span style={{flex:1,minWidth:0}}>
+            <span style={{display:"block",fontSize:15.5,fontWeight:800}}>{rc.display_name}</span>
+            <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c?`${sk?STAGE_SHORT[sk]:PM[c.phase]?.label||c.phase}${dias!=null?` · día ${dias}`:""}`:"Sin ciclo activo"}</span>
+          </span>
+          {cl?.temperature!=null&&<span style={{fontSize:13,fontWeight:800,color:levelColor(lt?.k),whiteSpace:"nowrap"}}>{fmtNum(cl.temperature,1)}°</span>}
+          {cl?.humidity!=null&&<span style={{fontSize:13,fontWeight:800,color:levelColor(lh?.k),whiteSpace:"nowrap"}}>{fmtNum(cl.humidity,0)}%</span>}
+          <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+        </button>;
+      })}
     </Card>
-    {/* Estado de salas (solo lectura) + acceso a la Guía por etapa */}
-    <Card style={{padding:"14px 16px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <SL style={{marginBottom:0}}>Estado de salas</SL>
-        {setPage&&<button onClick={()=>setPage("guia")} style={{background:C.tealLight,color:C.teal,border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📖 Ver guía</button>}
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {rooms.map(rid=>{
-          const c=cycles.find(x=>x.room_id===rid);
-          const rc=getRC(roomConfig,rid);
-          const cl=lastClimate(rid);
-          const sk=stageKey(c,rc);
-          const tg=getTargets(targets,rid,c,rc);
-          const outT=cl.temp!=null&&(cl.temp<tg.temp.min||cl.temp>tg.temp.max);
-          const outH=cl.humidity!=null&&(cl.humidity<tg.hum.min||cl.humidity>tg.hum.max);
-          return <div key={rid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.bg,borderRadius:12,border:`1px solid ${C.border}`}}>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:800,color:C.text}}>{rc.display_name}</div>
-              <div style={{fontSize:12,color:C.textSoft,marginTop:2}}>{c?(sk?STAGE_SHORT[sk]:PM[c.phase]?.label||c.phase):"Sin ciclo activo"}</div>
-            </div>
-            {cl.temp!=null&&<span style={{fontSize:12.5,fontWeight:700,color:outT?C.red:C.textMid,background:outT?C.redLight:C.surface,borderRadius:8,padding:"3px 9px",border:`1px solid ${C.border}`}}>🌡 {cl.temp}°{outT?" ⚠":""}</span>}
-            {cl.humidity!=null&&<span style={{fontSize:12.5,fontWeight:700,color:outH?C.red:C.textMid,background:outH?C.redLight:C.surface,borderRadius:8,padding:"3px 9px",border:`1px solid ${C.border}`}}>💧 {cl.humidity}%{outH?" ⚠":""}</span>}
-          </div>;
-        })}
-      </div>
-    </Card>
-    {Object.entries(byRoom).map(([room,tList])=>tList.length===0?null:
-      <div key={room}>
-        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,color:groupMeta(room).color}}>{groupMeta(room).label}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>{tList.map(t=><TaskRow key={t.id} t={t} onToggle={toggle} onInfo={setInfoTask}/>)}</div>
-      </div>
-    )}
-    {pending.length===0&&done.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:C.textSoft}}><div style={{fontSize:40,marginBottom:12}}>✓</div><div style={{fontSize:16,fontWeight:700}}>Sin tareas asignadas hoy</div></div>}
-    {done.length>0&&<>
-      <button onClick={()=>setShowDone(!showDone)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:C.textSoft,display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>{showDone?"▲":"▼"} Completadas ({done.length})</button>
-      {showDone&&<div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.6}}>{done.map(t=><TaskRow key={t.id} t={t} onToggle={toggle} onInfo={setInfoTask}/>)}</div>}
-    </>}
+
+    {done.length>0&&<Fold icon="check" title="Hechas hoy" count={done.length}>
+      <div style={{margin:"0 -14px"}}>{done.map((t,i)=>taskRow(t,i,true))}</div>
+    </Fold>}
   </div>;
 }
 
+// ── Más (usuarios) ──────────────────────────────────────────────────────────
+function MorePageUser({user,setPage,textScale,setTextScale,theme,setTheme,onLogout}){
+  const groups=[
+    {t:"Cultivo",c:C.green,items:[["guia","book","Guía","Qué hacer en cada etapa"],["plagas","bug","Plagas","Registro y próximas aplicaciones"]]},
+    {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"]]},
+  ];
+  const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
+  const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
+  const seg=(opts,cur,set)=><div style={{display:"flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`,width:"100%",marginTop:10}}>
+    {opts.map(([v,l])=>{const on=cur===v;return <button key={l} onClick={()=>set(v)} style={{flex:1,padding:"9px 6px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13.5,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
+  </div>;
+  const row=(id,n,l,d,c,i)=><button key={id} onClick={()=>setPage(id)} style={{display:"flex",alignItems:"center",gap:13,padding:"12px 14px",minHeight:60,width:"100%",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit",color:C.text}}>
+    {iconBox(n,c)}
+    <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15.5,fontWeight:700}}>{l}</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{d}</span></span>
+    <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+  </button>;
+  return <div style={{paddingBottom:24}}>
+    <div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",padding:"10px 2px 14px"}}>Más</div>
+    <Card style={{display:"flex",alignItems:"center",gap:14,padding:14}}>
+      <span style={{width:52,height:52,borderRadius:"50%",background:C.green,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:20}}>{user.initial||user.name?.[0]}</span>
+      <div style={{flex:1,minWidth:0}}><div style={{fontSize:18,fontWeight:800,color:C.text}}>{user.name}</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{user.area||"Usuario"}</div></div>
+      <button onClick={onLogout} style={{fontSize:13.5,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:12,padding:"10px 14px",cursor:"pointer",fontFamily:"inherit"}}>Cambiar</button>
+    </Card>
+    {groups.map(g=><div key={g.t}>{gTitle(g.t)}<Card style={{padding:0,overflow:"hidden"}}>{g.items.map(([id,n,l,d],i)=>row(id,n,l,d,g.c,i))}</Card></div>)}
+    {gTitle("Ajustes")}
+    <Card style={{padding:0,overflow:"hidden"}}>
+      <div style={{padding:"12px 14px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:13}}>{iconBox("sun",C.textMid)}<span><span style={{display:"block",fontSize:15.5,fontWeight:700,color:C.text}}>Tema</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Claro para sala con luces prendidas</span></span></div>
+        {seg([["light","Claro"],["dark","Oscuro"]],theme,setTheme)}
+      </div>
+      <div style={{padding:"12px 14px 14px",borderTop:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:13}}>{iconBox("text",C.textMid)}<span><span style={{display:"block",fontSize:15.5,fontWeight:700,color:C.text}}>Tamaño de letra</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Se guarda en este dispositivo</span></span></div>
+        {seg([[1,"Normal"],[1.1,"Grande"],[1.2,"Más grande"]],textScale,setTextScale)}
+      </div>
+    </Card>
+  </div>;
+}
 // ══════════════════════════════════════════════════════════════════════════════
 // REDISEÑO (admin) — íconos de línea, menú Inicio / Salas / Vege / Tareas / Más,
 // Inicio en orden alertas → espacios → hoy, "Más" por carpetas y tarea rápida.
@@ -994,11 +1000,17 @@ function ClimateMetrics({climate,tR,hR,vR}){
 
 // ── Menú (admin) ─────────────────────────────────────────────────────────────
 const ADMIN_TABS=[{id:"dashboard",l:"Inicio",n:"home"},{id:"salas",l:"Salas",n:"salas"},{id:"vegetativo",l:"Vege",n:"vege"},{id:"tareas",l:"Tareas",n:"tareas"},{id:"__more__",l:"Más",n:"mas"}];
-const adminTabOf=p=>p==="dashboard"?"dashboard":(p==="salas"||p.startsWith("sala_"))?"salas":(p==="vegetativo"||p.startsWith("veg_"))?"vegetativo":p==="tareas"?"tareas":"__more__";
-const MAIN_PAGES=["dashboard","salas","vegetativo","tareas","__more__"];
+// Los usuarios estándar tienen la misma barra, con "Hoy" en lugar de Inicio.
+const USER_TABS=[{id:"mi_turno",l:"Hoy",n:"home"},{id:"salas",l:"Salas",n:"salas"},{id:"vegetativo",l:"Vege",n:"vege"},{id:"tareas",l:"Tareas",n:"tareas"},{id:"__more__",l:"Más",n:"mas"}];
+const tabsFor=u=>u?.role==="admin"?ADMIN_TABS:USER_TABS;
+const homeFor=u=>u?.role==="admin"?"dashboard":"mi_turno";
+const adminTabOf=(p,home="dashboard")=>p===home?home:(p==="salas"||p.startsWith("sala_"))?"salas":(p==="vegetativo"||p.startsWith("veg_"))?"vegetativo":p==="tareas"?"tareas":"__more__";
+const MAIN_PAGES=["dashboard","mi_turno","salas","vegetativo","tareas","__more__"];
 
-function AdminNav({page,setPage,wide}){
-  const cur=adminTabOf(page);
+function AdminNav({page,setPage,wide,user}){
+  const home=homeFor(user);
+  const tabs=tabsFor(user);
+  const cur=adminTabOf(page,home);
   const tab=(t,vertical)=>{const on=cur===t.id;
     return <button key={t.id} onClick={()=>setPage(t.id)} aria-label={t.l} aria-current={on?"page":undefined}
       style={{flex:vertical?"none":1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"transparent",border:"none",cursor:"pointer",padding:vertical?"8px 0":"6px 0 4px",color:on?C.text:C.textSoft,fontSize:11.5,fontWeight:on?800:700,fontFamily:"inherit"}}>
@@ -1007,18 +1019,18 @@ function AdminNav({page,setPage,wide}){
     </button>;};
   if(wide)return <nav style={{width:96,flexShrink:0,background:C.surface,borderRight:`1px solid ${C.border}`,height:"100vh",position:"sticky",top:0,display:"flex",flexDirection:"column",alignItems:"stretch",gap:4,padding:"18px 6px"}}>
     <div style={{width:44,height:44,borderRadius:14,background:C.green,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px"}}><Icon n="vege" size={24}/></div>
-    {ADMIN_TABS.map(t=>tab(t,true))}
+    {tabs.map(t=>tab(t,true))}
   </nav>;
   return <nav style={{position:"fixed",bottom:0,left:0,right:0,zIndex:90,maxWidth:480,margin:"0 auto",background:C.surface,borderTop:`1px solid ${C.border}`,boxShadow:"0 -6px 24px rgba(0,0,0,0.06)",display:"flex",padding:"4px 4px calc(6px + env(safe-area-inset-bottom))"}}>
-    {ADMIN_TABS.map(t=>tab(t,false))}
+    {tabs.map(t=>tab(t,false))}
   </nav>;
 }
 
 // Flecha "Volver" en todas las pantallas menos Inicio. Vuelve a la pantalla anterior;
 // si se entró directo, va a la sección que corresponde.
-function AdminTopBar({page,onBack}){
-  if(page==="dashboard")return null;
-  const fallback=page.startsWith("veg_")?"vegetativo":(MAIN_PAGES.includes(page)||page.startsWith("sala_"))?"dashboard":"__more__";
+function AdminTopBar({page,onBack,home="dashboard"}){
+  if(page===home)return null;
+  const fallback=page.startsWith("veg_")?"vegetativo":(MAIN_PAGES.includes(page)||page.startsWith("sala_"))?home:"__more__";
   return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",height:50,padding:"0 8px"}}>
     <button onClick={()=>onBack(fallback)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
       <Icon n="back" size={22}/>Volver
@@ -1413,6 +1425,7 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
 
 // SALA PAGE
 function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
+  const isAdmin=user?.role==="admin";
   const [cycle,setCycle]=useState(null);
   const [tasks,setTasks]=useState([]);
   const [cg,setCg]=useState([]);
@@ -1566,8 +1579,9 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     </div>
   </div>;
 
-  // ── Formato nuevo (admin): cabecera clara, clima, mesas y lo demás plegado ──
-  if(user.role==="admin"){
+  // ── Cabecera clara, clima, mesas y lo demás plegado. Las acciones de
+  //    configuración (fase, cierre, objetivos, editar mesa) son solo de admin.
+  if(cycle){
     const tg=getTargets(targets,roomId,cycle,rc);
     const last=climate.length?climate[climate.length-1]:null;
     const isVeg=cycle.phase==="vegetativo";
@@ -1583,7 +1597,8 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     const pctOf=d=>Math.max(0,Math.min(100,d/hTotal*100));
     const baseDate=isVeg?vStart:cycle.flower_start;
     const genRows=cg.map(g=>[g.genetic_name,potCounts[g.genetic_name]||0]).sort((a,b)=>b[1]-a[1]);
-    const menu=[["water","Registrar riego",()=>setShowW(true)],["flask","Registrar nutrición",()=>setShowN(true)],["spray","Aplicación foliar",()=>setShowFoliar(true)],["thermo","Medición manual de clima",()=>setShowClimate(true)],["sliders","Editar objetivos de clima",()=>setShowTargets(true)],["swap","Cambiar fase",()=>setShowPh(true)]];
+    const menu=[["water","Registrar riego",()=>setShowW(true)],["flask","Registrar nutrición",()=>setShowN(true)],["spray","Aplicación foliar",()=>setShowFoliar(true)],["thermo","Medición manual de clima",()=>setShowClimate(true)]];
+    if(isAdmin)menu.push(["sliders","Editar objetivos de clima",()=>setShowTargets(true)],["swap","Cambiar fase",()=>setShowPh(true)]);
     const pill=light?"rgba(255,255,255,0.78)":"rgba(255,255,255,0.08)";
     return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
@@ -1602,10 +1617,10 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         text="Se descuentan de la tanda en VG como pérdida de trasplante y el “por ubicar” queda en cero. Hacelo cuando ya acomodaste todo lo que prendió."/>}
       {showMenu&&<Sheet title={roomName} onClose={()=>setShowMenu(false)}>
         {menu.map(([ic,l,fn],i)=><SheetRow key={l} i={i} icon={ic} label={l} onClick={()=>{setShowMenu(false);fn();}}/>)}
-        <SheetRow i={1} icon="stop" label="Cerrar ciclo" danger onClick={()=>{setShowMenu(false);setShowClose(true);}}/>
+        {isAdmin&&<SheetRow i={1} icon="stop" label="Cerrar ciclo" danger onClick={()=>{setShowMenu(false);setShowClose(true);}}/>}
       </Sheet>}
       {selPot&&<Sheet onClose={()=>setSelPot(null)}>
-        <PotEditor inSheet roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} pool={pool} cycleCells={cycleCells} phenoAll={phenoAll} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/>
+        <PotEditor inSheet roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} pool={pool} cycleCells={cycleCells} phenoAll={phenoAll} onGenAdded={row=>setCg(prev=>[...prev,row])} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/>
       </Sheet>}
 
       <div style={{background:heroBg,borderRadius:22,padding:"16px 18px 12px",border:`1px solid ${C.border}`}}>
@@ -1652,18 +1667,18 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
           </div>
         </div>
         <div style={{display:"flex",gap:"6px 12px",flexWrap:"wrap",marginTop:10}}>
-          {pool.filter(p=>p.left>0).map(p=>{const f=p.pheno_id?(phenoAll[p.pheno_id]?.code||"Feno"):p.pheno_label;return <span key={p.key} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[p.genetic_name]||C.green}}/>{p.genetic_name}{f&&<FenoChip txt={f}/>}<b style={{color:C.text,marginLeft:2}}>{p.left}</b></span>;})}
+          {pool.filter(p=>p.left>0).map(p=>{const f=p.pheno_id?(phenoAll[p.pheno_id]?.code||"Feno"):p.pheno_label;return <span key={p.key} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[p.genetic_name]||C.green}}/>{p.genetic_name}{p.origin==="semilla"&&<span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,background:C.surfaceAlt,color:C.textMid,textTransform:"uppercase"}}>semilla</span>}{f&&<FenoChip txt={f}/>}<b style={{color:C.text,marginLeft:2}}>{p.left}</b></span>;})}
         </div>
-        <button onClick={()=>setShowDescarte(true)} style={{marginTop:10,background:"transparent",border:"none",color:C.textSoft,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textDecoration:"underline"}}>Ya acomodé todo: dar por perdidas las que sobran</button>
+        {isAdmin&&<button onClick={()=>setShowDescarte(true)} style={{marginTop:10,background:"transparent",border:"none",color:C.textSoft,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textDecoration:"underline"}}>Ya acomodé todo: dar por perdidas las que sobran</button>}
       </Card>}
       <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"10px 2px 0"}}>
         <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesas</div>
-        <span style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Tocá una para editarla</span>
+        <span style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{isAdmin?"Tocá una para editarla":"Tocá una para verla"}</span>
       </div>
       <Card style={{padding:10}}><PotMapV2 roomId={roomId} potMix={potMix} genMap={genMap} onSelect={setSelPot}/></Card>
 
       <div style={{height:2}}/>
-      <Fold icon="dna" title="Genéticas del ciclo" count={cg.length} right={<button onClick={e=>{e.stopPropagation();setShowAG(true);}} style={{fontSize:13,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:10,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit"}}>+ Agregar</button>}>
+      <Fold icon="dna" title="Genéticas del ciclo" count={cg.length} right={isAdmin&&<button onClick={e=>{e.stopPropagation();setShowAG(true);}} style={{fontSize:13,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:10,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit"}}>+ Agregar</button>}>
         {genRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin genéticas. Tocá “+ Agregar”.</div>}
         {genRows.map(([g,n],i)=><div key={g} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
           <span style={{width:10,alignSelf:"stretch",minHeight:30,borderRadius:4,background:genMap[g]||C.green}}/>
@@ -1684,153 +1699,8 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     </div>;
   }
 
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
-    {showW&&<WaterModal roomId={roomId} user={user} onClose={()=>setShowW(false)} onSaved={()=>{setShowW(false);load();setToast({msg:"Riego registrado ✓",type:"success"});}}/>}
-    {showN&&<NutriModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowN(false)} onSaved={()=>{setShowN(false);load();setToast({msg:"Nutrición registrada ✓",type:"success"});}}/>}
-    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Fase actualizada ✓",type:"success"});}}/>}
-    {showAG&&<AddGenModal cycleId={cycle.id} genetics={genetics} existing={cg} counts={potCounts} onClose={()=>setShowAG(false)} onSaved={()=>{setShowAG(false);load();setToast({msg:"Genéticas actualizadas ✓",type:"success"});}}/>}
-    {showFoliar&&<FoliarModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowFoliar(false)} onSaved={()=>{setShowFoliar(false);load();setToast({msg:"Aplicación foliar registrada ✓",type:"success"});}}/>}
-    {showClimate&&<ClimateModal roomId={roomId} user={user} onClose={()=>setShowClimate(false)} onSaved={()=>{setShowClimate(false);load();setToast({msg:"Medición registrada ✓",type:"success"});}}/>}
-    {showClose&&<CloseCycleModal cycle={cycle} roomId={roomId} rc={rc} cg={cg} potCounts={potCounts} wLog={wLog} nLog={nLog} user={user} onClose={()=>setShowClose(false)} onSaved={()=>{setShowClose(false);load();setToast({msg:"Ciclo cerrado y archivado ✓",type:"success"});}}/>}
-    {showTargets&&<TargetsModal roomId={roomId} rc={rc} cycle={cycle} user={user} onClose={()=>setShowTargets(false)} onSaved={()=>{setShowTargets(false);onTargetsChanged&&onTargetsChanged();setToast({msg:"Objetivos de clima guardados ✓",type:"success"});}}/>}
-
-    {/* Hero — cosecha protagonista */}
-    <div style={{background:C.onAccent==="#FFFFFF"?(cycle.phase==="floración"?"linear-gradient(135deg,#FBF1DF,#F4E6CE)":"linear-gradient(135deg,#E7F2EB,#DAEAE0)"):(cycle.phase==="floración"?"linear-gradient(135deg,#241D12,#1C1710)":"linear-gradient(135deg,#16211A,#121B14)"),borderRadius:20,padding:"22px 20px 18px",border:`1px solid ${C.border}`}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-        <div><div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.12em"}}>{roomId}</div><div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>{roomName}</div></div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-          <PBadge phase={cycle.phase}/>
-          {user.role==="admin"&&<div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setShowPh(true)} style={{fontSize:11,color:C.textMid,background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>Fase</button>
-            <button onClick={()=>setShowClose(true)} style={{fontSize:11,color:C.red,background:C.surface,border:`1px solid ${C.red}44`,borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>Cerrar</button>
-          </div>}
-        </div>
-      </div>
-      <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
-        <span style={{fontFamily:MONO,fontWeight:700,fontSize:56,lineHeight:0.85,color:daysTo(cycle.estimated_harvest)<=7?C.red:daysTo(cycle.estimated_harvest)<=20?C.amber:C.green}}>{daysTo(cycle.estimated_harvest)}</span>
-        <span style={{fontSize:15,color:C.textSoft,paddingBottom:8}}>días para la cosecha</span>
-      </div>
-      <div style={{display:"flex",gap:20,margin:"12px 0 10px",flexWrap:"wrap"}}>
-        <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:22,color:C.text}}>{dayIn}</span><span style={{fontSize:12,color:C.textSoft,marginLeft:6}}>día de {cycle.phase}</span></div>
-        <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:22,color:C.green}}>{totalPlants}</span><span style={{fontSize:12,color:C.textSoft,marginLeft:6}}>plantas</span></div>
-      </div>
-      <Bar value={pct} max={100} color={pm.color} h={8}/>
-      <div style={{fontSize:12,color:C.textSoft,marginTop:8}}>💧 {cycle.irrigation_type} · {fmtDate(cycle.flower_start)} → {fmtDate(cycle.estimated_harvest)}</div>
-    </div>
-
-    {/* Clima en vivo */}
-    {(()=>{const last=climate.length?climate[climate.length-1]:null;const tg=getTargets(targets,roomId,cycle,rc);return <Card style={{padding:"14px 18px 16px"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
-        <div style={{fontSize:11,fontWeight:800,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em"}}>Objetivo · {tg.label}</div>
-        {user.role==="admin"&&<button onClick={()=>setShowTargets(true)} style={{fontSize:11,color:C.textMid,background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:8,padding:"3px 9px",cursor:"pointer"}}>✎ Editar</button>}
-      </div>
-      <ClimateMetrics climate={last} tR={tg.temp} hR={tg.hum} vR={tg.vpd}/>
-    </Card>;})()}
-
-    {/* Acciones compactas */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-      <Btn onClick={()=>setShowW(true)} style={{borderRadius:14,padding:12,fontSize:13}}>💧 Riego</Btn>
-      <Btn onClick={()=>setShowN(true)} v="secondary" style={{borderRadius:14,padding:12,fontSize:13}}>🌱 Nutrición</Btn>
-      <Btn onClick={()=>setShowFoliar(true)} v="secondary" style={{borderRadius:14,padding:12,fontSize:13}}>🍃 Foliar</Btn>
-    </div>
-
-    {/* Genéticas */}
-    <Accordion title="Genéticas" icon="🧬" right={user.role==="admin"?<button onClick={(e)=>{e.stopPropagation();setShowAG(true);}} style={{fontSize:11,color:C.green,background:C.greenLight,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontWeight:700}}>+ Agregar</button>:null}>
-      {cg.length===0?<div style={{fontSize:13,color:C.textSoft,fontStyle:"italic"}}>Sin genéticas — tocá + Agregar</div>
-        :<div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {cg.map(g=><div key={g.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:C.bg,borderRadius:12,border:`1px solid ${C.border}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:11,height:11,borderRadius:"50%",background:genMap[g.genetic_name]||C.green}}/><span style={{fontSize:14,fontWeight:600,color:C.text}}>{g.genetic_name}</span></div>
-            <div><span style={{fontFamily:MONO,fontWeight:700,fontSize:18,color:C.text}}>{potCounts[g.genetic_name]||0}</span><span style={{fontSize:12,color:C.textSoft,marginLeft:6}}>plantas</span></div>
-          </div>)}
-        </div>}
-      <div style={{fontSize:11,color:C.textSoft,textAlign:"center",marginTop:10,fontStyle:"italic"}}>Las cantidades se calculan según lo que dibujás en las mesas</div>
-    </Accordion>
-
-    {/* Métricas */}
-    <Accordion title="Métricas" icon="📊">
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {[["24h","24 h"],["7d","7 días"],["30d","30 días"]].map(([k,l])=><button key={k} onClick={()=>setClRange(k)} style={{flex:1,fontSize:12.5,fontWeight:700,padding:"8px 0",borderRadius:9,cursor:"pointer",border:`1px solid ${clRange===k?C.green:C.border}`,background:clRange===k?C.greenLight:"transparent",color:clRange===k?C.green:C.textSoft}}>{l}</button>)}
-        <button onClick={()=>setShowClimate(true)} style={{fontSize:12.5,fontWeight:700,padding:"8px 12px",borderRadius:9,cursor:"pointer",border:`1px solid ${C.border}`,background:"transparent",color:C.textMid}}>+ Med.</button>
-      </div>
-      {(()=>{
-        const tg=getTargets(targets,roomId,cycle,rc);
-        const tR=tg.temp,hR=tg.hum,vR=tg.vpd;
-        const tPts=climate.filter(c=>c.temperature!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.temperature}));
-        const hPts=climate.filter(c=>c.humidity!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.humidity}));
-        const vPts=climate.filter(c=>c.vpd!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c.vpd}));
-        if(climate.length===0)return <div style={{textAlign:"center",color:C.textSoft,fontSize:13,fontStyle:"italic",padding:"16px 0"}}>Sin datos en este rango todavía</div>;
-        return <>
-          <div style={{fontSize:11,color:C.textSoft,marginBottom:8,fontStyle:"italic"}}>Franja sombreada = rango objetivo de {tg.label} · tocá o arrastrá el dedo sobre el gráfico para ver hora y valor</div>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,marginBottom:4}}>🌡 Temperatura (°C)</div>
-          <LineChart series={[{points:tPts,color:C.amber}]} bands={[{min:tR.min,max:tR.max,color:C.amber}]} unit="°C"/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>💧 Humedad (%)</div>
-          <LineChart series={[{points:hPts,color:C.blue}]} bands={[{min:hR.min,max:hR.max,color:C.blue}]} unit="%"/>
-          <div style={{fontSize:11,fontWeight:700,color:C.textSoft,margin:"12px 0 4px"}}>🍃 VPD (kPa)</div>
-          <LineChart series={[{points:vPts,color:C.purple}]} bands={[{min:vR.min,max:vR.max,color:C.purple}]} unit=" kPa"/>
-        </>;
-      })()}
-    </Accordion>
-
-    {/* Mesas */}
-    <Accordion title="Mesas" icon="🗺️">
-      <PotMap roomId={roomId} genetics={genetics} cycleGenetics={cg} selectedPot={selPot} onSelect={setSelPot} equipment={equipment}/>
-      {selPot&&<PotEditor roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Macetón guardado ✓",type:"success"});}}/>}
-    </Accordion>
-
-    {/* Fechas clave */}
-    <Accordion title="Fechas clave del ciclo" icon="📅">
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {milestones.map((m,i)=>{
-          const row=msRows.find(r=>r.label===m.label);
-          const done=row?row.done:false;
-          const tm=TM[m.type]||{icon:"📅"};
-          const dL=daysTo(m.date);
-          const isToday=m.date===todayISO;
-          return <div key={i} onClick={()=>toggleMilestone(m)}
-            style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:done?C.greenLight:isToday?C.amberLight:C.bg,border:`1px solid ${done?C.green+"44":isToday?C.amber+"66":C.border}`,cursor:"pointer",opacity:done?0.7:1}}>
-            <div style={{width:22,height:22,borderRadius:6,flexShrink:0,background:done?C.green:"transparent",border:`2px solid ${done?C.green:C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center",color:C.bg,fontSize:13}}>{done?"✓":""}</div>
-            <span style={{fontSize:17}}>{tm.icon}</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:700,color:C.text,textDecoration:done?"line-through":"none"}}>{m.label}</div>
-              <div style={{fontSize:11,color:C.textSoft}}>{fmtDate(m.date)}{isToday?" — hoy":dL>0?` — en ${dL}d`:" — pasado"}</div>
-            </div>
-          </div>;
-        })}
-      </div>
-    </Accordion>
-
-    {/* Tareas de hoy */}
-    <Accordion title="Tareas de hoy" icon="✓" right={<button onClick={(e)=>{e.stopPropagation();setPage("tareas");}} style={{fontSize:11,color:C.textMid,background:C.surfaceAlt,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontWeight:700}}>Ver todas</button>}>
-      {tasks.length===0?<div style={{fontSize:13,color:C.textSoft,fontStyle:"italic",textAlign:"center",padding:"8px 0"}}>Sin tareas para hoy ✓</div>:<>
-        {Object.entries(byRoom).map(([r,tl])=>tl.length===0?null:<div key={r} style={{marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,color:groupMeta(r).color}}>{groupMeta(r).label}</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>{tl.map(t=><TaskRow key={t.id} t={t} onToggle={toggleTask} onInfo={setInfoTask}/>)}</div>
-        </div>)}
-        {doneT.length>0&&<>
-          <button onClick={()=>setShowDoneT(!showDoneT)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:C.textSoft,display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>{showDoneT?"▲":"▼"} Completadas ({doneT.length})</button>
-          {showDoneT&&<div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.6,marginTop:8}}>{doneT.map(t=><TaskRow key={t.id} t={t} onToggle={toggleTask} onInfo={setInfoTask}/>)}</div>}
-        </>}
-      </>}
-    </Accordion>
-
-    {/* Historial */}
-    {(wLog.length>0||nLog.length>0)&&<Accordion title="Historial" icon="📜">
-      {wLog.length>0&&<><div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>Últimos riegos</div>
-        {wLog.map((w,i)=><div key={w.id} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:i<wLog.length-1?`1px solid ${C.border}`:"none"}}>
-          <div><div style={{fontSize:13,fontWeight:600,color:C.text}}>💧 {w.method}{w.duration_minutes?` · ${w.duration_minutes}min`:""}</div><div style={{fontSize:11,color:C.textSoft}}>{w.logged_by} · {fmtDate(w.logged_at)} {fmtTime(w.logged_at)}</div></div>
-          {w.notes&&<div style={{fontSize:11,color:C.textSoft,maxWidth:100,textAlign:"right"}}>{w.notes}</div>}
-        </div>)}</>}
-      {nLog.length>0&&<><div style={{fontSize:11,fontWeight:700,color:C.textSoft,textTransform:"uppercase",letterSpacing:"0.1em",margin:wLog.length>0?"14px 0 8px":"0 0 8px"}}>Últimas aplicaciones</div>
-        {nLog.map((n,i)=><div key={n.id} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:i<nLog.length-1?`1px solid ${C.border}`:"none"}}>
-          <div><div style={{fontSize:13,fontWeight:600,color:C.text}}>🌱 {n.products}</div><div style={{fontSize:11,color:C.textSoft}}>{n.logged_by} · {fmtDate(n.logged_at)}{n.dose?` · ${n.dose}`:""}</div></div>
-        </div>)}</>}
-    </Accordion>}
-  </div>;
 }
 
-// POT MAP
 function PotMap({roomId,genetics,cycleGenetics,selectedPot,onSelect,equipment=[]}){
   const genMap={};genetics.forEach((g,i)=>{genMap[g.name]=g.color||GP[i%GP.length];});
   const cgColors=cycleGenetics.map((cg,i)=>genMap[cg.genetic_name]||GP[i]);
@@ -1905,7 +1775,7 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
 }
 
 // POT EDITOR
-function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved,pool=[],cycleCells=[],phenoAll={},inSheet=false}){
+function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved,pool=[],cycleCells=[],phenoAll={},inSheet=false,onGenAdded}){
   const pot=ROOM_POTS[roomId]?.find(p=>p.label===potLabel);
   const isAdmin=user?.role==="admin";
   const W0=pot?.circular?3:4, H0=pot?.circular?4:6;
@@ -1913,8 +1783,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [gridH,setGridH]=useState(H0);
   const [cells,setCells]=useState(()=>Array(W0*H0).fill(null));
   const [brush,setBrush]=useState(cycleGenetics[0]?.genetic_name||null);
-  // Pincel "por ubicar": una línea de la tanda que llegó de VG (genética + feno si tiene).
+  // Pincel "por ubicar": una línea de la tanda que llegó de VG (genética + origen + feno).
   const [brushPool,setBrushPool]=useState(()=>pool.find(p=>p.left>0)?.key||null);
+  const [brushOrigin,setBrushOrigin]=useState("esqueje");   // al pintar a mano: esqueje o semilla
   const [potId,setPotId]=useState(null);
   const [saving,setSaving]=useState(false);
   const [toastLocal,setToastLocal]=useState(null);
@@ -1922,10 +1793,13 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [snapshot,setSnapshot]=useState(null);   // copia para poder Cancelar sin perder lo guardado
   const [showSize,setShowSize]=useState(false);
   const [showOtras,setShowOtras]=useState(false);
+  const [showExtra,setShowExtra]=useState(false);// hoja para sumar una genética que no vino en la tanda
+  const [extraBusy,setExtraBusy]=useState(null);
   // Búsqueda de fenos: el modo queda prendido en la mesa hasta que un admin lo apague.
   const [phenoMode,setPhenoMode]=useState(false);
   const [cellPhenos,setCellPhenos]=useState(()=>Array(W0*H0).fill(null)); // pheno_id por celda
   const [cellLabels,setCellLabels]=useState(()=>Array(W0*H0).fill(null)); // feno escrito a mano (sin id)
+  const [cellOrigins,setCellOrigins]=useState(()=>Array(W0*H0).fill(null)); // esqueje o semilla
   const [phenoMap,setPhenoMap]=useState({});    // id -> feno de la búsqueda de esta mesa
   const [hunt,setHunt]=useState(null);          // búsqueda activa en esta mesa
   const [huntPhenos,setHuntPhenos]=useState([]);// los N fenos de esa búsqueda, ordenados
@@ -1960,9 +1834,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       const w=p.grid_w||W0, h=p.grid_h||H0;
       setGridW(w); setGridH(h);
       db.query("pot_cells",`pot_id=eq.${p.id}&cycle_id=eq.${cycle.id}&order=cell_index.asc`).then(existingCells=>{
-        const arr=Array(w*h).fill(null), ph=Array(w*h).fill(null), lb=Array(w*h).fill(null);
-        existingCells.forEach(c=>{if(c.cell_index<arr.length){arr[c.cell_index]=c.genetic_name;ph[c.cell_index]=sid(c.pheno_id);lb[c.cell_index]=c.pheno_label||null;}});
-        setCells(arr);setCellPhenos(ph);setCellLabels(lb);
+        const arr=Array(w*h).fill(null), ph=Array(w*h).fill(null), lb=Array(w*h).fill(null), og=Array(w*h).fill(null);
+        existingCells.forEach(c=>{if(c.cell_index<arr.length){arr[c.cell_index]=c.genetic_name;ph[c.cell_index]=sid(c.pheno_id);lb[c.cell_index]=c.pheno_label||null;og[c.cell_index]=c.origin||null;}});
+        setCells(arr);setCellPhenos(ph);setCellLabels(lb);setCellOrigins(og);
       }).catch(()=>{});
       reloadHunt(p.id);
     }).catch(e=>setToastLocal(errMsg(e)));
@@ -1971,23 +1845,24 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   // Al cambiar el tamaño de la grilla, conservamos lo que ya estaba cargado (recorta o agrega vacías).
   const updateGrid=(w,h)=>{
     const remap=prev=>{const n=Array(w*h).fill(null);for(let r=0;r<Math.min(h,gridH);r++)for(let c=0;c<Math.min(w,gridW);c++)n[r*w+c]=prev[r*gridW+c]||null;return n;};
-    setCells(remap);setCellPhenos(remap);setCellLabels(remap);
+    setCells(remap);setCellPhenos(remap);setCellLabels(remap);setCellOrigins(remap);
     setGridW(w);setGridH(h);
   };
 
   // ── Por ubicar: lo que llegó de VG menos lo que ya está en otras mesas y en esta ──
-  const keyAt=i=>poolKey(cells[i],cellPhenos[i],cellLabels[i]);
+  const keyAt=i=>poolKey(cells[i],cellOrigins[i],cellPhenos[i],cellLabels[i]);
   const elsewhere={};
-  cycleCells.forEach(c=>{if(!c.genetic_name||!potId||sid(c.pot_id)===sid(potId))return;const k=poolKey(c.genetic_name,c.pheno_id,c.pheno_label);elsewhere[k]=(elsewhere[k]||0)+1;});
+  cycleCells.forEach(c=>{if(!c.genetic_name||!potId||sid(c.pot_id)===sid(potId))return;const k=poolKey(c.genetic_name,c.origin,c.pheno_id,c.pheno_label);elsewhere[k]=(elsewhere[k]||0)+1;});
   const here={};cells.forEach((g,i)=>{if(!g)return;const k=keyAt(i);here[k]=(here[k]||0)+1;});
   const poolItems=(potId?pool:[]).map(p=>({...p,left:Math.max(0,p.arrived-(elsewhere[p.key]||0)-(here[p.key]||0))}));
   const poolLeft=poolItems.reduce((a,p)=>a+p.left,0);
   const fenoDe=(pid,lab)=>pid?(phenoMap[sid(pid)]?.code||phenoAll[sid(pid)]?.code||"Feno"):(lab||null);
 
-  const setCell=(i,g,pid,lab)=>{
+  const setCell=(i,g,pid,lab,org)=>{
     setCells(prev=>{const n=[...prev];n[i]=g;return n;});
     setCellPhenos(prev=>{const n=[...prev];n[i]=pid||null;return n;});
     setCellLabels(prev=>{const n=[...prev];n[i]=lab||null;return n;});
+    setCellOrigins(prev=>{const n=[...prev];n[i]=g?(org||"esqueje"):null;return n;});
   };
   const paint=i=>{
     if(!editing)return;
@@ -1995,18 +1870,30 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       // El pincel es un feno concreto. Volver a tocar la misma celda la vacía.
       const ya=cellPhenos[i]===brushPheno;
       const p=phenoMap[brushPheno];
-      setCell(i,ya?null:(p?.genetic_name||hunt.genetic_name),ya?null:brushPheno,null);
+      setCell(i,ya?null:(p?.genetic_name||hunt.genetic_name),ya?null:brushPheno,null,"semilla");
       return;
     }
     if(brushPool){
       const it=poolItems.find(p=>p.key===brushPool);if(!it)return;
-      if(cells[i]&&keyAt(i)===it.key){setCell(i,null,null,null);return;}   // tocar de nuevo la saca
+      if(cells[i]&&keyAt(i)===it.key){setCell(i,null,null,null,null);return;}   // tocar de nuevo la saca
       if(it.left<=0){const f=fenoDe(it.pheno_id,it.pheno_label);setToastLocal(`No quedan más ${it.genetic_name}${f?` ${f}`:""} por ubicar`);return;}
-      setCell(i,it.genetic_name,it.pheno_id,it.pheno_label);
+      setCell(i,it.genetic_name,it.pheno_id,it.pheno_label,it.origin);
       return;
     }
-    const borrando=brush!==null&&cells[i]===brush&&!cellPhenos[i]&&!cellLabels[i];
-    setCell(i,borrando?null:brush,null,null);
+    const borrando=brush!==null&&cells[i]===brush&&!cellPhenos[i]&&!cellLabels[i]&&(cellOrigins[i]||"esqueje")===brushOrigin;
+    setCell(i,borrando?null:brush,null,null,borrando?null:brushOrigin);
+  };
+  // Genética que no vino en la tanda (la trajiste de otro lado): entra al ciclo y queda como pincel.
+  const sumarGenetica=async(g)=>{
+    setExtraBusy(g.name);
+    try{
+      const ins=await db.insert("cycle_genetics",{cycle_id:cycle.id,genetic_name:g.name,plant_count:0});
+      onGenAdded&&onGenAdded(ins[0]);
+      await logA(user?.name||"sistema",`Sumó ${g.name} al ciclo de ${roomId} desde la mesa ${potLabel}`,"cycle");
+      setBrushPool(null);setBrush(g.name);setShowExtra(false);
+      setToastLocal(`${g.name} sumada al ciclo. Ya podés pintarla.`);
+    }catch(e){setToastLocal(errMsg(e));}
+    finally{setExtraBusy(null);}
   };
   // Crea la búsqueda y sus N fenos, y opcionalmente los ubica por número en la mesa.
   const crearBusqueda=async({genetic_name,prefix,count,autofill})=>{
@@ -2024,13 +1911,13 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     }));
     const ps=await db.insert("phenos",filas);
     if(autofill){
-      const nc=[...cells], np=[...cellPhenos], nl=[...cellLabels];
+      const nc=[...cells], np=[...cellPhenos], nl=[...cellLabels], no=[...cellOrigins];
       ps.forEach(p=>{
         const idx=seedIndex(p.number,gridW,gridH);
         if(idx<0||idx>=nc.length)return;        // más fenos que lugares: quedan sin ubicar
-        nc[idx]=genetic_name; np[idx]=sid(p.id); nl[idx]=null;
+        nc[idx]=genetic_name; np[idx]=sid(p.id); nl[idx]=null; no[idx]="semilla";
       });
-      setCells(nc);setCellPhenos(np);setCellLabels(nl);
+      setCells(nc);setCellPhenos(np);setCellLabels(nl);setCellOrigins(no);
     }
     setHunt(h);setHuntPhenos(ps);
     const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
@@ -2041,8 +1928,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     setToastLocal(autofill?`${ps.length} fenos creados y ubicados. Tocá Guardar para confirmar.`:`${ps.length} fenos creados.`);
   };
 
-  const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],cellLabels:[...cellLabels],gridW,gridH,phenoMode});setEditing(true);};
-  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setCellLabels(snapshot.cellLabels);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setEditing(false);setShowSize(false);};
+  const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],cellLabels:[...cellLabels],cellOrigins:[...cellOrigins],gridW,gridH,phenoMode});setEditing(true);};
+  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setCellLabels(snapshot.cellLabels);setCellOrigins(snapshot.cellOrigins);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setEditing(false);setShowSize(false);};
 
   const save=async()=>{
     if(!potId){setToastLocal("Cargando la mesa, esperá un segundo y reintentá");return;}
@@ -2050,12 +1937,13 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     try{
       await db.update("pots",potId,{grid_w:gridW,grid_h:gridH,pheno_mode:phenoMode});
       // Los fenos ya existen: acá solo se guarda en qué celda está cada uno.
-      // El feno viaja con la planta aunque la mesa no esté en modo búsqueda.
+      // El feno y el origen (esqueje o semilla) viajan con la planta.
       await db.deleteQuery("pot_cells",`pot_id=eq.${potId}&cycle_id=eq.${cycle.id}`);
-      const anyLab=cellLabels.some(Boolean);
+      const anyLab=cellLabels.some(Boolean), anyOrg=cellOrigins.some(Boolean);
       const newCells=cells.map((g,i)=>{
         const r={pot_id:potId,cycle_id:cycle.id,cell_index:i,genetic_name:g,pheno_id:cellPhenos[i]||null,updated_at:new Date().toISOString()};
         if(anyLab)r.pheno_label=cellLabels[i]||null;
+        if(anyOrg)r.origin=cellOrigins[i]||null;
         return r;
       }).filter(c=>c.genetic_name);
       if(newCells.length>0)await db.insert("pot_cells",newCells);
@@ -2071,16 +1959,18 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     if(potId){try{await db.update("pots",potId,{pheno_mode:next});}catch{/* queda en pantalla */}}
   };
 
-  // Resumen: genéticas presentes y, adentro, los fenos que viajaron con la planta.
+  // Resumen: genéticas presentes, con cuántas son de esqueje y cuántas de semilla.
   const summary={};
-  cells.forEach((g,i)=>{if(!g)return;const s=summary[g]=summary[g]||{n:0,f:{}};s.n++;const f=fenoDe(cellPhenos[i],cellLabels[i]);if(f)s.f[f]=(s.f[f]||0)+1;});
+  cells.forEach((g,i)=>{if(!g)return;const s=summary[g]=summary[g]||{n:0,sem:0,f:{}};s.n++;if((cellOrigins[i]||"esqueje")==="semilla")s.sem++;const f=fenoDe(cellPhenos[i],cellLabels[i]);if(f)s.f[f]=(s.f[f]||0)+1;});
   const sumRows=Object.entries(summary).sort((a,b)=>b[1].n-a[1].n);
   const total=cells.filter(Boolean).length;
   const ubicados=new Set(cellPhenos.filter(Boolean)).size;
   const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
+  const extras=genetics.filter(g=>!cycleGenetics.some(c=>c.genetic_name===g.name));
 
-  const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
+  const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,cursor:"pointer",fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",
     background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{children}</button>;
+  const miniBadge=(txt,on,col)=><span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,textTransform:"uppercase",letterSpacing:"0.04em",background:on?"rgba(255,255,255,0.3)":C.surfaceAlt,color:on?inkFill(col):C.textMid}}>{txt}</span>;
   const lbl=t=><div style={{fontSize:12.5,fontWeight:800,color:C.textSoft,margin:"2px 0 7px"}}>{t}</div>;
   const wrap=inSheet?{}:{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16};
   const sz=phenoMode?36:34;
@@ -2088,6 +1978,17 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   return <div style={wrap}>
     {toastLocal&&<Toast msg={toastLocal} type="error" onClose={()=>setToastLocal(null)}/>}
     {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} genetics={genetics} gridW={gridW} gridH={gridH} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
+    {showExtra&&<Sheet title="Agregar genética" sub="Para lo que trajiste y no venía en la tanda" onClose={()=>setShowExtra(false)} z={300}>
+      {extras.length===0
+        ? <div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0 10px"}}>Ya están todas las genéticas cargadas en este ciclo.</div>
+        : <>
+          <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10,lineHeight:1.45}}>Se suma al ciclo y queda lista para pintar. No descuenta del “por ubicar”.</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+            {extras.map(g=>{const col=g.color||C.green;return <button key={g.name} onClick={()=>sumarGenetica(g)} disabled={!!extraBusy} style={{display:"flex",alignItems:"center",gap:6,padding:"9px 13px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:extraBusy===g.name?0.5:1}}><Icon n="plus" size={15}/>{g.name}</button>;})}
+          </div>
+        </>}
+      <Btn v="secondary" full onClick={()=>setShowExtra(false)} style={{marginTop:16,minHeight:48}}>Cerrar</Btn>
+    </Sheet>}
 
     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
       <span style={{width:46,height:46,borderRadius:pot?.circular?"50%":14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:editing?C.greenLight:C.surfaceAlt,color:editing?C.green:C.text,fontSize:21,fontWeight:800}}>{potLabel}</span>
@@ -2107,7 +2008,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       {!editing&&isAdmin&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:3}}>Tocá Editar y usalas como pincel.</div>}
       {editing&&<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
         {poolItems.map(it=>{const col=genMap[it.genetic_name]||C.green;const f=fenoDe(it.pheno_id,it.pheno_label);const on=brushPool===it.key;
-          return chip(on,col,<>{it.genetic_name}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
+          return chip(on,col,<>{it.genetic_name}{it.origin==="semilla"&&miniBadge("semilla",on,col)}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span></>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
       </div>}
     </div>}
 
@@ -2139,9 +2040,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
         })}
       </div>
       <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
-        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos],nl=[...cellLabels];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);nl[idx]=null;}});setCells(nc);setCellPhenos(np);setCellLabels(nl);}}
+        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos],nl=[...cellLabels],no=[...cellOrigins];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);nl[idx]=null;no[idx]="semilla";}});setCells(nc);setCellPhenos(np);setCellLabels(nl);setCellOrigins(no);}}
           style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>Ubicar por número</button>
-        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));}}
+        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(null));}}
           style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
       </div>
     </div>}
@@ -2151,16 +2052,25 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       // del ciclo que no vinieron de VG quedan en "Otras genéticas".
       const poolGen=new Set(poolItems.map(p=>p.genetic_name));
       const otras=cycleGenetics.filter(g=>!poolGen.has(g.genetic_name));
-      const genChips=list=>list.map(g=>{const col=genMap[g.genetic_name]||C.green;return chip(!brushPool&&brush===g.genetic_name,col,g.genetic_name,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);});
+      const genChips=list=>list.map(g=>{const col=genMap[g.genetic_name]||C.green;const on=!brushPool&&brush===g.genetic_name;
+        return chip(on,col,<>{g.genetic_name}{on&&brushOrigin==="semilla"&&miniBadge("semilla",on,col)}</>,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);});
       const tool=(on,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:on?C.greenLight:C.surfaceAlt,color:on?C.green:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{children}</button>;
       const hayPool=poolItems.length>0;
+      const limpiar=()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(null));};
       return <div style={{marginBottom:12}}>
         {!hayPool&&cycleGenetics.length>0&&<>{lbl("Genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(cycleGenetics)}</div></>}
         {hayPool&&showOtras&&otras.length>0&&<>{lbl("Otras genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(otras)}</div></>}
+        {!brushPool&&brush&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9,flexWrap:"wrap"}}>
+          <span style={{fontSize:12.5,fontWeight:800,color:C.textSoft}}>{brush} es de</span>
+          <div style={{display:"flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
+            {[["esqueje","Esqueje"],["semilla","Semilla"]].map(([k,l])=>{const on=brushOrigin===k;return <button key={k} onClick={()=>setBrushOrigin(k)} style={{padding:"7px 14px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
+          </div>
+        </div>}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {chip(!brushPool&&brush===null,C.red,"Borrar",()=>{setBrushPool(null);setBrush(null);},"__borrar__")}
-          {!brushPool&&brush&&tool(false,`Llenar con ${brush}`,()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));},"llenar")}
-          {tool(false,"Limpiar",()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));},"limpiar")}
+          {isAdmin&&tool(false,<><Icon n="plus" size={15}/>Agregar genética</>,()=>setShowExtra(true),"extra")}
+          {!brushPool&&brush&&tool(false,`Llenar con ${brush}`,()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(brushOrigin));},"llenar")}
+          {tool(false,"Limpiar",limpiar,"limpiar")}
           {tool(showSize,<><Icon n="sliders" size={15}/>Medidas {gridW}×{gridH}</>,()=>setShowSize(s=>!s),"medidas")}
           {hayPool&&otras.length>0&&tool(showOtras,`Otras genéticas (${otras.length})`,()=>setShowOtras(s=>!s),"otras")}
         </div>
@@ -2174,7 +2084,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     </div>}
 
     <div style={{overflowX:"auto",display:"flex",justifyContent:"center",padding:"4px 0"}}>
-      {/* En modo feno cada celda muestra el número del feno, como en el cuaderno */}
+      {/* En modo feno cada celda muestra el número del feno, como en el cuaderno.
+          Fuera de ese modo, una "S" marca las que vienen de semilla. */}
       <div style={{display:"inline-grid",gridTemplateColumns:phenoMode?`16px repeat(${gridW},${sz}px)`:`repeat(${gridW},${sz}px)`,gap:5,alignItems:"center",justifyItems:"center"}}>
         {phenoMode&&<span/>}
         {phenoMode&&Array.from({length:gridW},(_,c)=><span key={"ch"+c} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{COL_LETTERS[c]||"?"}</span>)}
@@ -2182,13 +2093,14 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
           const first=phenoMode&&i%gridW===0;
           const ph=cellPhenos[i]?(phenoMap[cellPhenos[i]]||phenoAll[cellPhenos[i]]):null;
           const sel=phenoMode&&editing&&cellPhenos[i]&&cellPhenos[i]===brushPheno;
+          const esSem=cell&&cellOrigins[i]==="semilla";
           const conFeno=!phenoMode&&(cellPhenos[i]||cellLabels[i]);
-          const txt=phenoMode?(ph?ph.number:null):(ph?ph.number:(cellLabels[i]?String(cellLabels[i]).slice(0,4):null));
-          const box=<div key={i} onClick={()=>paint(i)} title={ph?.code||cellLabels[i]||(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:"")}
+          const txt=phenoMode?(ph?ph.number:null):(ph?ph.number:(cellLabels[i]?String(cellLabels[i]).slice(0,4):(esSem?"S":null)));
+          const box=<div key={i} onClick={()=>paint(i)} title={ph?.code||cellLabels[i]||(cell?`${cell} · ${cellOrigins[i]||"esqueje"}`:(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:""))}
             style={{width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.surfaceAlt,
               border:`2px solid ${sel||conFeno?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:txt&&String(txt).length>2?9.5:12.5,fontWeight:800,color:cell?"rgba(0,0,0,0.72)":C.textSoft,letterSpacing:"-0.03em",overflow:"hidden"}}>
+              fontSize:txt&&String(txt).length>2?9.5:12.5,fontWeight:800,color:cell?inkFill(genMap[cell]||C.green):C.textSoft,letterSpacing:"-0.03em",overflow:"hidden"}}>
             {txt!=null?txt:(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:(cell?<span style={{width:9,height:9,borderRadius:"50%",background:"rgba(255,255,255,0.45)"}}/>:null))}
           </div>;
           return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
@@ -2196,7 +2108,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       </div>
     </div>
     {phenoMode&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,lineHeight:1.45,textAlign:"center"}}>Los números se cuentan desde abajo a la izquierda, como en el cuaderno.</div>}
-    {!phenoMode&&cells.some((c,i)=>c&&(cellPhenos[i]||cellLabels[i]))&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,textAlign:"center"}}>Borde violeta: la planta lleva su feno.</div>}
+    {!phenoMode&&cells.some((c,i)=>c&&cellOrigins[i]==="semilla")&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,textAlign:"center"}}>“S”: la planta vino de semilla. El resto son esquejes.</div>}
+    {!phenoMode&&cells.some((c,i)=>c&&(cellPhenos[i]||cellLabels[i]))&&<div style={{fontSize:12,color:C.textSoft,marginTop:4,textAlign:"center"}}>Borde violeta: la planta lleva su feno.</div>}
 
     <div style={{marginTop:12,borderTop:`1px solid ${C.border}`}}>
       {sumRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"12px 0 0"}}>{editing?"Elegí un pincel arriba y tocá las celdas.":"Esta mesa todavía no tiene plantas cargadas."}</div>}
@@ -2204,6 +2117,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
         <span style={{width:10,alignSelf:"stretch",minHeight:26,borderRadius:4,background:genMap[g]||C.green,flexShrink:0}}/>
         <span style={{flex:1,minWidth:0}}>
           <span style={{display:"block",fontSize:14.5,fontWeight:800,color:C.text}}>{g}</span>
+          {s.sem>0&&<span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:700}}>{s.n-s.sem} esqueje{s.n-s.sem===1?"":"s"} · {s.sem} semilla{s.sem===1?"":"s"}</span>}
           {Object.keys(s.f).length>0&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700}}>{Object.entries(s.f).map(([f,n])=>n>1?`${f} ×${n}`:f).join(" · ")}</span>}
         </span>
         <span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{s.n}</span>
@@ -2217,6 +2131,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   </div>;
 }
 // ══════════════════════════════════════════════════════════════════════════════
+
 // FORMULARIOS — formato nuevo: hoja inferior, opciones tocables, sin emojis.
 // ══════════════════════════════════════════════════════════════════════════════
 // Colores de genética muy claros (amarillo, rosa, celeste) no se leen como texto:
@@ -2753,157 +2668,6 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
 }
 
 // TAREAS PAGE
-function TareasPage({user,rooms}){
-  const [tasks,setTasks]=useState([]);
-  const [view,setView]=useState("hoy");
-  const [loading,setLoading]=useState(true);
-  const [showForm,setShowForm]=useState(false);
-  const [showDone,setShowDone]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [toast,setToast]=useState(null);
-  const [infoTask,setInfoTask]=useState(null);
-  const [delT,setDelT]=useState(null);
-  const [newT,setNewT]=useState({title:"",roomsSel:["S1"],assignee:user.name,due_date:todayISO,priority:"normal",recurrent:false,recurrent_days:1,instructions:""});
-
-  const load=useCallback(async()=>{
-    setLoading(true);
-    try{
-      let q;
-      if(view==="hoy") q=`due_date=eq.${todayISO}&order=priority.desc,created_at.asc`;
-      else if(view==="mias") q=`assignee=eq.${encodeURIComponent(user.name)}&status=eq.pendiente&due_date=gte.${todayISO}&order=due_date.asc,priority.desc`;
-      else if(view==="proximas") q=`due_date=gt.${todayISO}&status=eq.pendiente&order=due_date.asc,priority.desc`;
-      else q=`status=eq.completada&order=completed_at.desc&limit=60`;
-      setTasks(await db.query("tasks",q));
-    }finally{setLoading(false);}
-  },[view,user.name]);
-  useEffect(()=>{load();},[load]);
-
-  const toggle=async task=>{
-    const ns=task.status==="completada"?"pendiente":"completada";
-    await db.update("tasks",task.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
-    if(ns==="completada")await pestTaskDone(task,user.name);
-    if(ns==="completada"&&task.recurrent&&task.recurrent_days){
-      await db.insert("tasks",{title:task.title,room_id:task.room_id,type:task.type,assignee:task.assignee,due_date:addDays(task.due_date,task.recurrent_days),status:"pendiente",priority:task.priority,recurrent:true,recurrent_days:task.recurrent_days,created_by:"sistema"});
-    }
-    await logA(user.name,`${ns==="completada"?"Completó":"Reabrió"}: ${task.title}`,"task");
-    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:ns}:t));
-    const undo=async()=>{
-      await db.update("tasks",task.id,{status:task.status,completed_at:task.status==="completada"?task.completed_at:null});
-      setTasks(prev=>prev.map(t=>t.id===task.id?{...t,status:task.status}:t));
-    };
-    setToast({msg:ns==="completada"?"Completada ✓":"Reabierta",type:"success",undo});
-  };
-
-  const removeTask=async task=>{
-    try{
-      await db.delete("tasks",task.id);
-      setTasks(prev=>prev.filter(t=>t.id!==task.id));
-      await logA(user.name,`Borró tarea: ${task.title}`,"task");
-      setToast({msg:"Tarea borrada 🗑",type:"success"});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});}
-    setDelT(null);
-  };
-
-  const addTask=async()=>{
-    if(!newT.title.trim())return;
-    const sel=newT.roomsSel.length>0?newT.roomsSel:["S1"];
-    setSaving(true);
-    try{
-      const roomsStr=sel.join(",");
-      const created=[];
-      for(const room of sel){
-        const payload={title:newT.title.trim(),room_id:room,rooms:roomsStr,type:"revision",assignee:newT.assignee,due_date:newT.due_date,priority:newT.priority,recurrent:newT.recurrent,recurrent_days:newT.recurrent?newT.recurrent_days:null,instructions:newT.instructions||null,status:"pendiente",created_by:user.name};
-        const ins=await db.insert("tasks",payload);
-        if(ins&&ins[0])created.push(ins[0]);
-      }
-      await logA(user.name,`Creó tarea: ${newT.title} (${roomsStr})`,"task");
-      if(view==="hoy"&&newT.due_date===todayISO)setTasks(prev=>[...prev,...created]);
-      setShowForm(false);
-      setNewT({title:"",roomsSel:["S1"],assignee:user.name,due_date:todayISO,priority:"normal",recurrent:false,recurrent_days:1,instructions:""});
-      setToast({msg:created.length>1?`${created.length} tareas creadas ✓`:"Tarea creada ✓",type:"success"});
-    }
-    catch(e){setToast({msg:errMsg(e),type:"error"});}
-    finally{setSaving(false);}
-  };
-
-  const pending=tasks.filter(t=>t.status==="pendiente");
-  const done=tasks.filter(t=>t.status==="completada");
-  const byRoomP=groupTasks(pending);
-  const tabs=[{id:"hoy",l:"Hoy"},{id:"mias",l:"Mis tareas"},{id:"proximas",l:"Próximas"},{id:"completadas",l:"Completadas"}];
-
-  const groupedView=(grouped)=><>
-    {Object.entries(grouped).map(([room,tList])=>tList.length===0?null:
-      <div key={room} style={{marginBottom:4}}>
-        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8,color:groupMeta(room).color,display:"flex",alignItems:"center",gap:6}}>
-          {groupMeta(room).label} <span style={{fontSize:10,color:C.textSoft,fontWeight:400}}>({tList.length})</span>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>{tList.map(t=><TaskRow key={t.id} t={t} onToggle={toggle} onInfo={setInfoTask} onDelete={setDelT}/>)}</div>
-      </div>
-    )}
-  </>;
-  const flatView=(list,empty)=>list.length===0
-    ?<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"24px 0"}}>{empty}</div>
-    :<div style={{display:"flex",flexDirection:"column",gap:8}}>{list.map(t=><TaskRow key={t.id} t={t} onToggle={toggle} onInfo={setInfoTask} onDelete={setDelT}/>)}</div>;
-
-  return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
-    {delT&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setDelT(null)}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.surface,borderRadius:18,padding:24,maxWidth:340,width:"100%",border:`1px solid ${C.border}`,boxShadow:C.shadowUp}}>
-        <div style={{fontSize:17,fontWeight:800,color:C.text,marginBottom:8}}>¿Borrar esta tarea?</div>
-        <div style={{fontSize:13.5,color:C.textSoft,marginBottom:20}}>"{delT.title}" — esta acción no se puede deshacer.</div>
-        <div style={{display:"flex",gap:10}}>
-          <Btn onClick={()=>setDelT(null)} v="secondary" style={{flex:1}}>Cancelar</Btn>
-          <Btn onClick={()=>removeTask(delT)} style={{flex:1,background:C.red}}>🗑 Borrar</Btn>
-        </div>
-      </div>
-    </div>}
-
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:8}}>
-      <div style={{fontSize:26,fontWeight:900,color:C.text,fontFamily:H}}>Tareas</div>
-      <Btn onClick={()=>setShowForm(!showForm)}>+ Nueva</Btn>
-    </div>
-
-    {showForm&&<Card>
-      <SL>Nueva tarea</SL>
-      <FI label="Título *" value={newT.title} onChange={e=>setNewT(p=>({...p,title:e.target.value}))} placeholder="Ej: Fumigación S1"/>
-      <div style={{marginBottom:12}}>
-        <label style={{fontSize:12,color:C.textSoft,display:"block",marginBottom:6}}>Salas (podés elegir varias)</label>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {[...(rooms||["S1","S2"]),"Vegetativo"].map(r=>{const on=newT.roomsSel.includes(r);return <button key={r} onClick={()=>setNewT(p=>({...p,roomsSel:on?p.roomsSel.filter(x=>x!==r):[...p.roomsSel,r]}))} style={{padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,background:on?C.green:C.surface,color:on?"#fff":C.textMid,border:`1.5px solid ${on?C.green:C.border}`}}>{on?"✓ ":""}{r}</button>;})}
-        </div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <FS label="Responsable" value={newT.assignee} onChange={e=>setNewT(p=>({...p,assignee:e.target.value}))} options={["Lucas","Alex","Gustavo","Alexis"]}/>
-        <FS label="Prioridad" value={newT.priority} onChange={e=>setNewT(p=>({...p,priority:e.target.value}))} options={["normal","alta"]}/>
-      </div>
-      <FI label="Fecha" type="date" value={newT.due_date} onChange={e=>setNewT(p=>({...p,due_date:e.target.value}))}/>
-      <FT label="Instrucciones / notas (opcional)" value={newT.instructions} onChange={e=>setNewT(p=>({...p,instructions:e.target.value}))} placeholder="Ej: dosis, pasos a seguir... (opcional)"/>
-      <label style={{display:"flex",alignItems:"center",gap:10,fontSize:14,color:C.text,marginBottom:12,cursor:"pointer"}}>
-        <input type="checkbox" checked={newT.recurrent} onChange={e=>setNewT(p=>({...p,recurrent:e.target.checked}))} style={{width:18,height:18}}/>Tarea recurrente
-      </label>
-      {newT.recurrent&&<div style={{background:C.greenLight,borderRadius:12,padding:14,marginBottom:12}}>
-        <NumField label="Repetir cada (días)" value={newT.recurrent_days} onCommit={v=>setNewT(p=>({...p,recurrent_days:v===""?1:v}))} min={1} max={365} placeholder="Ej: 2"/>
-      </div>}
-      <div style={{display:"flex",gap:10}}><Btn onClick={addTask} disabled={saving} style={{flex:1}}>{saving?"Guardando...":"Guardar"}</Btn><Btn onClick={()=>setShowForm(false)} v="secondary" style={{flex:1}}>Cancelar</Btn></div>
-    </Card>}
-
-    <div style={{display:"flex",gap:6,overflowX:"auto"}}>
-      {tabs.map(v=><button key={v.id} onClick={()=>setView(v.id)} style={{flex:"1 0 auto",padding:"11px 14px",borderRadius:12,cursor:"pointer",fontSize:13.5,fontWeight:700,whiteSpace:"nowrap",background:view===v.id?C.green:C.surface,color:view===v.id?"#fff":C.textMid,border:`1.5px solid ${view===v.id?C.green:C.border}`}}>{v.l}</button>)}
-    </div>
-
-    {loading?<Spin/>:view==="hoy"?<>
-      {groupedView(byRoomP)}
-      {pending.length===0&&done.length===0&&<div style={{textAlign:"center",color:C.textSoft,fontSize:14,fontStyle:"italic",padding:"24px 0"}}>Sin tareas para hoy ✓</div>}
-      {done.length>0&&<>
-        <button onClick={()=>setShowDone(!showDone)} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:12,color:C.textSoft,display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>{showDone?"▲":"▼"} Completadas ({done.length})</button>
-        {showDone&&<div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.6}}>{done.map(t=><TaskRow key={t.id} t={t} onToggle={toggle} onInfo={setInfoTask} onDelete={setDelT}/>)}</div>}
-      </>}
-    </>:view==="mias"?(pending.length===0?flatView([],"No tenés tareas pendientes 🌱"):groupedView(byRoomP))
-      :view==="proximas"?flatView(pending,"No hay tareas próximas")
-      :flatView(done,"Sin tareas completadas todavía")}
-  </div>;
-}
 
 // VEGETATIVO PAGE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3341,10 +3105,11 @@ function EsquejerasPage({genetics,user}){
 // TAREAS — un solo lugar: vencidas, hoy, mañana, esta semana y más adelante
 // ══════════════════════════════════════════════════════════════════════════════
 function TareasPageV2({user,rooms}){
+  const isAdmin=user?.role==="admin";
   const [tasks,setTasks]=useState([]);
   const [done,setDone]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [who,setWho]=useState("todas");
+  const [who,setWho]=useState(isAdmin?"todas":"mias");
   const [place,setPlace]=useState("Todos");
   const [sel,setSel]=useState(null);
   const [editT,setEditT]=useState(null);
@@ -3443,12 +3208,12 @@ function TareasPageV2({user,rooms}){
           <Btn v="secondary" onClick={()=>posponer(sel,3)} style={{flex:1,minHeight:48}}>En 3 días</Btn>
         </div>
         {sel.instructions&&<Btn v="secondary" full onClick={()=>{setInfo(sel);setSel(null);}} style={{minHeight:48}}>Ver instrucciones</Btn>}
-        <Btn v="secondary" full onClick={()=>{setEditT(sel);setSel(null);}} style={{minHeight:48}}>Editar</Btn>
-        <Btn v="danger" full onClick={()=>{setDelT(sel);setSel(null);}} style={{minHeight:48}}>Borrar</Btn>
+        {isAdmin&&<Btn v="secondary" full onClick={()=>{setEditT(sel);setSel(null);}} style={{minHeight:48}}>Editar</Btn>}
+        {isAdmin&&<Btn v="danger" full onClick={()=>{setDelT(sel);setSel(null);}} style={{minHeight:48}}>Borrar</Btn>}
       </div>
     </Sheet>}
 
-    <PageTitle right={<button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva</button>}>Tareas</PageTitle>
+    <PageTitle right={isAdmin&&<button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Nueva</button>}>Tareas</PageTitle>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"12px 2px 0"}}>
       <span style={{fontSize:13.5,color:C.textSoft,fontWeight:600}}>{list.length} pendiente{list.length===1?"":"s"}</span>
       <div style={{display:"inline-flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
@@ -3469,7 +3234,7 @@ function TareasPageV2({user,rooms}){
     {list.length===0&&<Card style={{padding:"26px 18px",textAlign:"center",marginTop:18}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="ok" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 2px"}}>Nada pendiente acá</div>
-      <div style={{fontSize:13,color:C.textSoft}}>{place!=="Todos"||who!=="todas"?"Probá con otro filtro.":"Creá una con “Nueva”."}</div>
+      <div style={{fontSize:13,color:C.textSoft}}>{place!=="Todos"||who!=="todas"?"Probá con otro filtro.":(isAdmin?"Creá una con “Nueva”.":"Cuando te asignen algo aparece acá.")}</div>
     </Card>}
 
     {hechas.length>0&&<div style={{marginTop:22}}>
@@ -3709,16 +3474,16 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
 // sala. El stock (genética + feno) ya está en la sala y se acomoda mesa por mesa.
 // Por ubicar = lo que llegó por tandas − lo que ya está dibujado en las mesas.
 // ══════════════════════════════════════════════════════════════════════════════
-const poolKey=(g,pid,lab)=>`${g||""}|${pid?sid(pid):""}|${pid?"":(lab||"")}`;
+const poolKey=(g,org,pid,lab)=>`${g||""}|${org==="semilla"?"semilla":"esqueje"}|${pid?sid(pid):""}|${pid?"":(lab||"")}`;
 const buildPool=(lines=[],cells=[])=>{
   const acc={};
   lines.forEach(l=>{
     const n=l.current_count||0;if(n<=0||!l.genetic_name)return;
-    const k=poolKey(l.genetic_name,l.pheno_id,l.pheno_label);
-    acc[k]=acc[k]||{key:k,genetic_name:l.genetic_name,pheno_id:l.pheno_id?sid(l.pheno_id):null,pheno_label:l.pheno_id?null:(l.pheno_label||null),arrived:0,placed:0};
+    const k=poolKey(l.genetic_name,l.origin,l.pheno_id,l.pheno_label);
+    acc[k]=acc[k]||{key:k,genetic_name:l.genetic_name,origin:l.origin==="semilla"?"semilla":"esqueje",pheno_id:l.pheno_id?sid(l.pheno_id):null,pheno_label:l.pheno_id?null:(l.pheno_label||null),arrived:0,placed:0};
     acc[k].arrived+=n;
   });
-  cells.forEach(c=>{if(!c.genetic_name)return;const k=poolKey(c.genetic_name,c.pheno_id,c.pheno_label);if(acc[k])acc[k].placed++;});
+  cells.forEach(c=>{if(!c.genetic_name)return;const k=poolKey(c.genetic_name,c.origin,c.pheno_id,c.pheno_label);if(acc[k])acc[k].placed++;});
   return Object.values(acc).map(p=>({...p,left:Math.max(0,p.arrived-p.placed)})).sort((a,b)=>b.left-a.left||a.genetic_name.localeCompare(b.genetic_name));
 };
 // Estado de una sala para recibir una tanda: sin ciclo (se abre en vege), en vege (se suma) o en flora (no recibe).
@@ -3752,7 +3517,7 @@ async function descartarSobrantes({cycleId,pool,user}){
   let total=0;const losses=[];
   for(const p of pool){
     let rest=p.left;if(rest<=0)continue;
-    for(const l of ls.filter(x=>poolKey(x.genetic_name,x.pheno_id,x.pheno_label)===p.key)){
+    for(const l of ls.filter(x=>poolKey(x.genetic_name,x.origin,x.pheno_id,x.pheno_label)===p.key)){
       if(rest<=0)break;
       const cur=l.current_count||0;const q=Math.min(cur,rest);if(q<=0)continue;
       await db.update("vg_lines",l.id,{current_count:cur-q});l.current_count=cur-q;
@@ -6428,7 +6193,7 @@ export default function App(){
       case "veg_madres":   return <MadresPage genetics={genetics} user={user}/>;
       case "veg_esquejeras":return <EsquejerasPage genetics={genetics} user={user}/>;
       case "veg_vg":       return <VGPage genetics={genetics} user={user} roomConfig={roomConfig}/>;
-      case "tareas":       return isAdmin?<TareasPageV2 user={user} rooms={rooms}/>:<TareasPage user={user} rooms={rooms}/>;
+      case "tareas":       return <TareasPageV2 user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
       case "fenos":        return <FenosPage user={user} genetics={genetics}/>;
       case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets}/>;
@@ -6440,11 +6205,10 @@ export default function App(){
       case "bot":          return <BotPage user={user}/>;
       case "bitacora":     return <BitacoraPage user={user}/>;
       case "configuracion":return <ConfigPage user={user} roomConfig={roomConfig} onChanged={loadConfig} onTargetsChanged={loadTargets}/>;
-      case "__more__":     return isAdmin?<MorePageAdmin user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme} onLogout={logout}/>:<MorePage user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme}/>;
+      case "__more__":     return isAdmin?<MorePageAdmin user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme} onLogout={logout}/>:<MorePageUser user={user} setPage={setPage} textScale={textScale} setTextScale={setTextScale} theme={theme} setTheme={setTheme} onLogout={logout}/>;
       case "salas":        return <SalasTab rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
       default:
-        if(page.startsWith("sala_")&&isAdmin)return <SalasTab roomId={page.slice(5)} rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
-        if(page.startsWith("sala_")){const rid=page.slice(5);return <SalaPage roomId={rid} setPage={setPage} user={user} genetics={genetics} rc={getRC(roomConfig,rid)} targets={targets} onTargetsChanged={loadTargets}/>;}
+        if(page.startsWith("sala_"))return <SalasTab roomId={page.slice(5)} rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
         return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
     }
   };
@@ -6455,19 +6219,17 @@ export default function App(){
   if(wide){
     return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,display:"flex",...zoomStyle}}>
       <style>{globalCSS}</style>
-      {isAdmin?<AdminNav page={page} setPage={setPage} wide/>:<NavBar user={user} page={page} setPage={setPage} wide/>}
+      <AdminNav page={page} setPage={setPage} wide user={user}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-        {isAdmin?<AdminTopBar page={page} onBack={goBack}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout} wide/>}
-        <div className="page" style={{padding:isAdmin?"18px 32px 32px":"6px 28px 28px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
+        <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
+        <div className="page" style={{padding:"18px 32px 32px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
       </div>
-      {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide/>}
     </div>;
   }
   return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
     <style>{globalCSS}</style>
-    {isAdmin?<AdminTopBar page={page} onBack={goBack}/>:<TopBar user={user} page={page} setPage={setPage} onLogout={logout}/>}
-    <div className="page" style={{padding:isAdmin?"14px 16px 104px":"16px 16px 88px"}}>{render()}</div>
-    {!isAdmin&&page!=="bot"&&<FloatingBot user={user} currentPage={page} wide={false}/>}
-    {isAdmin?<AdminNav page={page} setPage={setPage}/>:<NavBar user={user} page={page} setPage={setPage}/>}
+    <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
+    <div className="page" style={{padding:"14px 16px 104px"}}>{render()}</div>
+    <AdminNav page={page} setPage={setPage} user={user}/>
   </div>;
 }
