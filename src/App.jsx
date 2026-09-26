@@ -2490,7 +2490,7 @@ async function buildHarvestRows(roomId,cycleId,cg){
   if(rows.length===0&&cg&&cg.length>0){
     cg.forEach(g=>rows.push({pot_label:"General",genetic_name:g.genetic_name,plant_count:g.plant_count||0}));
   }
-  rows.sort((a,b)=>a.pot_label.localeCompare(b.pot_label)||a.genetic_name.localeCompare(b.genetic_name));
+  rows.sort((a,b)=>byName(a.pot_label,b.pot_label)||byName(a.genetic_name,b.genetic_name));
   return rows;
 }
 
@@ -2603,6 +2603,8 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
   },[cycle.id]);
 
   const setG=(i,v)=>setRows(p=>p.map((r,idx)=>idx===i?{...r,grams:v}:r));
+  // La cantidad de plantas viene de lo pintado en la mesa, pero se puede corregir al pesar.
+  const setPl=(i,v)=>setRows(p=>p.map((r,idx)=>idx===i?{...r,plant_count:Math.max(0,+v||0)}:r));
   const total=(rows||[]).reduce((a,r)=>a+(+r.grams||0),0);
   const totalPlants=(rows||[]).reduce((a,r)=>a+(r.plant_count||0),0);
   const cargadas=(rows||[]).filter(r=>+r.grams>0).length;
@@ -2637,6 +2639,7 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
 
   const byPot={};
   (rows||[]).forEach((r,i)=>{(byPot[r.pot_label]=byPot[r.pot_label]||[]).push({...r,_i:i});});
+  Object.keys(byPot).forEach(k=>byPot[k].sort((a,b)=>byName(a.genetic_name,b.genetic_name)));
 
   return <Sheet title="Cargar cosecha" sub={name} onClose={onClose}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
@@ -2653,11 +2656,12 @@ function HarvestModal({cycle,rc,user,onClose,onSaved}){
             <div style={{fontSize:14,fontWeight:800,color:C.text}}>Mesa {pot}</div>
             {sub>0&&<div style={{fontSize:12,fontWeight:700,color:C.green}}>{Math.round(sub)} g</div>}
           </div>
-          {rs.map(r=><div key={r._i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
-            <div style={{flex:1}}>
+          {rs.map(r=><div key={r._i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:13.5,fontWeight:700,color:C.text}}>{r.genetic_name}</div>
-              <div style={{fontSize:11.5,color:C.textSoft}}>{r.plant_count} planta{r.plant_count!==1?"s":""}{+r.grams>0&&r.plant_count>0?` · ${Math.round(+r.grams/r.plant_count)} g/planta`:""}</div>
+              <div style={{fontSize:11.5,color:C.textSoft}}>{+r.grams>0&&+r.plant_count>0?`${Math.round(+r.grams/+r.plant_count)} g por planta`:"plantas y gramos"}</div>
             </div>
+            <NumField value={r.plant_count} onCommit={v=>setPl(r._i,v===""?0:v)} min={0} max={9999} placeholder="pl." compact/>
             <NumField value={r.grams} onCommit={v=>setG(r._i,v===""?"":v)} min={0} max={999999} placeholder="g" compact/>
           </div>)}
         </div>;
@@ -4589,7 +4593,7 @@ function CosechaAnteriorModal({rooms,roomConfig,genetics,user,onClose,onSaved}){
 
   const cosecha=addDays(pesaje,-(+diasSecado||0));
   const inicio=addDays(cosecha,-(+diasFlora||0));
-  const mesas=(ROOM_POTS[roomId]||[]).map(p=>p.label);
+  const mesas=(ROOM_POTS[roomId]||[]).map(p=>p.label).sort((a,b)=>byName(a,b));
 
   const setRow=(i,k,v)=>setRows(p=>p.map((r,idx)=>idx===i?{...r,[k]:v}:r));
   const addRow=()=>setRows(p=>[...p,{pot_label:"",genetic_name:"",plant_count:"",grams:""}]);
@@ -4625,7 +4629,7 @@ function CosechaAnteriorModal({rooms,roomConfig,genetics,user,onClose,onSaved}){
       ].join("\n");
 
       const ins=await db.insert("cycles",{
-        room_id:roomId,phase:"cosecha",flower_start:inicio,estimated_harvest:cosecha,real_harvest:cosecha,
+        room_id:roomId,phase:"cosechando",flower_start:inicio,estimated_harvest:cosecha,real_harvest:cosecha,
         active:false,closed_at:new Date(pesaje+"T12:00:00").toISOString(),harvest_status:"completo",
         yield_grams:Math.round(total),summary:resumen,
         irrigation_type:getRC(roomConfig,roomId).irrigation_type||"manual",
@@ -4660,7 +4664,7 @@ function CosechaAnteriorModal({rooms,roomConfig,genetics,user,onClose,onSaved}){
 
   const selStyle={width:"100%",background:C.bg,border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 10px",fontSize:13,color:C.text};
 
-  return <Modal title="➕ Cargar cosecha anterior" onClose={onClose}>
+  return <Sheet title="Cargar cosecha anterior" sub="Para cosechas viejas que nunca se cargaron" onClose={onClose}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12}}>{err}</div>}
     <div style={{fontSize:12,color:C.textSoft,marginBottom:14,lineHeight:1.5}}>Para cosechas viejas que nunca se cargaron. Poné la fecha en que la pesaste y el resto se calcula solo.</div>
 
@@ -4721,7 +4725,7 @@ function CosechaAnteriorModal({rooms,roomConfig,genetics,user,onClose,onSaved}){
 
     <FT label="Notas (opcional)" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Lo que recuerdes del ciclo..." rows={2}/>
     <Btn onClick={save} disabled={saving||validas.length===0} full style={{marginTop:12}}>{saving?"Guardando...":"Guardar cosecha"}</Btn>
-  </Modal>;
+  </Sheet>;
 }
 // HISTORIAL — ciclos cerrados, rendimiento por mesa y carga de post-cosecha
 // ══════════════════════════════════════════════════════════════════════════════
@@ -4872,64 +4876,59 @@ function HistorialPage({roomConfig,user,genetics,rooms}){
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ESTADÍSTICAS — rendimiento arriba, clima y trabajo del equipo plegados
+// ESTADÍSTICAS — todo filtrable por sala y por período (según fecha de cosecha).
 // ══════════════════════════════════════════════════════════════════════════════
-function EstadisticasPage({rooms,roomConfig,targets}){
-  const [stats,setStats]=useState(null);
+const ST_PERIODS=[[1,"1 mes"],[3,"3 meses"],[6,"6 meses"],[12,"1 año"],[0,"Todo"]];
+const roomColor=r=>r==="S1"?C.amber:r==="S2"?C.blue:C.green;
+// Una barra por ciclo cerrado, en orden de cosecha. El color dice de qué sala salió.
+function CycleBars({data,roomConfig}){
+  const max=Math.max(1,...data.map(d=>d.grams));
+  const salas=[...new Set(data.map(d=>d.room))];
+  return <>
+    <div className="gm-rail" style={{overflowX:"auto",scrollbarWidth:"none",paddingBottom:2}}>
+      <div style={{display:"flex",alignItems:"flex-end",gap:10,padding:"6px 2px 0",minWidth:"min-content"}}>
+        {data.map(d=><div key={d.id} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,width:48,flexShrink:0}}>
+          <span style={{fontSize:11,fontWeight:800,color:C.textMid,fontVariantNumeric:"tabular-nums"}}>{d.grams>=1000?`${(d.grams/1000).toFixed(1).replace(".",",")}k`:Math.round(d.grams)}</span>
+          <div title={`${d.grams} g`} style={{width:26,height:Math.max(5,Math.round(d.grams/max*110)),borderRadius:8,background:roomColor(d.room)}}/>
+          <span style={{fontSize:10.5,color:C.textSoft,fontWeight:700,whiteSpace:"nowrap"}}>{fmtDM(d.date)}</span>
+        </div>)}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:14,marginTop:10,flexWrap:"wrap"}}>
+      {salas.map(r=><span key={r} style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:700,color:C.textMid}}>
+        <span style={{width:10,height:10,borderRadius:3,background:roomColor(r)}}/>{getRC(roomConfig,r).display_name}</span>)}
+    </div>
+  </>;
+}
+
+function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
+  const [raw,setRaw]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [sala,setSala]=useState("todas");
+  const [meses,setMeses]=useState(12);
+  const [genOrden,setGenOrden]=useState("grams");
+  const [vistaPl,setVistaPl]=useState("ahora");
   const [clRange,setClRange]=useState("24h");
   const [clSeries,setClSeries]=useState([]);
+
   useEffect(()=>{
+    const desde12=new Date(Date.now()-370*24*3600*1000).toISOString();
     Promise.all([
       db.query("tasks","order=created_at.desc&limit=300"),
-      db.query("watering_logs","order=logged_at.desc&limit=100"),
-      db.query("nutrition_logs","order=logged_at.desc&limit=100"),
-      db.query("cycles","active=eq.false&order=closed_at.desc&limit=40"),
-      db.query("cycle_genetics","order=id.desc&limit=400"),
+      db.query("watering_logs","order=logged_at.desc&limit=200"),
+      db.query("nutrition_logs","order=logged_at.desc&limit=200"),
+      db.query("cycles","active=eq.false&order=closed_at.desc&limit=200"),
+      db.query("cycle_genetics","order=id.desc&limit=2000"),
       db.query("climate_logs",`recorded_at=gte.${new Date(Date.now()-24*3600*1000).toISOString()}&order=recorded_at.desc`),
       db.query("cycles","active=eq.true"),
-      db.query("harvest_yields","order=pot_label.asc").catch(()=>[]),
-    ]).then(([tasks,wl,nl,closed,cgAll,climate,active,hy])=>{
-      const climByRoom={};(climate||[]).forEach(c=>{if(!climByRoom[c.room_id])climByRoom[c.room_id]=c;});
-      const activeByRoom={};(active||[]).forEach(c=>{if(!activeByRoom[c.room_id])activeByRoom[c.room_id]=c;});
-      const byUser={};
-      tasks.forEach(t=>{if(!t.assignee)return;if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
-      const wByRoom={};(rooms||["S1","S2"]).forEach(r=>{wByRoom[r]=0;});
-      wl.forEach(w=>{if(wByRoom[w.room_id]!==undefined)wByRoom[w.room_id]++;});
-      // Los gramos salen de harvest_yields si están; si no, de cycle_genetics o del total del ciclo.
-      const hyByCycle={};(hy||[]).forEach(r=>{(hyByCycle[r.cycle_id]=hyByCycle[r.cycle_id]||[]).push(r);});
-      const cgByCycle={};(cgAll||[]).forEach(g=>{(cgByCycle[g.cycle_id]=cgByCycle[g.cycle_id]||[]).push(g);});
-      const cycleStats=(closed||[]).map(c=>{
-        const hr=hyByCycle[c.id]||[];const gs=cgByCycle[c.id]||[];
-        const plants=hr.reduce((a,r)=>a+(r.plant_count||0),0)||gs.reduce((a,g)=>a+(g.plant_count||0),0);
-        const grams=hr.reduce((a,r)=>a+(+r.grams||0),0)||c.yield_grams||gs.reduce((a,g)=>a+(g.yield_grams||0),0);
-        const realDays=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
-        const estDays=c.flower_start&&c.estimated_harvest?Math.round((new Date(c.estimated_harvest)-new Date(c.flower_start))/86400000):null;
-        const area=getRC(roomConfig,c.room_id).area_m2;
-        return {id:c.id,room:c.room_id,closed_at:c.closed_at,harvest:c.real_harvest,grams,plants,gpp:plants>0&&grams>0?Math.round(grams/plants):null,gm2:area&&grams?Math.round(grams/area):null,realDays,estDays};
-      });
-      const byGen={};
-      (hy||[]).forEach(r=>{if(!r.genetic_name)return;if(!byGen[r.genetic_name])byGen[r.genetic_name]={grams:0,plants:0};byGen[r.genetic_name].grams+=+r.grams||0;byGen[r.genetic_name].plants+=r.plant_count||0;});
-      (cgAll||[]).forEach(g=>{if(!g.genetic_name||hyByCycle[g.cycle_id])return;if(!byGen[g.genetic_name])byGen[g.genetic_name]={grams:0,plants:0};byGen[g.genetic_name].grams+=g.yield_grams||0;byGen[g.genetic_name].plants+=g.plant_count||0;});
-      const genStats=Object.entries(byGen).map(([name,d])=>({name,...d,gpp:d.plants>0&&d.grams>0?Math.round(d.grams/d.plants):null})).filter(g=>g.grams>0).sort((a,b)=>b.grams-a.grams);
-      const soil=(rooms||["S1","S2"]).map(r=>{
-        const rcR=getRC(roomConfig,r);
-        const lr=rcR.last_reset_at?new Date(rcR.last_reset_at):null;
-        const rcClosed=(closed||[]).filter(c=>c.room_id===r&&c.closed_at).sort((a,b)=>new Date(b.closed_at)-new Date(a.closed_at));
-        const lastClosed=rcClosed[0]||null;
-        return {room:r,name:rcR.display_name,lastReset:rcR.last_reset_at||null,closedCount:rcClosed.length,resetPending:!!lastClosed&&(!lr||lr<new Date(lastClosed.closed_at))};
-      });
-      setStats({byUser,wByRoom,total:tasks.length,done:tasks.filter(t=>t.status==="completada").length,wCount:wl.length,nCount:nl.length,cycleStats,genStats,soil,climByRoom,activeByRoom});
+      db.query("harvest_yields","order=id.desc&limit=2000").catch(()=>[]),
+      db.query("climate_logs",`select=room_id,recorded_at,temperature,humidity&recorded_at=gte.${desde12}&order=recorded_at.desc&limit=4000`).catch(()=>[]),
+      db.query("pot_cells","select=cycle_id,genetic_name&limit=3000").catch(()=>[]),
+      db.query("veg_stock","select=type,genetic_name,count,status").catch(()=>[]),
+      db.query("cloner_slots","select=genetic_name").catch(()=>[]),
+    ]).then(([tasks,wl,nl,closed,cgAll,climate24,active,hy,climHist,cells,veg,slots])=>{
+      setRaw({tasks,wl,nl,closed:closed||[],cgAll:cgAll||[],climate24:climate24||[],active:active||[],hy:hy||[],climHist:climHist||[],cells:cells||[],veg:veg||[],slots:slots||[]});
     }).finally(()=>setLoading(false));
-  },[rooms,roomConfig]);
-  useEffect(()=>{
-    const id=setInterval(()=>{
-      db.query("climate_logs",`recorded_at=gte.${new Date(Date.now()-3600*1000).toISOString()}&order=recorded_at.desc`).then(cl=>{
-        const cb={};(cl||[]).forEach(c=>{if(!cb[c.room_id])cb[c.room_id]=c;});
-        setStats(prev=>prev?{...prev,climByRoom:cb}:prev);
-      }).catch(()=>{});
-    },120000);
-    return ()=>clearInterval(id);
   },[]);
   useEffect(()=>{
     const loadS=()=>{
@@ -4940,26 +4939,108 @@ function EstadisticasPage({rooms,roomConfig,targets}){
     loadS();const id=setInterval(loadS,120000);return ()=>clearInterval(id);
   },[clRange]);
   if(loading)return <Spin/>;
-  if(!stats)return null;
+  if(!raw)return null;
 
-  const CL_ROOMS=[...(rooms||["S1","S2"]),"Vegetativo"];
+  const salasAll=rooms||["S1","S2"];
+  const CL_ROOMS=[...salasAll,"Vegetativo"];
   const CL_COLORS=[C.amber,C.blue,C.green,C.purple,C.red];
+  const climByRoom={};raw.climate24.forEach(c=>{if(!climByRoom[c.room_id])climByRoom[c.room_id]=c;});
+  const activeByRoom={};raw.active.forEach(c=>{if(!activeByRoom[c.room_id])activeByRoom[c.room_id]=c;});
+
+  // ── Filtros ────────────────────────────────────────────────────────────────
+  const desde=meses>0?addDays(todayISO,-Math.round(meses*30.44)):null;
+  const fechaCiclo=c=>String(c.real_harvest||c.closed_at||"").slice(0,10);
+  const ciclos=raw.closed
+    .filter(c=>sala==="todas"||c.room_id===sala)
+    .filter(c=>{const f=fechaCiclo(c);return !desde||(f&&f>=desde);})
+    .sort((a,b)=>String(fechaCiclo(a)).localeCompare(String(fechaCiclo(b))));
+  const idsCiclo=new Set(ciclos.map(c=>String(c.id)));
+  const hyF=raw.hy.filter(r=>idsCiclo.has(String(r.cycle_id)));
+  const hyByCycle={};hyF.forEach(r=>{(hyByCycle[String(r.cycle_id)]=hyByCycle[String(r.cycle_id)]||[]).push(r);});
+  const cgByCycle={};raw.cgAll.forEach(g=>{(cgByCycle[String(g.cycle_id)]=cgByCycle[String(g.cycle_id)]||[]).push(g);});
+
+  // Clima promedio de cada ciclo: mediciones de esa sala entre el inicio de flora y la cosecha.
+  const climaCiclo=c=>{
+    const ini=String(c.flower_start||"").slice(0,10), fin=fechaCiclo(c);
+    if(!ini||!fin)return null;
+    const ms=raw.climHist.filter(x=>x.room_id===c.room_id&&String(x.recorded_at).slice(0,10)>=ini&&String(x.recorded_at).slice(0,10)<=fin);
+    if(ms.length===0)return null;
+    const t=ms.filter(x=>x.temperature!=null), h=ms.filter(x=>x.humidity!=null);
+    return {n:ms.length,
+      temp:t.length?t.reduce((a,x)=>a+ +x.temperature,0)/t.length:null,
+      hum:h.length?h.reduce((a,x)=>a+ +x.humidity,0)/h.length:null};
+  };
+  const cycleStats=ciclos.map(c=>{
+    const hr=hyByCycle[String(c.id)]||[];const gs=cgByCycle[String(c.id)]||[];
+    const plants=hr.reduce((a,r)=>a+(r.plant_count||0),0)||gs.reduce((a,g)=>a+(g.plant_count||0),0);
+    const grams=hr.reduce((a,r)=>a+(+r.grams||0),0)||c.yield_grams||gs.reduce((a,g)=>a+(g.yield_grams||0),0);
+    const realDays=c.flower_start&&c.real_harvest?Math.round((new Date(c.real_harvest)-new Date(c.flower_start))/86400000):null;
+    const estDays=c.flower_start&&c.estimated_harvest?Math.round((new Date(c.estimated_harvest)-new Date(c.flower_start))/86400000):null;
+    const area=getRC(roomConfig,c.room_id).area_m2;
+    return {id:c.id,room:c.room_id,date:fechaCiclo(c),grams,plants,
+      gpp:plants>0&&grams>0?Math.round(grams/plants):null,gm2:area&&grams?Math.round(grams/area):null,
+      realDays,estDays,clima:climaCiclo(c)};
+  });
+  const conG=cycleStats.filter(c=>c.grams>0);
+  const totalG=conG.reduce((a,c)=>a+c.grams,0);
+  const plantasT=conG.reduce((a,c)=>a+c.plants,0);
+
+  // Rendimiento por genética, dentro del filtro
+  const byGen={};
+  hyF.forEach(r=>{if(!r.genetic_name)return;const d=byGen[r.genetic_name]=byGen[r.genetic_name]||{grams:0,plants:0};d.grams+=+r.grams||0;d.plants+=r.plant_count||0;});
+  ciclos.forEach(c=>{
+    if(hyByCycle[String(c.id)])return;
+    (cgByCycle[String(c.id)]||[]).forEach(g=>{if(!g.genetic_name)return;const d=byGen[g.genetic_name]=byGen[g.genetic_name]||{grams:0,plants:0};d.grams+=g.yield_grams||0;d.plants+=g.plant_count||0;});
+  });
+  const genStats=Object.entries(byGen).map(([name,d])=>({name,...d,gpp:d.plants>0&&d.grams>0?Math.round(d.grams/d.plants):null}))
+    .filter(g=>g.grams>0||g.plants>0)
+    .sort((a,b)=>genOrden==="gpp"?(b.gpp||0)-(a.gpp||0):genOrden==="plants"?b.plants-a.plants:b.grams-a.grams);
+  const mejorGpp=[...genStats].filter(g=>g.gpp).sort((a,b)=>b.gpp-a.gpp)[0]||null;
+
+  // Plantas en pie ahora: mesas de los ciclos activos + madres, VG y esquejeras
+  const activosId=new Set(raw.active.filter(c=>sala==="todas"||c.room_id===sala).map(c=>String(c.id)));
+  const enPie={};
+  const sumPie=(g,k,n)=>{if(!g||!n)return;const d=enPie[g]=enPie[g]||{salas:0,vege:0};d[k]+=n;};
+  raw.cells.forEach(c=>{if(activosId.has(String(c.cycle_id)))sumPie(c.genetic_name,"salas",1);});
+  if(sala==="todas"){
+    raw.veg.forEach(v=>{if(v.status==="inactiva")return;sumPie(v.genetic_name,"vege",+v.count||0);});
+    raw.slots.forEach(s=>sumPie(s.genetic_name,"vege",1));
+  }
+  const pieStats=Object.entries(enPie).map(([name,d])=>({name,...d,total:d.salas+d.vege})).sort((a,b)=>b.total-a.total);
+
+  const conClima=cycleStats.filter(c=>c.clima&&(c.clima.temp!=null||c.clima.hum!=null));
   const clFor=field=>CL_ROOMS.map((r,i)=>({
-    name:getRC(roomConfig,r).display_name,
-    color:CL_COLORS[i%CL_COLORS.length],
+    name:getRC(roomConfig,r).display_name,color:CL_COLORS[i%CL_COLORS.length],
     points:clSeries.filter(c=>c.room_id===r&&c[field]!=null).map(c=>({x:new Date(c.recorded_at).getTime(),y:+c[field]})),
   })).filter(s=>s.points.length>0);
 
-  const conG=stats.cycleStats.filter(c=>c.grams>0);
-  const totalG=conG.reduce((a,c)=>a+c.grams,0);
-  const plantasT=conG.reduce((a,c)=>a+c.plants,0);
-  const mejor=stats.genStats.find(g=>g.gpp)||null;
+  // Trabajo del equipo (no depende del filtro de cosecha)
+  const byUser={};raw.tasks.forEach(t=>{if(!t.assignee)return;if(!byUser[t.assignee])byUser[t.assignee]={total:0,done:0};byUser[t.assignee].total++;if(t.status==="completada")byUser[t.assignee].done++;});
+  const wByRoom={};salasAll.forEach(r=>{wByRoom[r]=0;});raw.wl.forEach(w=>{if(wByRoom[w.room_id]!==undefined)wByRoom[w.room_id]++;});
+  const soil=salasAll.filter(r=>sala==="todas"||r===sala).map(r=>{
+    const rcR=getRC(roomConfig,r);
+    const lr=rcR.last_reset_at?new Date(rcR.last_reset_at):null;
+    const rcClosed=raw.closed.filter(c=>c.room_id===r&&c.closed_at).sort((a,b)=>new Date(b.closed_at)-new Date(a.closed_at));
+    const lastClosed=rcClosed[0]||null;
+    return {room:r,name:rcR.display_name,lastReset:rcR.last_reset_at||null,closedCount:rcClosed.length,resetPending:!!lastClosed&&(!lr||lr<new Date(lastClosed.closed_at))};
+  });
+
   const stat=(v,l,color)=><div style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 13px",minWidth:0}}>
     <div style={{fontSize:21,fontWeight:800,color:color||C.text,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{v}</div><div style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{l}</div>
   </div>;
+  const segBtn=(on,l,fn,key)=><button key={key||l} onClick={fn} style={{flex:1,padding:"9px 6px",borderRadius:12,border:"none",cursor:"pointer",fontSize:13.5,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none",whiteSpace:"nowrap"}}>{l}</button>;
+  const periodoTxt=meses>0?ST_PERIODS.find(p=>p[0]===meses)[1].toLowerCase():"todo el historial";
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
-    <PageTitle>Estadísticas</PageTitle>
+    <PageTitle sub={`${sala==="todas"?"Las dos salas":getRC(roomConfig,sala).display_name} · ${periodoTxt}`}>Estadísticas</PageTitle>
+
+    <div style={{display:"flex",background:C.surfaceAlt,borderRadius:16,padding:4,border:`1px solid ${C.border}`}}>
+      {segBtn(sala==="todas","Las dos",()=>setSala("todas"),"todas")}
+      {salasAll.map(r=>segBtn(sala===r,getRC(roomConfig,r).display_name,()=>setSala(r),r))}
+    </div>
+    <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none"}}>
+      {ST_PERIODS.map(([m,l])=>{const on=meses===m;return <button key={m} onClick={()=>setMeses(m)} style={{padding:"8px 14px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.green:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{l}</button>;})}
+    </div>
 
     <div style={{display:"flex",gap:8}}>
       {stat(totalG>0?`${(totalG/1000).toFixed(1).replace(".",",")} kg`:"—","cosechado")}
@@ -4967,28 +5048,71 @@ function EstadisticasPage({rooms,roomConfig,targets}){
       {stat(conG.length,`ciclo${conG.length===1?"":"s"} con peso`)}
     </div>
 
-    {stats.genStats.length>0&&<Card style={{padding:"16px 16px 14px"}}>
+    {conG.length>0&&<Card style={{padding:"16px 16px 14px"}}>
+      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Cosecha ciclo a ciclo</div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:6}}>Cada barra es un ciclo cerrado, en orden de cosecha.</div>
+      <CycleBars data={conG} roomConfig={roomConfig}/>
+    </Card>}
+
+    {genStats.length>0&&<Card style={{padding:"16px 16px 14px"}}>
       <div style={{fontSize:16,fontWeight:800,color:C.text}}>Rendimiento por genética</div>
-      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:12}}>{mejor?`La más rendidora es ${mejor.name}, con ${mejor.gpp} g por planta.`:"Sobre los ciclos ya cerrados."}</div>
-      {(()=>{const max=Math.max(...stats.genStats.map(g=>g.grams),1);return stats.genStats.map((g,i)=>
-        <div key={g.name} style={{marginTop:i?12:0}}>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{mejorGpp?`La más rendidora es ${mejorGpp.name}, con ${mejorGpp.gpp} g por planta.`:"Sobre los ciclos cerrados del período."}</div>
+      <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
+        {segBtn(genOrden==="grams","Gramos",()=>setGenOrden("grams"),"g")}
+        {segBtn(genOrden==="gpp","g/planta",()=>setGenOrden("gpp"),"gpp")}
+        {segBtn(genOrden==="plants","Plantas",()=>setGenOrden("plants"),"pl")}
+      </div>
+      {(()=>{
+        const val=g=>genOrden==="gpp"?(g.gpp||0):genOrden==="plants"?g.plants:g.grams;
+        const max=Math.max(...genStats.map(val),1);
+        return genStats.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
             <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
-            <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{Math.round(g.grams)} g{g.gpp?` · ${g.gpp} g/pl`:""}</span>
+            <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{Math.round(g.grams)} g · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
           </div>
-          <Bar value={g.grams} max={max} color={C.green} h={8}/>
+          <Bar value={val(g)} max={max} color={genOrden==="gpp"?C.purple:genOrden==="plants"?C.blue:C.green} h={8}/>
         </div>);})()}
     </Card>}
 
-    {stats.cycleStats.length>0&&<Card style={{padding:"16px 16px 6px"}}>
+    <Card style={{padding:"16px 16px 14px"}}>
+      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Plantas por genética</div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{vistaPl==="ahora"?"Lo que está en pie hoy: mesas en producción, madres, VG y esquejeras.":`Plantas cosechadas en ${periodoTxt}.`}</div>
+      <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
+        {segBtn(vistaPl==="ahora","En pie ahora",()=>setVistaPl("ahora"),"ahora")}
+        {segBtn(vistaPl==="hist","Histórico",()=>setVistaPl("hist"),"hist")}
+      </div>
+      {vistaPl==="ahora"
+        ? (pieStats.length===0
+            ? <div style={{fontSize:13,color:C.textSoft}}>No hay plantas cargadas en las mesas ni en vege.</div>
+            : (()=>{const max=Math.max(...pieStats.map(p=>p.total),1);return pieStats.map((p,i)=><div key={p.name} style={{marginTop:i?12:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
+                  <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                  <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{p.total} pl{p.vege?` · ${p.salas} en salas, ${p.vege} en vege`:""}</span>
+                </div>
+                <Bar value={p.total} max={max} color={C.green} h={8}/>
+              </div>);})())
+        : (genStats.filter(g=>g.plants>0).length===0
+            ? <div style={{fontSize:13,color:C.textSoft}}>Sin cosechas cargadas en este período.</div>
+            : (()=>{const list=[...genStats].filter(g=>g.plants>0).sort((a,b)=>b.plants-a.plants);const max=Math.max(...list.map(g=>g.plants),1);
+                return list.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
+                    <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
+                    <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{g.plants} pl</span>
+                  </div>
+                  <Bar value={g.plants} max={max} color={C.blue} h={8}/>
+                </div>);})())}
+    </Card>
+
+    {cycleStats.length>0&&<Card style={{padding:"16px 16px 6px"}}>
       <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:4}}>Ciclos cerrados</div>
-      {stats.cycleStats.map((c,i)=>{
+      {[...cycleStats].reverse().map((c,i)=>{
         const name=getRC(roomConfig,c.room).display_name;const dif=c.realDays!=null&&c.estDays!=null?c.realDays-c.estDays:null;
         return <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
-          <span style={{width:10,alignSelf:"stretch",minHeight:34,borderRadius:4,background:c.room==="S1"?C.amber:C.blue,flexShrink:0}}/>
+          <span style={{width:10,alignSelf:"stretch",minHeight:34,borderRadius:4,background:roomColor(c.room),flexShrink:0}}/>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{name}{c.harvest?` · ${fmtDM(c.harvest)}`:""}</div>
+            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{name}{c.date?` · ${fmtDM(c.date)}`:""}</div>
             <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.grams>0?`${c.plants||"—"} plantas${c.gpp?` · ${c.gpp} g/pl`:""}${c.gm2?` · ${c.gm2} g/m²`:""}`:"Falta cargar la cosecha"}{c.realDays!=null?` · ${c.realDays} días`:""}</div>
+            {c.clima&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.clima.temp!=null?`${fmtNum(c.clima.temp,1)} °C`:"—"}{c.clima.hum!=null?` · ${fmtNum(c.clima.hum,0)} % hum`:""} promedio</div>}
           </div>
           <span style={{textAlign:"right"}}>
             <span style={{display:"block",fontSize:18,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{c.grams>0?Math.round(c.grams):"—"}<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}> g</span></span>
@@ -4996,6 +5120,25 @@ function EstadisticasPage({rooms,roomConfig,targets}){
           </span>
         </div>;})}
     </Card>}
+
+    <Fold icon="thermo" title="Clima por ciclo" count={conClima.length}>
+      {conClima.length===0
+        ? <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Todavía no hay mediciones de clima dentro de estos ciclos. A medida que se cargue el clima, acá vas a poder comparar si una sala rindió más con más calor o más humedad.</div>
+        : <>
+          {[...conClima].reverse().map((c,i)=><div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+            <span style={{width:10,alignSelf:"stretch",minHeight:28,borderRadius:4,background:roomColor(c.room),flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14.5,fontWeight:700,color:C.text}}>{getRC(roomConfig,c.room).display_name} · {fmtDM(c.date)}</div>
+              <div style={{fontSize:12,color:C.textSoft,fontWeight:600}}>{c.clima.n} medicion{c.clima.n===1?"":"es"}{c.gpp?` · ${c.gpp} g/pl`:""}</div>
+            </div>
+            <span style={{display:"flex",gap:12,whiteSpace:"nowrap"}}>
+              <span style={{fontSize:15,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{c.clima.temp!=null?`${fmtNum(c.clima.temp,1)}°`:"—"}</span>
+              <span style={{fontSize:15,fontWeight:800,color:C.textMid,fontVariantNumeric:"tabular-nums"}}>{c.clima.hum!=null?`${fmtNum(c.clima.hum,0)}%`:"—"}</span>
+            </span>
+          </div>)}
+          <div style={{fontSize:12,color:C.textSoft,marginTop:10,lineHeight:1.5}}>Promedios de las mediciones de cada sala entre el inicio de floración y la cosecha.</div>
+        </>}
+    </Fold>
 
     <Fold icon="chart" title="Clima comparado">
       <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -5009,9 +5152,9 @@ function EstadisticasPage({rooms,roomConfig,targets}){
       </>}
     </Fold>
 
-    {stats.climByRoom&&<Fold icon="thermo" title="Clima ahora">
+    <Fold icon="thermo" title="Clima ahora">
       {CL_ROOMS.map((r,i)=>{
-        const cl=stats.climByRoom[r];const rc=getRC(roomConfig,r);const tg=getTargets(targets,r,stats.activeByRoom?.[r]||null,rc);
+        const cl=climByRoom[r];const rc=getRC(roomConfig,r);const tg=getTargets(targets,r,activeByRoom[r]||null,rc);
         return <div key={r} style={{padding:"12px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
           <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:2}}>{rc.display_name}</div>
           {cl?<div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
@@ -5020,10 +5163,10 @@ function EstadisticasPage({rooms,roomConfig,targets}){
               return <span key={n} style={{display:"flex",alignItems:"center",gap:5,fontSize:15,fontWeight:800,color:levelColor(lv?.k),fontVariantNumeric:"tabular-nums"}}><Icon n={n} size={16} sw={2}/>{fmtNum(v,d)}{u}</span>;})}
           </div>:<div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Sin lectura de sensor</div>}
         </div>;})}
-    </Fold>}
+    </Fold>
 
-    {stats.soil&&stats.soil.length>0&&<Fold icon="vege" title="Balance del suelo">
-      {stats.soil.map((s,i)=><div key={s.room} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+    {soil.length>0&&<Fold icon="vege" title="Balance del suelo">
+      {soil.map((s,i)=><div key={s.room} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:15,fontWeight:700,color:C.text}}>{s.name}</div>
           <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Último reset: {s.lastReset?fmtDM(String(s.lastReset).slice(0,10)):"nunca"} · {s.closedCount} ciclo{s.closedCount===1?"":"s"} cerrado{s.closedCount===1?"":"s"}</div>
@@ -5035,10 +5178,10 @@ function EstadisticasPage({rooms,roomConfig,targets}){
 
     <Fold icon="tareas" title="Trabajo del equipo">
       <div style={{display:"flex",gap:8,margin:"4px 0 12px"}}>
-        {stat(`${stats.total>0?Math.round(stats.done/stats.total*100):0}%`,"tareas hechas")}{stat(stats.wCount,"riegos")}{stat(stats.nCount,"nutriciones")}
+        {stat(`${raw.tasks.length>0?Math.round(raw.tasks.filter(t=>t.status==="completada").length/raw.tasks.length*100):0}%`,"tareas hechas")}{stat(raw.wl.length,"riegos")}{stat(raw.nl.length,"nutriciones")}
       </div>
-      {Object.entries(stats.byUser).sort((a,b)=>b[1].total-a[1].total).map(([u,d],i)=>{
-        const max=Math.max(...Object.values(stats.byUser).map(x=>x.total),1);
+      {Object.entries(byUser).sort((a,b)=>b[1].total-a[1].total).map(([u,d],i)=>{
+        const max=Math.max(...Object.values(byUser).map(x=>x.total),1);
         return <div key={u} style={{marginTop:i?12:0}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
             <span style={{fontSize:14.5,fontWeight:700,color:C.text}}>{u}</span>
@@ -5046,16 +5189,15 @@ function EstadisticasPage({rooms,roomConfig,targets}){
           </div>
           <Bar value={d.total} max={max} color={C.blue} h={8}/>
         </div>;})}
-      {Object.keys(stats.byUser).length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin tareas asignadas todavía.</div>}
+      {Object.keys(byUser).length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin tareas asignadas todavía.</div>}
       <div style={{display:"flex",gap:8,marginTop:14}}>
-        {Object.entries(stats.wByRoom).map(([room,count])=><div key={room} style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"10px 12px"}}>
-          <div style={{fontSize:20,fontWeight:800,color:C.text}}>{count}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>riegos en {room}</div>
+        {Object.entries(wByRoom).map(([room,count])=><div key={room} style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"10px 12px"}}>
+          <div style={{fontSize:20,fontWeight:800,color:C.text}}>{count}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>riegos en {getRC(roomConfig,room).display_name}</div>
         </div>)}
       </div>
     </Fold>
   </div>;
 }
-
 // ══════════════════════════════════════════════════════════════════════════════
 // AGENDA — un mes de un vistazo: hitos de los ciclos y tareas
 // ══════════════════════════════════════════════════════════════════════════════
@@ -6218,7 +6360,7 @@ export default function App(){
       case "tareas":       return <TareasPageV2 user={user} rooms={rooms}/>;
       case "geneticas":    return <GeneticasPage genetics={genetics} setGenetics={setGenetics} user={user}/>;
       case "fenos":        return <FenosPage user={user} genetics={genetics}/>;
-      case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets}/>;
+      case "estadisticas": return <EstadisticasPage rooms={rooms} roomConfig={roomConfig} targets={targets} genetics={genetics}/>;
       case "historial": return <HistorialPage roomConfig={roomConfig} user={user} genetics={genetics} rooms={rooms}/>;
       case "plagas":       return <PlagasPage user={user} rooms={rooms}/>;
       case "calendario":   return <CalendarioPage user={user} roomConfig={roomConfig}/>;
