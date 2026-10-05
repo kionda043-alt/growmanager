@@ -273,9 +273,16 @@ const batchStart = (cloner,slots=[]) => {
   const ds=slots.filter(s=>s.cut_date).map(s=>s.cut_date).sort();
   return ds.length?ds[ds.length-1]:null;
 };
+// Esquejeras y hueveras son la misma cosa con otra medida y otros días de enraizado.
+// Las columnas van con letras (A, B, C...) y las filas con números.
+const CLONER_KINDS = {
+  esquejera:{l:"Esquejera",pl:"Esquejeras",days:11,rows:6,cols:8},
+  huevera:  {l:"Huevera",  pl:"Hueveras",  days:19,rows:10,cols:5},
+};
+const clonerKind = cl => cl?.kind==="huevera" ? "huevera" : "esquejera";
 const batchReadyDays = (cloner) => {
   const n=Number(cloner?.ready_days);
-  return Number.isFinite(n)&&n>0?n:CLONER_READY_DAYS;
+  return Number.isFinite(n)&&n>0?n:CLONER_KINDS[clonerKind(cloner)].days;
 };
 // Devuelve el estado del contador: día actual, cuántos faltan y con qué color mostrarlo.
 const batchProgress = (cloner,slots=[]) => {
@@ -1099,7 +1106,7 @@ function MorePageAdmin({user,setPage,textScale,setTextScale,theme,setTheme,onLog
         <div style={{display:"flex",alignItems:"center",gap:13}}>{iconBox("text",C.textMid)}<span><span style={{display:"block",fontSize:15.5,fontWeight:700,color:C.text}}>Tamaño de letra</span><span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>Se guarda en este dispositivo</span></span></div>
         {seg([[1,"Normal"],[1.1,"Grande"],[1.2,"Más grande"]],textScale,setTextScale)}
       </div>
-      {row("configuracion","sliders","Configuración","Salas, esquejeras y usuarios",C.textMid,null,1)}
+      {row("configuracion","sliders","Configuración","Salas, esquejeras, hueveras y usuarios",C.textMid,null,1)}
     </Card>
   </div>;
 }
@@ -1468,6 +1475,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [phenoAll,setPhenoAll]=useState({});
   const [showDescarte,setShowDescarte]=useState(false);
   const [descBusy,setDescBusy]=useState(false);
+  const [cycleLosses,setCycleLosses]=useState([]);   // plantas que se murieron en las mesas de este ciclo
 
   const fdays=rc?.flower_days||65;
   const flushDays=rc?.flush_days||20;
@@ -1514,17 +1522,16 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         allCells.forEach(cell=>{if(!cell.genetic_name)return;const l=lab[sid(cell.pot_id)];if(!l)return;mix[l]=mix[l]||{};mix[l][cell.genetic_name]=(mix[l][cell.genetic_name]||0)+1;});
         setPotMix(mix);
         setCycleCells(allCells);
+        db.query("plant_losses",`place=eq.sala&cycle_id=eq.${sid(c.id)}&order=loss_date.desc,created_at.desc`).then(setCycleLosses).catch(()=>setCycleLosses([]));
         try{
           const bs=await db.query("vg_batches",`cycle_id=eq.${sid(c.id)}`);
           const ids=bs.map(b=>sid(b.id));
           const ls=ids.length?await db.query("vg_lines",`batch_id=in.(${ids.join(",")})`):[];
           setPoolLines(ls);
-          if(ls.some(l=>l.pheno_id)||allCells.some(x=>x.pheno_id)){
-            const ps=await db.query("phenos","select=id,code,number").catch(()=>[]);
-            const pm={};ps.forEach(p=>{pm[sid(p.id)]=p;});setPhenoAll(pm);
-          }
+          const ps=await db.query("phenos","select=id,code,number").catch(()=>[]);
+          const pm={};ps.forEach(p=>{pm[sid(p.id)]=p;});setPhenoAll(pm);
         }catch{setPoolLines([]);/* sin la columna cycle_id todavía: la sala anda igual */}
-      }else{setCg([]);setMsRows([]);setPotCounts({});setPotMix({});setCycleCells([]);setPoolLines([]);}
+      }else{setCg([]);setMsRows([]);setPotCounts({});setPotMix({});setCycleCells([]);setPoolLines([]);setCycleLosses([]);}
     }finally{setLoading(false);}
   },[roomId]);
 
@@ -1576,7 +1583,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const doneT=tasks.filter(t=>t.status==="completada");
   const byRoom=groupTasks(pendingT);
   const totalPlants=Object.values(potCounts).reduce((a,b)=>a+(b||0),0);
-  const pool=buildPool(poolLines,cycleCells);
+  const pool=buildPool(poolLines,cycleCells,phenoAll,cycleLosses);
   const poolLeft=pool.reduce((a,p)=>a+p.left,0);
 
   if(!cycle)return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
@@ -1631,7 +1638,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         {isAdmin&&<SheetRow i={1} icon="stop" label="Cerrar ciclo" danger onClick={()=>{setShowMenu(false);setShowClose(true);}}/>}
       </Sheet>}
       {selPot&&<Sheet onClose={()=>setSelPot(null)}>
-        <PotEditor inSheet roomId={roomId} potLabel={selPot} cycle={cycle} genetics={genetics} cycleGenetics={cg} user={user} pool={pool} cycleCells={cycleCells} phenoAll={phenoAll} onGenAdded={row=>setCg(prev=>[...prev,row])} onClose={()=>setSelPot(null)} onSaved={()=>{setSelPot(null);load();setToast({msg:"Mesa guardada ✓",type:"success"});}}/>
+        <PotEditor inSheet roomId={roomId} potLabel={selPot} cycle={cycle} genetics={sortGen(genetics)} cycleGenetics={cg} user={user} pool={pool} cycleCells={cycleCells} cycleLosses={cycleLosses} phenoAll={phenoAll} onGenAdded={row=>setCg(prev=>[...prev,row])} onClose={()=>setSelPot(null)} onSaved={n=>{setSelPot(null);load();setToast({msg:n?`Mesa guardada · ${n} baja${n===1?"":"s"} anotada${n===1?"":"s"} ✓`:"Mesa guardada ✓",type:"success"});}}/>
       </Sheet>}
 
       <div style={{background:heroBg,borderRadius:22,padding:"16px 18px 12px",border:`1px solid ${C.border}`}}>
@@ -1707,6 +1714,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
           </button>;})}
         <div style={{fontSize:12,color:C.textSoft,marginTop:8}}>Tocá una fecha para marcarla como hecha.</div>
       </Fold>
+      <BajasFold rows={cycleLosses} phenoMap={phenoAll} title="Bajas del ciclo" empty="No se murió ninguna planta en las mesas de este ciclo."/>
     </div>;
   }
 
@@ -1786,7 +1794,7 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
 }
 
 // POT EDITOR
-function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved,pool=[],cycleCells=[],phenoAll={},inSheet=false,onGenAdded}){
+function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,onSaved,pool=[],cycleCells=[],cycleLosses=[],phenoAll={},inSheet=false,onGenAdded}){
   const pot=ROOM_POTS[roomId]?.find(p=>p.label===potLabel);
   const isAdmin=user?.role==="admin";
   const W0=pot?.circular?3:4, H0=pot?.circular?4:6;
@@ -1816,6 +1824,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [huntPhenos,setHuntPhenos]=useState([]);// los N fenos de esa búsqueda, ordenados
   const [showNueva,setShowNueva]=useState(false);
   const [brushPheno,setBrushPheno]=useState(null); // en modo feno el pincel es un feno
+  const [killMode,setKillMode]=useState(false);    // pincel "Murió": saca la planta y la anota como baja
+  const [muertas,setMuertas]=useState([]);         // bajas pendientes: {i,g,pid,lab,org}
+  const [err,setErr]=useState(null);
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
 
   // Carga la búsqueda de esta mesa y todos sus fenos.
@@ -1865,6 +1876,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const elsewhere={};
   cycleCells.forEach(c=>{if(!c.genetic_name||!potId||sid(c.pot_id)===sid(potId))return;const k=poolKey(c.genetic_name,c.origin,c.pheno_id,c.pheno_label);elsewhere[k]=(elsewhere[k]||0)+1;});
   const here={};cells.forEach((g,i)=>{if(!g)return;const k=keyAt(i);here[k]=(here[k]||0)+1;});
+  // Las que se murieron en una mesa (guardadas o recién marcadas) cuentan como ya ubicadas.
+  cycleLosses.forEach(x=>{if(!x.genetic_name)return;const k=poolKey(x.genetic_name,x.origin,x.pheno_id,x.pheno_label);here[k]=(here[k]||0)+(x.qty||1);});
+  muertas.forEach(m=>{const k=poolKey(m.g,m.org,m.pid,m.lab);here[k]=(here[k]||0)+1;});
   const poolItems=(potId?pool:[]).map(p=>{const puestas=(elsewhere[p.key]||0)+(here[p.key]||0);
     return {...p,left:Math.max(0,p.arrived-puestas),extra:Math.max(0,puestas-p.arrived)};});
   const poolLeft=poolItems.reduce((a,p)=>a+p.left,0);
@@ -1879,6 +1893,15 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   };
   const paint=i=>{
     if(!editing)return;
+    if(killMode){
+      // Pincel "Murió": la planta sale de la celda y queda anotada al guardar. Tocar de nuevo la devuelve.
+      const ya=muertas.find(m=>m.i===i);
+      if(ya){setCell(i,ya.g,ya.pid,ya.lab,ya.org);setMuertas(prev=>prev.filter(m=>m.i!==i));return;}
+      if(!cells[i])return;
+      setMuertas(prev=>[...prev,{i,g:cells[i],pid:cellPhenos[i]||null,lab:cellLabels[i]||null,org:cellOrigins[i]||"esqueje"}]);
+      setCell(i,null,null,null,null);
+      return;
+    }
     if(phenoMode&&hunt){
       // El pincel es un feno concreto. Volver a tocar la misma celda la vacía.
       const ya=cellPhenos[i]===brushPheno;
@@ -1943,13 +1966,20 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     setToastLocal(autofill?`${ps.length} fenos creados y ubicados. Tocá Guardar para confirmar.`:`${ps.length} fenos creados.`);
   };
 
-  const startEdit=()=>{setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],cellLabels:[...cellLabels],cellOrigins:[...cellOrigins],gridW,gridH,phenoMode});setEditing(true);};
-  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setCellLabels(snapshot.cellLabels);setCellOrigins(snapshot.cellOrigins);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setEditing(false);setShowSize(false);};
+  const startEdit=()=>{setMuertas([]);setKillMode(false);setSnapshot({cells:[...cells],cellPhenos:[...cellPhenos],cellLabels:[...cellLabels],cellOrigins:[...cellOrigins],gridW,gridH,phenoMode});setEditing(true);};
+  const cancelEdit=()=>{if(snapshot){setCells(snapshot.cells);setCellPhenos(snapshot.cellPhenos);setCellLabels(snapshot.cellLabels);setCellOrigins(snapshot.cellOrigins);setGridW(snapshot.gridW);setGridH(snapshot.gridH);setPhenoMode(snapshot.phenoMode);}setMuertas([]);setKillMode(false);setEditing(false);setShowSize(false);};
 
   const save=async()=>{
     if(!potId){setToastLocal("Cargando la mesa, esperá un segundo y reintentá");return;}
-    setSaving(true);
+    setSaving(true);setErr(null);
     try{
+      // Primero las bajas: si no se pueden anotar, no se toca la mesa.
+      if(muertas.length){
+        const acc={};
+        muertas.forEach(m=>{const k=poolKey(m.g,m.org,m.pid,m.lab);acc[k]=acc[k]||{place:"sala",room_id:roomId,cycle_id:cycle.id,ref_id:potId,ref_label:`Mesa ${potLabel}`,genetic_name:m.g,origin:m.org||"esqueje",pheno_id:m.pid,pheno_label:m.pid?null:m.lab,qty:0,method:"murio",author:user?.name||"sistema"};acc[k].qty++;});
+        await registrarBajas(Object.values(acc));
+        await logA(user?.name||"sistema",`Registró ${muertas.length} baja${muertas.length===1?"":"s"} en ${roomId} · Mesa ${potLabel}`,"cycle");
+      }
       await db.update("pots",potId,{grid_w:gridW,grid_h:gridH,pheno_mode:phenoMode});
       // Los fenos ya existen: acá solo se guarda en qué celda está cada uno.
       // El feno y el origen (esqueje o semilla) viajan con la planta.
@@ -1963,8 +1993,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       }).filter(c=>c.genetic_name);
       if(newCells.length>0)await db.insert("pot_cells",newCells);
       if(phenoMode&&hunt)await logA(user?.name||"sistema",`Fenos actualizados en ${roomId} · Mesa ${potLabel}`,"phenos");
-      onSaved();
-    }catch(e){setToastLocal(errMsg(e));setSaving(false);}
+      onSaved(muertas.length);
+    }catch(e){const t=errMsg(e);setErr(t.includes("plant_losses")?"No pude anotar las bajas. ¿Corriste el SQL de esta actualización?":t);setSaving(false);}
   };
 
   const togglePheno=async()=>{
@@ -2100,6 +2130,14 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{total}/{gridW*gridH} lugares</span>
     </div>}
 
+    {editing&&isAdmin&&(total>0||muertas.length>0)&&<button onClick={()=>setKillMode(k=>!k)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:killMode?C.redLight:C.surfaceAlt,border:`1.5px solid ${killMode?C.red:C.border}`,color:killMode?C.red:C.textMid}}>
+      <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:killMode?C.red:C.surface,color:killMode?"#fff":C.red}}><Icon n="stop" size={18}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:800}}>Pincel “Murió”{muertas.length?` · ${muertas.length} marcada${muertas.length===1?"":"s"}`:""}</span>
+        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{killMode?"Tocá las plantas que se murieron. Quedan anotadas al guardar.":"Para anotar plantas muertas con la fecha de hoy"}</span>
+      </span>
+    </button>}
+    <ErrBox err={err}/>
     <div style={{overflowX:"auto",display:"flex",justifyContent:"center",padding:"4px 0"}}>
       {/* En modo feno cada celda muestra el número del feno, como en el cuaderno.
           Fuera de ese modo, una "S" marca las que vienen de semilla. */}
@@ -2114,11 +2152,11 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
           const conFeno=!phenoMode&&(cellPhenos[i]||cellLabels[i]);
           const txt=phenoMode?(ph?ph.number:null):(ph?ph.number:(cellLabels[i]?String(cellLabels[i]).slice(0,4):(esSem?"S":null)));
           const box=<div key={i} onClick={()=>paint(i)} title={ph?.code||cellLabels[i]||(cell?`${cell} · ${cellOrigins[i]||"esqueje"}`:(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:""))}
-            style={{width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:C.surfaceAlt,
+            style={{width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:(muertas.some(m=>m.i===i)?C.redLight:C.surfaceAlt),
               border:`2px solid ${sel||conFeno?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
               display:"flex",alignItems:"center",justifyContent:"center",
               fontSize:txt&&String(txt).length>2?9.5:12.5,fontWeight:800,color:cell?inkFill(genMap[cell]||C.green):C.textSoft,letterSpacing:"-0.03em",overflow:"hidden"}}>
-            {txt!=null?txt:(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:(cell?<span style={{width:9,height:9,borderRadius:"50%",background:"rgba(255,255,255,0.45)"}}/>:null))}
+            {muertas.some(m=>m.i===i)?<span style={{color:C.red,display:"flex"}}><Icon n="x" size={16} sw={2.6}/></span>:txt!=null?txt:(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:(cell?<span style={{width:9,height:9,borderRadius:"50%",background:"rgba(255,255,255,0.45)"}}/>:null))}
           </div>;
           return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
         })}
@@ -2705,6 +2743,45 @@ const daysSince = d => d ? Math.round((new Date(todayISO+"T12:00:00")-new Date(S
 const fenoTxt = (row,phenoMap) => row?.pheno_id ? (phenoMap?.[sid(row.pheno_id)]?.code || "Feno") : (row?.pheno_label || null);
 const FenoChip = ({txt,big=false}) => txt ? <span style={{display:"inline-block",marginLeft:7,fontSize:big?13:11.5,fontWeight:800,color:C.purple,background:C.purpleLight,border:`1px solid ${C.purple}33`,borderRadius:20,padding:big?"2px 10px":"1px 8px",verticalAlign:"middle",whiteSpace:"nowrap"}}>{txt}</span> : null;
 
+// Ordena por genética y, dentro de cada una, por feno en orden numérico (DS-1, DS-2 ... DS-10).
+// Las líneas sin feno van primero.
+const byGenFeno = (phenoMap={}) => (a,b) => byName(a.genetic_name,b.genetic_name) || byName(fenoTxt(a,phenoMap)||"",fenoTxt(b,phenoMap)||"");
+
+// ── BAJAS ────────────────────────────────────────────────────────────────────
+// Cada planta que se muere (madre, esquejera, huevera o mesa de sala) queda en
+// `plant_losses` con la fecha del día. VG sigue con su propio registro (vg_losses).
+const BAJA_PLACE = {madre:"Madres",esquejera:"Esquejera",huevera:"Huevera",sala:"Sala"};
+const registrarBajas = async (rows) => {
+  const list=(rows||[]).filter(r=>r&&r.genetic_name&&(r.qty||1)>0).map(r=>({
+    place:r.place, ref_id:r.ref_id!=null?sid(r.ref_id):null, ref_label:r.ref_label||null,
+    room_id:r.room_id||null, cycle_id:r.cycle_id!=null?sid(r.cycle_id):null,
+    genetic_name:r.genetic_name, origin:r.origin||null,
+    pheno_id:r.pheno_id!=null?sid(r.pheno_id):null, pheno_label:r.pheno_label||null,
+    qty:r.qty||1, method:r.method||"murio", notes:r.notes||null,
+    loss_date:r.loss_date||todayISO, author:r.author||null,
+  }));
+  if(!list.length)return [];
+  return await db.insert("plant_losses",list);
+};
+// Junta los esquejes muertos de una bandeja en una fila por genética + feno.
+const bajasDeCeldas = (items,base) => {
+  const acc={};
+  items.forEach(({g,pid})=>{if(!g)return;const k=`${g}|${pid||""}`;acc[k]=acc[k]||{...base,genetic_name:g,pheno_id:pid||null,qty:0};acc[k].qty++;});
+  return Object.values(acc);
+};
+const BAJA_METHOD = {murio:"murió",no_prendio:"no prendió",fallida:"tanda fallida"};
+function BajasFold({rows=[],phenoMap={},showPlace=false,title="Bajas",empty="Sin bajas registradas."}){
+  const total=rows.reduce((a,x)=>a+(x.qty||1),0);
+  return <Fold icon="history" title={title} count={total}>
+    {rows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"4px 0"}}>{empty}</div>}
+    {rows.map((x,idx)=>{const f=fenoTxt(x,phenoMap);return <div key={x.id||idx} style={{display:"flex",gap:10,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
+      <span style={{color:C.textSoft,fontWeight:700,minWidth:42}}>{fmtDM(x.loss_date)}</span>
+      <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b>{f?` ${f}`:""} −{x.qty||1}<span style={{color:C.textSoft}}> · {showPlace?`${x.ref_label||BAJA_PLACE[x.place]||x.place} · `:(x.ref_label&&x.place!=="madre"?`${x.ref_label} · `:"")}{x.author||"—"}</span></span>
+      <span style={{fontSize:12,color:C.textSoft,fontWeight:700,whiteSpace:"nowrap"}}>{BAJA_METHOD[x.method]||x.method||"murió"}</span>
+    </div>;})}
+  </Fold>;
+}
+
 // Confirmación genérica para borrados. Todo borrado pasa por acá.
 function ConfirmModal({title,text,confirmLabel="Eliminar",busyLabel="Borrando...",onConfirm,onClose,busy=false,z}){
   return <Modal title={title} onClose={()=>{if(!busy)onClose();}} z={z}>
@@ -2902,10 +2979,10 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
     </Card>
 
     <Card style={{padding:"14px 16px 4px"}}>
-      {blockHead("scissors","Esquejeras",`${cloners.filter(cl=>clSlots.some(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name)).length} con esquejes`,totalEsq,"veg_esquejeras")}
+      {blockHead("scissors","Esquejeras y hueveras",`${cloners.filter(cl=>clSlots.some(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name)).length} con esquejes`,totalEsq,"veg_esquejeras")}
       <div style={{marginTop:8}}>
-        {cloners.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"10px 0"}}>Sin esquejeras configuradas.</div>}
-        {cloners.map(cl=>{
+        {cloners.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"10px 0"}}>Sin esquejeras ni hueveras configuradas.</div>}
+        {[...cloners].sort((a,b)=>(clonerKind(a)===clonerKind(b)?0:clonerKind(a)==="esquejera"?-1:1)||byName(a.label,b.label)).map(cl=>{
           const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));const used=slots.filter(s=>s.genetic_name);
           const mixO={};used.forEach(s=>{mixO[s.genetic_name]=(mixO[s.genetic_name]||0)+1;});
           const prog=used.length>0?batchProgress(cl,slots):null;
@@ -2941,18 +3018,21 @@ function MadresPage({genetics,user}){
   const isAdmin=user?.role==="admin";
   const [stock,setStock]=useState([]);
   const [phenos,setPhenos]=useState([]);
+  const [bajas,setBajas]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
   const [editItem,setEditItem]=useState(null);
   const [delItem,setDelItem]=useState(null);
   const [busy,setBusy]=useState(false);
+  const [open,setOpen]=useState(()=>new Set());   // genéticas desplegadas
   const load=useCallback(()=>{
     setLoading(true);
     Promise.all([
       db.query("veg_stock","type=eq.madre"),
       db.query("phenos","select=id,code,number,genetic_name,status&order=number.asc").catch(()=>[]),
-    ]).then(([s,p])=>{setStock(s);setPhenos(p);}).catch(()=>{}).finally(()=>setLoading(false));
+      db.query("plant_losses","place=eq.madre&order=loss_date.desc,created_at.desc&limit=200").catch(()=>[]),
+    ]).then(([s,p,b])=>{setStock(s);setPhenos(p);setBajas(b);}).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
   useEffect(()=>{load();},[load]);
   if(loading)return <Spin/>;
@@ -2960,12 +3040,15 @@ function MadresPage({genetics,user}){
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
   const phenoMap={};phenos.forEach(p=>{phenoMap[sid(p.id)]=p;});
   const activas=stock.filter(m=>madreEstado(m)!=="inactiva");
-  const inactivas=stock.filter(m=>madreEstado(m)==="inactiva");
+  const inactivas=stock.filter(m=>madreEstado(m)==="inactiva").sort(byGenFeno(phenoMap));
   const total=activas.reduce((a,m)=>a+(m.count||0),0);
   const paraRenovar=activas.filter(m=>madreEstado(m)==="renovar").length;
   const proximas=activas.filter(m=>madreEstado(m)==="proxima").length;
   const groups={};activas.forEach(m=>{(groups[m.genetic_name]=groups[m.genetic_name]||[]).push(m);});
   const order=Object.entries(groups).sort((a,b)=>byName(a[0],b[0]));
+  const toggle=g=>setOpen(prev=>{const n=new Set(prev);n.has(g)?n.delete(g):n.add(g);return n;});
+  const todas=order.length>0&&order.every(([g])=>open.has(g));
+
   const borrar=async()=>{
     const m=delItem;if(!m)return;setBusy(true);
     try{
@@ -2976,100 +3059,156 @@ function MadresPage({genetics,user}){
       setToast({msg:"Madre eliminada",type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
   };
+  // −1 murió: baja la cantidad, anota la baja con la fecha de hoy y, si llega a 0, la pasa a inactiva.
+  const murio=async(m)=>{
+    const cur=m.count||0;if(cur<=0)return;
+    const n=cur-1;const prevStatus=m.status;const nuevoStatus=n===0?"inactiva":m.status;
+    const f=fenoTxt(m,phenoMap);
+    setStock(prev=>prev.map(x=>x.id===m.id?{...x,count:n,status:nuevoStatus}:x));
+    try{
+      const ins=await registrarBajas([{place:"madre",ref_id:m.id,ref_label:m.pot_label?`Maceta ${m.pot_label}`:null,genetic_name:m.genetic_name,pheno_id:m.pheno_id,pheno_label:m.pheno_id?null:m.pheno_label,qty:1,method:"murio",author:user.name}]);
+      await db.update("veg_stock",m.id,{count:n,status:nuevoStatus,updated_at:new Date().toISOString()});
+      const reg=ins?.[0];if(reg)setBajas(prev=>[reg,...prev]);
+      await logA(user.name,`Murió una madre de ${m.genetic_name}${f?` ${f}`:""}${n===0?" (queda inactiva)":""}`,"veg_stock");
+      setToast({msg:n===0?`${m.genetic_name}${f?` ${f}`:""}: −1, quedó inactiva`:`${m.genetic_name}${f?` ${f}`:""}: −1 registrado`,type:"success",undo:async()=>{
+        setStock(prev=>prev.map(x=>x.id===m.id?{...x,count:cur,status:prevStatus}:x));
+        if(reg)setBajas(prev=>prev.filter(x=>sid(x.id)!==sid(reg.id)));
+        try{await db.update("veg_stock",m.id,{count:cur,status:prevStatus});if(reg)await db.delete("plant_losses",reg.id);}catch{load();}
+      }});
+    }catch(e){
+      setStock(prev=>prev.map(x=>x.id===m.id?{...x,count:cur,status:prevStatus}:x));
+      const t=errMsg(e);
+      setToast({msg:t.includes("plant_losses")?"No pude anotar la baja. ¿Corriste el SQL?":t,type:"error"});
+    }
+  };
   const stat=(n,l,color)=><div style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 13px"}}>
     <div style={{fontSize:24,fontWeight:800,color:color||C.text,fontVariantNumeric:"tabular-nums"}}>{n}</div><div style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{l}</div>
   </div>;
   const madreRow=(m,i)=>{
     const d=daysSince(m.entry_date);const st=madreEstado(m);const col=genMap[m.genetic_name]||C.green;const f=fenoTxt(m,phenoMap);
     const dCol=st==="renovar"?C.red:st==="proxima"?C.amber:C.text;
-    return <button key={m.id} onClick={()=>{if(isAdmin)setEditItem(m);}} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 0",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
-      <span style={{width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:`${col}1F`,color:col,fontSize:f&&f.length>5?10.5:12.5,fontWeight:800,textAlign:"center",lineHeight:1.05,padding:2,wordBreak:"break-all"}}>{f||<Icon n="tree" size={20}/>}</span>
-      <span style={{flex:1,minWidth:0}}>
-        <span style={{display:"block",fontSize:15,fontWeight:700}}>{m.pot_label?`Maceta ${m.pot_label}`:"Sin maceta"}{f?` · ${f}`:""}{(m.count||0)>1?` · ${m.count} pl.`:""}</span>
-        <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{m.pot_size?`${m.pot_size}, `:""}desde {fmtDM(m.entry_date)}</span>
-      </span>
-      {st==="renovar"&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red}}>Renovar</span>}
-      {st==="proxima"&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.amberLight,color:C.amber}}>Próxima</span>}
-      <span style={{textAlign:"right",minWidth:40}}><span style={{display:"block",fontSize:17,fontWeight:800,color:dCol,fontVariantNumeric:"tabular-nums"}}>{d}</span><span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}>días</span></span>
-    </button>;
+    const vivas=m.count||0;
+    return <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+      <button onClick={()=>{if(isAdmin)setEditItem(m);}} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:11,background:"transparent",border:"none",padding:0,cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+        <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:`${col}1F`,color:inkOn(col),fontSize:f&&f.length>5?10.5:12.5,fontWeight:800,textAlign:"center",lineHeight:1.05,padding:2,wordBreak:"break-all"}}>{f||<Icon n="tree" size={19}/>}</span>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14.5,fontWeight:700}}>{m.pot_label?`Maceta ${m.pot_label}`:"Sin maceta"}{vivas>1?` · ${vivas} pl.`:""}</span>
+          <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{m.pot_size?`${m.pot_size}, `:""}desde {fmtDM(m.entry_date)} · <span style={{color:dCol,fontWeight:800}}>{d} días</span>{st==="renovar"?" · renovar":st==="proxima"?" · próxima":""}</span>
+        </span>
+      </button>
+      {isAdmin&&st!=="inactiva"&&<button onClick={()=>murio(m)} disabled={vivas<=0}
+        style={{minHeight:42,padding:"0 11px",borderRadius:12,border:"none",color:C.red,fontWeight:800,fontSize:13,background:C.redLight,whiteSpace:"nowrap",cursor:vivas>0?"pointer":"default",opacity:vivas>0?1:0.35,flexShrink:0,fontFamily:"inherit"}}>−1 murió</button>}
+    </div>;
   };
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {showAdd&&<VegModal type="madre" genetics={genetics} phenos={phenos} onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
-    {editItem&&!delItem&&<VegModal type="madre" item={editItem} genetics={genetics} phenos={phenos} onDelete={isAdmin?()=>setDelItem(editItem):null} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
+    {showAdd&&<VegModal type="madre" genetics={sortGen(genetics)} phenos={phenos} onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
+    {editItem&&!delItem&&<VegModal type="madre" item={editItem} genetics={sortGen(genetics)} phenos={phenos} onDelete={isAdmin?()=>setDelItem(editItem):null} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load();setToast({msg:"Madre guardada ✓",type:"success"});}}/>}
     {delItem&&<ConfirmModal title="¿Eliminar esta madre?" busy={busy} onClose={()=>setDelItem(null)} onConfirm={borrar}
-      text={`Se borra la madre ${delItem.genetic_name}${fenoTxt(delItem,phenoMap)?` ${fenoTxt(delItem,phenoMap)}`:""}${delItem.pot_label?` (maceta ${delItem.pot_label})`:""} con sus notas. No se puede deshacer.`}/>}
+      text={`Se borra la madre ${delItem.genetic_name}${fenoTxt(delItem,phenoMap)?` ${fenoTxt(delItem,phenoMap)}`:""}${delItem.pot_label?` (maceta ${delItem.pot_label})`:""} con sus notas. No se puede deshacer. Si se murió, usá “−1 murió” así queda anotada.`}/>}
 
     <PageTitle right={isAdmin&&<button onClick={()=>setShowAdd(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Madres</PageTitle>
     <div style={{display:"flex",gap:8}}>
       {stat(total,"madres")}{stat(order.length,`genética${order.length===1?"":"s"}`)}{stat(paraRenovar,"para renovar",paraRenovar?C.red:null)}
     </div>
-    <div style={{fontSize:13,color:C.textSoft,fontWeight:600,padding:"0 2px"}}>{proximas>0?`${proximas} más llega${proximas===1?"":"n"} a los ${MADRE_RENOVAR} días en las próximas dos semanas. `:""}Se marcan para renovar a los {MADRE_RENOVAR} días.</div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"0 2px"}}>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{proximas>0?`${proximas} más llega${proximas===1?"":"n"} a los ${MADRE_RENOVAR} días pronto. `:""}Se renuevan a los {MADRE_RENOVAR} días.</div>
+      {order.length>0&&<button onClick={()=>setOpen(todas?new Set():new Set(order.map(([g])=>g)))} style={{background:"transparent",border:"none",color:C.green,fontWeight:800,fontSize:13.5,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",padding:"6px 0"}}>{todas?"Plegar todo":"Desplegar todo"}</button>}
+    </div>
 
-    {order.map(([g,list])=>{
-      const n=list.reduce((a,m)=>a+(m.count||0),0);const r=list.filter(m=>madreEstado(m)==="renovar").length;
-      list.sort((a,b)=>String(a.entry_date||"").localeCompare(String(b.entry_date||"")));
-      return <Card key={g} style={{padding:"4px 14px 2px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0 8px"}}>
-          <span style={{width:12,height:12,borderRadius:"50%",background:genMap[g]||C.green}}/>
-          <span style={{flex:1,fontSize:16,fontWeight:800,color:C.text}}>{g}</span>
-          {r>0&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red}}>{r} renovar</span>}
-          <span style={{fontSize:22,fontWeight:800,color:C.text}}>{n}</span>
-        </div>
-        {list.map(madreRow)}
-      </Card>;
-    })}
+    {order.length>0&&<Card style={{padding:0,overflow:"hidden"}}>
+      {order.map(([g,list],gi)=>{
+        const n=list.reduce((a,m)=>a+(m.count||0),0);
+        const r=list.filter(m=>madreEstado(m)==="renovar").length;
+        const px=list.filter(m=>madreEstado(m)==="proxima").length;
+        const fenos=list.map(m=>fenoTxt(m,phenoMap)).filter(Boolean);
+        const isOpen=open.has(g);const col=genMap[g]||C.green;
+        const sorted=[...list].sort(byGenFeno(phenoMap));
+        return <div key={g} style={{borderTop:gi?`1px solid ${C.border}`:"none"}}>
+          <button onClick={()=>toggle(g)} aria-expanded={isOpen} style={{display:"flex",alignItems:"center",gap:11,width:"100%",minHeight:56,padding:"10px 14px",background:isOpen?C.surfaceAlt:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+            <span style={{width:12,height:12,borderRadius:"50%",background:col,flexShrink:0}}/>
+            <span style={{flex:1,minWidth:0}}>
+              <span style={{display:"block",fontSize:15.5,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g}</span>
+              {fenos.length>0&&!isOpen&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[...new Set(fenos)].sort(byName).join(" · ")}</span>}
+            </span>
+            {r>0&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.redLight,color:C.red,whiteSpace:"nowrap"}}>{r} renovar</span>}
+            {r===0&&px>0&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.amberLight,color:C.amber,whiteSpace:"nowrap"}}>{px} próxima{px===1?"":"s"}</span>}
+            <span style={{fontSize:21,fontWeight:800,minWidth:26,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{n}</span>
+            <span style={{color:C.textSoft,transform:isOpen?"rotate(90deg)":"none",transition:"transform .2s"}}><Icon n="chev" size={18}/></span>
+          </button>
+          {isOpen&&<div style={{padding:"0 14px 4px",borderTop:`1px solid ${C.border}`}}>{sorted.map(madreRow)}</div>}
+        </div>;
+      })}
+    </Card>}
     {order.length===0&&<Card style={{textAlign:"center",padding:"26px 18px"}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green}}><Icon n="tree" size={30}/></div>
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Sin madres cargadas</div>
       <div style={{fontSize:13,color:C.textSoft}}>{isAdmin?"Tocá “Agregar” para cargar la primera.":"Un administrador tiene que cargarlas."}</div>
     </Card>}
-    {inactivas.length>0&&<Fold icon="tree" title="Inactivas" count={inactivas.length}>{inactivas.map(madreRow)}</Fold>}
+    <BajasFold rows={bajas} phenoMap={phenoMap} title="Bajas de madres" empty="Todavía no se murió ninguna madre."/>
+    {inactivas.length>0&&<Fold icon="tree" title="Inactivas" count={inactivas.length}>{inactivas.map((m,i)=>{
+      const f=fenoTxt(m,phenoMap);
+      return <button key={m.id} onClick={()=>{if(isAdmin)setEditItem(m);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
+        <span style={{width:10,height:10,borderRadius:"50%",background:genMap[m.genetic_name]||C.green,flexShrink:0}}/>
+        <span style={{flex:1,minWidth:0,fontSize:14,fontWeight:700}}>{m.genetic_name}{f?` ${f}`:""}<span style={{color:C.textSoft,fontWeight:600}}>{m.pot_label?` · Maceta ${m.pot_label}`:""}</span></span>
+        <span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>desde {fmtDM(m.entry_date)}</span>
+      </button>;})}</Fold>}
   </div>;
 }
 
 // ── ESQUEJERAS ───────────────────────────────────────────────────────────────
-// Alta de esquejera: nombre y medida en filas × columnas (las columnas son letras A, B, C...).
-function NuevaEsquejeraSheet({cloners,user,onClose,onSaved}){
-  const [name,setName]=useState(`Esquejera ${cloners.length+1}`);
-  const [rows,setRows]=useState(6);
-  const [cols,setCols]=useState(8);
+// Alta de esquejera o huevera: tipo, nombre y medida en filas × columnas (las columnas son letras A, B, C...).
+function NuevaEsquejeraSheet({cloners,user,onClose,onSaved,kind0="esquejera"}){
+  const cuenta=k=>cloners.filter(x=>clonerKind(x)===k).length;
+  const [kind,setKind]=useState(kind0);
+  const [name,setName]=useState(`${CLONER_KINDS[kind0].l} ${cuenta(kind0)+1}`);
+  const [rows,setRows]=useState(CLONER_KINDS[kind0].rows);
+  const [cols,setCols]=useState(CLONER_KINDS[kind0].cols);
+  const [days,setDays]=useState(CLONER_KINDS[kind0].days);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState(null);
   const r=Math.max(1,Math.min(20,+rows||1)), c=Math.max(1,Math.min(10,+cols||1));
+  const cambiarTipo=k=>{
+    if(k===kind)return;
+    const prevAuto=`${CLONER_KINDS[kind].l} ${cuenta(kind)+1}`;
+    setKind(k);setRows(CLONER_KINDS[k].rows);setCols(CLONER_KINDS[k].cols);setDays(CLONER_KINDS[k].days);
+    if(!name.trim()||name===prevAuto)setName(`${CLONER_KINDS[k].l} ${cuenta(k)+1}`);
+  };
   const save=async()=>{
     const nm=name.trim();
     if(!nm){setErr("Poné un nombre.");return;}
-    if(cloners.some(x=>String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay una esquejera con ese nombre.");return;}
+    if(cloners.some(x=>String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay una bandeja con ese nombre.");return;}
     setSaving(true);setErr(null);
     try{
-      await db.insert("cloners",{label:nm,capacity:r*c,cols:c});
-      await logA(user.name,`Agregó esquejera: ${nm} (${r}×${c})`,"esquejera");
+      await db.insert("cloners",{label:nm,capacity:r*c,cols:c,kind,ready_days:Math.max(1,+days||CLONER_KINDS[kind].days)});
+      await logA(user.name,`Agregó ${CLONER_KINDS[kind].l.toLowerCase()}: ${nm} (${r}×${c})`,"esquejera");
       onSaved(`${nm} agregada: ${r*c} lugares ✓`);
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
-  return <Sheet title="Nueva esquejera" sub="Las columnas van con letras y las filas con números, como en la bandeja." onClose={onClose}>
-    {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:10}}>{err}</div>}
-    <FI label="Nombre" value={name} onChange={e=>setName(e.target.value)} placeholder="Ej: Esquejera 4"/>
+  return <Sheet title={`Nueva ${CLONER_KINDS[kind].l.toLowerCase()}`} sub="Las columnas van con letras y las filas con números, como en la bandeja." onClose={onClose}>
+    <ErrBox err={err}/>
+    <FLabel style={{marginTop:4}}>Tipo</FLabel>
+    <Pills options={[["esquejera","Esquejera"],["huevera","Huevera"]]} value={kind} onChange={cambiarTipo}/>
+    <div style={{marginTop:12}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)} placeholder={`Ej: ${CLONER_KINDS[kind].l} 1`}/></div>
     <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
-      <div style={{flex:1}}><NumField label="Filas" value={rows} onCommit={v=>setRows(v===""?1:+v)} min={1} max={20}/></div>
+      <div style={{flex:1}}><NumField label="Filas (largo)" value={rows} onCommit={v=>setRows(v===""?1:+v)} min={1} max={20}/></div>
       <div style={{fontSize:20,fontWeight:800,color:C.textSoft,paddingBottom:22}}>×</div>
-      <div style={{flex:1}}><NumField label="Columnas" value={cols} onCommit={v=>setCols(v===""?1:+v)} min={1} max={10}/></div>
+      <div style={{flex:1}}><NumField label="Columnas (ancho)" value={cols} onCommit={v=>setCols(v===""?1:+v)} min={1} max={10}/></div>
     </div>
+    <div style={{width:"50%",paddingRight:5}}><NumField label="Días para enraizar" value={days} onCommit={v=>setDays(v===""?CLONER_KINDS[kind].days:+v)} min={1} max={60}/></div>
     <div style={{background:C.surfaceAlt,borderRadius:14,padding:"12px 10px",marginBottom:14,display:"flex",flexDirection:"column",alignItems:"center",gap:8,overflowX:"auto"}}>
       <ClonerGrid capacity={r*c} cols={c} colorAt={()=>null} cell={16}/>
-      <div style={{fontSize:13,fontWeight:800,color:C.text}}>{r} × {c} = {r*c} lugares</div>
+      <div style={{fontSize:13,fontWeight:800,color:C.text}}>{r} × {c} = {r*c} lugares · {Math.max(1,+days||1)} días</div>
     </div>
-    <div style={{display:"flex",gap:10}}>
-      <Btn onClick={save} disabled={saving} style={{flex:1,minHeight:48}}>{saving?"Guardando...":"Agregar"}</Btn>
-      <Btn onClick={onClose} v="secondary" disabled={saving} style={{flex:1,minHeight:48}}>Cancelar</Btn>
-    </div>
+    <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Agregar"/>
   </Sheet>;
 }
 function EsquejerasPage({genetics,user}){
   const [cloners,setCloners]=useState([]);
   const [clSlots,setClSlots]=useState([]);
+  const [bajas,setBajas]=useState([]);
+  const [phenos,setPhenos]=useState([]);
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [showEsp,setShowEsp]=useState(null);
@@ -3077,51 +3216,72 @@ function EsquejerasPage({genetics,user}){
   const isAdmin=user?.role==="admin";
   const load=useCallback(()=>{
     setLoading(true);
-    Promise.all([db.get("cloners"),db.get("cloner_slots")])
-      .then(([c,cs])=>{setCloners(c);setClSlots(cs);}).catch(()=>{}).finally(()=>setLoading(false));
+    Promise.all([
+      db.get("cloners"),db.get("cloner_slots"),
+      db.query("plant_losses","place=in.(esquejera,huevera)&order=loss_date.desc,created_at.desc&limit=200").catch(()=>[]),
+      db.query("phenos","select=id,code,number").catch(()=>[]),
+    ]).then(([c,cs,b,p])=>{setCloners(c);setClSlots(cs);setBajas(b);setPhenos(p);}).catch(()=>{}).finally(()=>setLoading(false));
   },[]);
   useEffect(()=>{load();},[load]);
   if(loading)return <Spin/>;
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
+  const phenoMap={};phenos.forEach(p=>{phenoMap[sid(p.id)]=p;});
   const usados=clSlots.filter(s=>s.genetic_name).length;
   const espC=showEsp!==null?cloners.find(c=>sid(c.id)===sid(showEsp)):null;
+  const ordenadas=k=>cloners.filter(c=>clonerKind(c)===k).sort((a,b)=>byName(a.label,b.label));
+
+  const card=cl=>{
+    const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));
+    const used=slots.filter(s=>s.genetic_name);
+    const gC={};used.forEach(s=>{gC[s.genetic_name]=(gC[s.genetic_name]||0)+1;});
+    const mix=sortPairs(gC);
+    const prog=used.length>0?batchProgress(cl,slots):null;
+    const cols=cl.cols||CLONER_COLS;
+    return <Card key={cl.id} onClick={()=>setShowEsp(cl.id)} style={{padding:"14px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.greenLight,color:C.green,flexShrink:0}}><Icon n={clonerKind(cl)==="huevera"?"seed":"scissors"} size={22}/></span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{cl.label}</div>
+          <div style={{fontSize:13,fontWeight:700,color:prog?prog.color:C.textSoft}}>{prog?prog.label.replace(" · ",", "):`Vacía · ${clonerRows(cl.capacity,cols)} × ${cols}, ${batchReadyDays(cl)} días`}</div>
+        </div>
+        <span style={{textAlign:"right"}}><span style={{display:"block",fontSize:22,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{used.length}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>de {cl.capacity}</span></span>
+        <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
+      </div>
+      {mix.length>0&&<>
+        <div style={{marginTop:12}}><Stripe mix={mix} genMap={genMap}/></div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:8}}>
+          {mix.map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontWeight:700,color:C.textMid}}><span style={{width:8,height:8,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
+        </div>
+      </>}
+    </Card>;
+  };
+  const grupo=k=>{
+    const list=ordenadas(k);
+    return <div key={k} style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"8px 2px 0"}}>
+        <div style={{fontSize:18,fontWeight:800,color:C.text}}>{CLONER_KINDS[k].pl}</div>
+        <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{CLONER_KINDS[k].days} días para enraizar</span>
+      </div>
+      {list.map(card)}
+      {list.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,padding:"18px 14px"}}>{isAdmin?`Sin ${CLONER_KINDS[k].pl.toLowerCase()}. Tocá “Agregar” y elegí ${CLONER_KINDS[k].l}.`:`Sin ${CLONER_KINDS[k].pl.toLowerCase()} cargadas.`}</Card>}
+    </div>;
+  };
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {espC&&<EsquejeraModal cloner={espC} slots={clSlots.filter(s=>sid(s.cloner_id)===sid(espC.id))} genetics={genetics} user={user} onClose={()=>setShowEsp(null)} onSaved={(msg)=>{setShowEsp(null);load();setToast({msg:typeof msg==="string"?msg:"Esquejera guardada ✓",type:"success"});}}/>}
-
+    {espC&&<EsquejeraModal cloner={espC} slots={clSlots.filter(s=>sid(s.cloner_id)===sid(espC.id))} genetics={genetics} user={user} onClose={()=>setShowEsp(null)} onSaved={(msg)=>{setShowEsp(null);load();setToast({msg:typeof msg==="string"?msg:"Bandeja guardada ✓",type:"success"});}}/>}
     {showNew&&<NuevaEsquejeraSheet cloners={cloners} user={user} onClose={()=>setShowNew(false)} onSaved={m=>{setShowNew(false);load();setToast({msg:m,type:"success"});}}/>}
-    <PageTitle sub={`${usados} esqueje${usados===1?"":"s"} en ${cloners.length} bandeja${cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.`}
-      right={isAdmin&&<button onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Esquejeras</PageTitle>
 
-    {cloners.map(cl=>{
-      const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id));
-      const used=slots.filter(s=>s.genetic_name);
-      const gC={};used.forEach(s=>{gC[s.genetic_name]=(gC[s.genetic_name]||0)+1;});
-      const mix=sortPairs(gC);
-      const prog=used.length>0?batchProgress(cl,slots):null;
-      return <Card key={cl.id} onClick={()=>setShowEsp(cl.id)} style={{padding:"14px 16px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.greenLight,color:C.green,flexShrink:0}}><Icon n="scissors" size={22}/></span>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:16,fontWeight:800,color:C.text}}>{cl.label}</div>
-            <div style={{fontSize:13,fontWeight:700,color:prog?prog.color:C.textSoft}}>{prog?prog.label.replace(" · ",", "):"Vacía, tocá para cargar"}</div>
-          </div>
-          <span style={{textAlign:"right"}}><span style={{display:"block",fontSize:22,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{used.length}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>de {cl.capacity}</span></span>
-          <span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
-        </div>
-        {mix.length>0&&<>
-          <div style={{marginTop:12}}><Stripe mix={mix} genMap={genMap}/></div>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:8}}>
-            {mix.map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,fontWeight:700,color:C.textMid}}><span style={{width:8,height:8,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
-          </div>
-        </>}
-      </Card>;
-    })}
-    {cloners.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:14,padding:"20px 0"}}>{isAdmin?"Sin esquejeras. Tocá “Agregar” para cargar la primera.":"Sin esquejeras cargadas."}</Card>}
+    <PageTitle sub={`${usados} esqueje${usados===1?"":"s"} en ${cloners.length} bandeja${cloners.length===1?"":"s"}. Al cosechar, lo que prendió pasa a VG.`}
+      right={isAdmin&&<button onClick={()=>setShowNew(true)} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Esquejeras y hueveras</PageTitle>
+
+    {grupo("esquejera")}
+    {grupo("huevera")}
+
+    <div style={{height:2}}/>
+    <BajasFold rows={bajas} phenoMap={phenoMap} showPlace title="Bajas en bandejas" empty="Todavía no se registró ninguna baja en las bandejas."/>
   </div>;
 }
-
 // ══════════════════════════════════════════════════════════════════════════════
 // TAREAS — un solo lugar: vencidas, hoy, mañana, esta semana y más adelante
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3317,15 +3477,16 @@ function TallyMarks({n,ink,animate}){
 }
 
 // Contador a pantalla completa. Sirve para una tanda nueva y para recontar una existente.
+// Todo va agrupado por genética: adentro de cada una se cuentan las líneas de esqueje y de semilla.
+// En el recuento cada fila arranca en lo que hay hoy: solo se corrige lo que cambió.
 function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onClose,onSave}){
   const [date,setDate]=useState(todayISO);
   const [rows,setRows]=useState(()=>mode==="recuento"
-    ?[...batchLines].sort((a,b)=>byName(a.genetic_name,b.genetic_name)).map(l=>({key:sid(l.id),lineId:sid(l.id),genetic_name:l.genetic_name,origin:l.origin,pheno_id:sid(l.pheno_id),pheno_label:l.pheno_label||null,n:0,antes:l.current_count||0}))
+    ?[...batchLines].map(l=>({key:sid(l.id),lineId:sid(l.id),genetic_name:l.genetic_name,origin:l.origin==="semilla"?"semilla":"esqueje",pheno_id:sid(l.pheno_id),pheno_label:l.pheno_label||null,n:l.current_count||0,antes:l.current_count||0}))
     :[]);
   const [dirty,setDirty]=useState(false);
   const [last,setLast]=useState({key:null,tick:0});
-  const [picker,setPicker]=useState(null);     // origen para el que se está agregando una genética
-  const [pickGen,setPickGen]=useState(null);   // genética elegida, esperando que se elija el feno
+  const [pick,setPick]=useState(null);         // {step:"gen"} | {step:"orig",g} | {step:"feno",g}
   const [search,setSearch]=useState("");
   const [showDiff,setShowDiff]=useState(false);
   const [showDiscard,setShowDiscard]=useState(false);
@@ -3349,7 +3510,7 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
     setRows(prev=>prev.map(r=>r.key===key&&r.n>0?{...r,n:r.n-1}:r));
     setDirty(true);setLast(p=>({key:null,tick:p.tick}));
   };
-  // Fenos disponibles para esquejes de una genética: los de sus madres.
+  // Fenos disponibles para esquejes de una genética: los de sus madres, en orden numérico.
   const fenoOpts=g=>{
     const seen=new Set();const out=[];
     madres.filter(m=>m.genetic_name===g&&(m.pheno_id||m.pheno_label)).forEach(m=>{
@@ -3357,20 +3518,21 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
       if(seen.has(k))return;seen.add(k);
       out.push({pheno_id:pid,pheno_label:pid?null:m.pheno_label,code:pid?(phenoMap[pid]?.code||"Feno"):m.pheno_label});
     });
-    return out.sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
+    return out.sort((a,b)=>byName(a.code,b.code));
   };
   const addRow=(g,origin,feno)=>{
     const nr={genetic_name:g,origin,pheno_id:feno?.pheno_id||null,pheno_label:feno?.pheno_label||null};
-    setPicker(null);setPickGen(null);setSearch("");
+    setPick(null);setSearch("");
     const ya=rows.find(r=>vgKey(r)===vgKey(nr));
     if(ya){scrollTo(ya.key);return;}
     const key=`n${Date.now()}${Math.random().toString(36).slice(2,6)}`;
     setRows(prev=>[...prev,{key,...nr,n:0,antes:mode==="recuento"?null:undefined}]);
     setDirty(true);scrollTo(key);
   };
-  const pickGenetic=g=>{
-    if(picker==="esqueje"&&fenoOpts(g).length>0)setPickGen(g);
-    else addRow(g,picker,null);
+  // Elegido el origen: si es esqueje y hay madres con feno, se pregunta de cuál salieron.
+  const elegirOrigen=(g,origin)=>{
+    if(origin==="esqueje"&&fenoOpts(g).length>0)setPick({step:"feno",g});
+    else addRow(g,origin,null);
   };
   const cerrar=()=>{if(dirty)setShowDiscard(true);else onClose();};
   const guardar=async()=>{
@@ -3393,12 +3555,38 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
     <span style={{fontFamily:MONO,fontWeight:700,color,whiteSpace:"nowrap"}}>{txt}</span>
   </div>;
 
+  // Grupos por genética, en orden alfabético. Adentro: esqueje primero, después semilla; fenos en orden numérico.
+  const grupos={};rows.forEach(r=>{(grupos[r.genetic_name]=grupos[r.genetic_name]||[]).push(r);});
+  const gruposOrden=Object.keys(grupos).sort(byName).map(g=>[g,[...grupos[g]].sort((a,b)=>(a.origin===b.origin?0:a.origin==="esqueje"?-1:1)||byName(fenoTxt(a,phenoMap)||"",fenoTxt(b,phenoMap)||""))]);
+  const origChip=o=><span style={{fontSize:11,fontWeight:800,padding:"2px 8px",borderRadius:99,textTransform:"uppercase",letterSpacing:"0.03em",background:o==="semilla"?C.amberLight:C.greenLight,color:o==="semilla"?C.amber:C.green}}>{o==="semilla"?"Semilla":"Esqueje"}</span>;
+  const smallAdd=(l,fn)=><button onClick={fn} style={{display:"flex",alignItems:"center",gap:4,padding:"7px 11px",borderRadius:99,border:`1px dashed ${C.borderStrong}`,background:"transparent",color:C.green,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={14}/>{l}</button>;
+
+  const counterRow=r=>{
+    const on=last.key===r.key;
+    return <div key={r.key} id={`vgrow-${r.key}`} style={{position:"relative",display:"flex",alignItems:"stretch",backgroundColor:C.surface,
+      backgroundImage:`linear-gradient(${ink}17 1px,transparent 1px),linear-gradient(90deg,${ink}17 1px,transparent 1px)`,backgroundSize:"13px 13px",
+      border:`1px solid ${C.border}`,borderRadius:12,marginTop:8,overflow:"hidden",userSelect:"none",WebkitUserSelect:"none"}}>
+      <button onClick={()=>plus(r.key)} aria-label={`Sumar 1 a ${r.genetic_name} ${r.origin}`}
+        style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:6,padding:"10px 12px",textAlign:"left",minHeight:78,background:"transparent",border:"none",cursor:"pointer",touchAction:"manipulation",color:C.text,
+          animation:on?`${last.tick%2?"gmFlashA":"gmFlashB"} .28s ease-out`:"none"}}>
+        <span style={{display:"flex",alignItems:"center",gap:7,width:"100%"}}>
+          <span style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>{origChip(r.origin)}{fenoTxt(r,phenoMap)&&<FenoChip txt={fenoTxt(r,phenoMap)}/>}</span>
+          <span style={{fontFamily:MONO,fontSize:26,fontWeight:700,lineHeight:1}}>{r.n}</span>
+        </span>
+        <TallyMarks n={r.n} ink={ink} animate={on}/>
+        {mode==="recuento"&&<span style={{fontSize:12,color:r.antes!=null&&r.n!==r.antes?C.amber:C.textSoft,fontWeight:r.antes!=null&&r.n!==r.antes?800:400}}>{r.antes==null?"Línea nueva":r.n===r.antes?`Igual que antes (${r.antes})`:`Antes había ${r.antes} · ${r.n>r.antes?"+":""}${r.n-r.antes}`}</span>}
+      </button>
+      <button onClick={()=>minus(r.key)} aria-label={`Restar 1 a ${r.genetic_name} ${r.origin}`}
+        style={{width:58,flexShrink:0,borderLeft:`1px solid ${C.border}`,borderTop:"none",borderRight:"none",borderBottom:"none",fontSize:30,fontWeight:600,color:C.textMid,background:C.surface,cursor:"pointer",touchAction:"manipulation"}}>−</button>
+    </div>;
+  };
+
   return <div style={{position:"fixed",inset:0,zIndex:300,background:C.bg,display:"flex",flexDirection:"column"}}>
     <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
-      <button onClick={cerrar} aria-label="Cerrar" style={{width:42,height:42,borderRadius:11,border:`1px solid ${C.border}`,background:C.bg,fontSize:18,color:C.textMid,cursor:"pointer",flexShrink:0}}>✕</button>
+      <button onClick={cerrar} aria-label="Cerrar" style={{width:42,height:42,borderRadius:11,border:`1px solid ${C.border}`,background:C.bg,color:C.textMid,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={20}/></button>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:17,fontWeight:900,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mode==="nueva"?"Nueva tanda":`Recontar tanda del ${fmtDM(batch?.start_date)}`}</div>
-        <div style={{fontSize:12.5,color:C.textSoft}}>Tocá la fila para sumar 1</div>
+        <div style={{fontSize:12.5,color:C.textSoft}}>{totalO("esqueje")} esqueje · {totalO("semilla")} semilla</div>
       </div>
       <div style={{textAlign:"right"}}>
         <div style={{fontFamily:MONO,fontSize:30,fontWeight:700,color:C.text,lineHeight:1}}>{total}</div>
@@ -3410,34 +3598,26 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
       <div style={{maxWidth:720,margin:"0 auto"}}>
         {err&&!showDiff&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:13,marginBottom:12}}>{err}</div>}
         {mode==="nueva"&&<FI label="Fecha de la tanda" type="date" value={date} onChange={e=>{setDate(e.target.value);setDirty(true);}}/>}
-        {mode==="recuento"&&<div style={{fontSize:12.5,color:C.textSoft,margin:"0 2px 12px",lineHeight:1.5}}>Cada fila arranca en 0. Al terminar te muestro las diferencias antes de registrar nada.</div>}
-        {VG_ORIG.map(o=>{const rs=rows.filter(r=>r.origin===o.k);return <div key={o.k}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:16,fontWeight:900,color:C.text,margin:"6px 2px 10px"}}>
-            <span>{o.l}</span><span style={{fontFamily:MONO}}>{totalO(o.k)}</span>
-          </div>
-          {rs.length===0&&<div style={{fontSize:13,color:C.textSoft,margin:"0 2px 10px"}}>Agregá las genéticas de {o.k} que vas a contar.</div>}
-          {rs.map(r=>{
-            const col=genMap[r.genetic_name]||C.green;const on=last.key===r.key;
-            return <div key={r.key} id={`vgrow-${r.key}`} style={{position:"relative",display:"flex",alignItems:"stretch",backgroundColor:C.surface,
-              backgroundImage:`linear-gradient(${ink}17 1px,transparent 1px),linear-gradient(90deg,${ink}17 1px,transparent 1px)`,backgroundSize:"13px 13px",
-              border:`1px solid ${C.border}`,borderRadius:14,marginBottom:10,overflow:"hidden",userSelect:"none",WebkitUserSelect:"none"}}>
-              <span style={{position:"absolute",left:0,top:0,bottom:0,width:7,background:col}}/>
-              <button onClick={()=>plus(r.key)} aria-label={`Sumar 1 a ${r.genetic_name}`}
-                style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:7,padding:"12px 12px 12px 20px",textAlign:"left",minHeight:88,background:"transparent",border:"none",cursor:"pointer",touchAction:"manipulation",color:C.text,
-                  animation:on?`${last.tick%2?"gmFlashA":"gmFlashB"} .28s ease-out`:"none"}}>
-                <span style={{display:"flex",alignItems:"baseline",gap:8,width:"100%"}}>
-                  <span style={{flex:1,minWidth:0,fontSize:15.5,fontWeight:800}}>{r.genetic_name}<FenoChip txt={fenoTxt(r,phenoMap)}/></span>
-                  <span style={{fontFamily:MONO,fontSize:28,fontWeight:700,lineHeight:1}}>{r.n}</span>
-                </span>
-                <TallyMarks n={r.n} ink={ink} animate={on}/>
-                {mode==="recuento"&&<span style={{fontSize:12,color:C.textSoft}}>{r.antes==null?"Línea nueva":`Antes había ${r.antes}`}</span>}
-              </button>
-              <button onClick={()=>minus(r.key)} aria-label={`Restar 1 a ${r.genetic_name}`}
-                style={{width:62,flexShrink:0,borderLeft:`1px solid ${C.border}`,borderTop:"none",borderRight:"none",borderBottom:"none",fontSize:30,fontWeight:600,color:C.textMid,background:C.surface,cursor:"pointer",touchAction:"manipulation"}}>−</button>
-            </div>;
-          })}
-          <button onClick={()=>{setPicker(o.k);setSearch("");setPickGen(null);}} style={{width:"100%",minHeight:50,border:`2px dashed ${C.borderStrong}`,borderRadius:14,color:C.green,fontWeight:800,fontSize:14.5,background:"transparent",cursor:"pointer",marginBottom:22}}>+ Agregar genética</button>
-        </div>;})}
+        <div style={{fontSize:12.5,color:C.textSoft,margin:"0 2px 12px",lineHeight:1.5}}>{mode==="recuento"
+          ?"Cada fila arranca en lo que hay hoy. Tocá la fila para sumar y “−” para restar: solo corregí lo que cambió. Al final te muestro las diferencias."
+          :"Tocá la fila para sumar 1 y “−” para restar. Dentro de cada genética cargás esqueje y semilla."}</div>
+        {gruposOrden.length===0&&<div style={{fontSize:13.5,color:C.textSoft,margin:"4px 2px 12px"}}>Agregá la primera genética que vas a contar.</div>}
+        {gruposOrden.map(([g,rs])=>{
+          const col=genMap[g]||C.green;const sub=rs.reduce((a,r)=>a+r.n,0);
+          const hayE=rs.some(r=>r.origin==="esqueje"),hayS=rs.some(r=>r.origin==="semilla");
+          return <div key={g} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`6px solid ${col}`,borderRadius:16,padding:"11px 12px 12px",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span style={{flex:1,minWidth:0,fontSize:16.5,fontWeight:900,color:C.text}}>{g}</span>
+              <span style={{fontFamily:MONO,fontSize:18,fontWeight:700,color:C.textMid}}>{sub}</span>
+            </div>
+            {rs.map(counterRow)}
+            <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:10}}>
+              {smallAdd(hayE&&fenoOpts(g).length>0?"Esqueje de otro feno":"Esqueje",()=>elegirOrigen(g,"esqueje"))}
+              {!hayS&&smallAdd("Semilla",()=>elegirOrigen(g,"semilla"))}
+            </div>
+          </div>;
+        })}
+        <button onClick={()=>{setPick({step:"gen"});setSearch("");}} style={{width:"100%",minHeight:50,border:`2px dashed ${C.borderStrong}`,borderRadius:14,color:C.green,fontWeight:800,fontSize:14.5,background:"transparent",cursor:"pointer",marginBottom:22,fontFamily:"inherit"}}>+ Agregar genética</button>
       </div>
     </div>
 
@@ -3449,27 +3629,34 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
       </div>
     </div>
 
-    {picker&&<Modal z={400} title={pickGen?`${pickGen}: ¿de qué feno?`:`Agregar a ${picker==="semilla"?"origen semilla":"origen esqueje"}`} onClose={()=>{setPicker(null);setPickGen(null);}}>
-      {!pickGen?<>
+    {pick&&<Modal z={400} title={pick.step==="gen"?"Agregar genética":pick.step==="orig"?`${pick.g}: ¿esqueje o semilla?`:`${pick.g}: ¿de qué feno?`} onClose={()=>setPick(null)}>
+      {pick.step==="gen"&&<>
         <FI value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar genética"/>
         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"50vh",overflowY:"auto"}}>
-          {genetics.filter(g=>(g.name||"").toLowerCase().includes(search.trim().toLowerCase())).map(g=><button key={g.id||g.name} onClick={()=>pickGenetic(g.name)}
-            style={{display:"flex",alignItems:"center",gap:11,minHeight:50,padding:"0 12px",borderRadius:11,border:`1px solid ${C.border}`,background:C.bg,fontWeight:700,fontSize:15,color:C.text,textAlign:"left",cursor:"pointer",flexShrink:0}}>
-            <span style={{width:16,height:16,borderRadius:"50%",background:g.color||C.green,flexShrink:0}}/>{g.name}
+          {sortGen(genetics).filter(g=>(g.name||"").toLowerCase().includes(search.trim().toLowerCase())).map(g=><button key={g.id||g.name} onClick={()=>{setSearch("");setPick({step:"orig",g:g.name});}}
+            style={{display:"flex",alignItems:"center",gap:11,minHeight:50,padding:"0 12px",borderRadius:11,border:`1px solid ${C.border}`,background:C.bg,fontWeight:700,fontSize:15,color:C.text,textAlign:"left",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+            <span style={{width:16,height:16,borderRadius:"50%",background:g.color||C.green,flexShrink:0}}/><span style={{flex:1}}>{g.name}</span>
+            {grupos[g.name]&&<span style={{fontSize:11.5,fontWeight:800,color:C.textSoft}}>ya está</span>}
           </button>)}
         </div>
-      </>:<>
+      </>}
+      {pick.step==="orig"&&<div style={{display:"flex",gap:10}}>
+        {[["esqueje","Esqueje","scissors"],["semilla","Semilla","seed"]].map(([k,l,ic])=><button key={k} onClick={()=>elegirOrigen(pick.g,k)} style={{flex:1,minHeight:84,borderRadius:14,border:`1.5px solid ${C.border}`,background:C.surfaceAlt,color:C.text,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,fontSize:15.5,fontWeight:800}}>
+          <span style={{color:k==="semilla"?C.amber:C.green}}><Icon n={ic} size={24}/></span>{l}
+        </button>)}
+      </div>}
+      {pick.step==="feno"&&<>
         <div style={{fontSize:13.5,color:C.textMid,marginBottom:12,lineHeight:1.5}}>Hay madres de esta genética con feno. Elegí de cuál salieron los esquejes.</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-          <button onClick={()=>addRow(pickGen,picker,null)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.textMid,fontWeight:800,fontSize:14,cursor:"pointer"}}>Sin feno</button>
-          {fenoOpts(pickGen).map(f=><button key={f.pheno_id||`l:${f.pheno_label}`} onClick={()=>addRow(pickGen,picker,f)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.purple}55`,background:C.purpleLight,color:C.purple,fontWeight:900,fontSize:14.5,cursor:"pointer"}}>{f.code}</button>)}
+          <button onClick={()=>addRow(pick.g,"esqueje",null)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.textMid,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Sin feno</button>
+          {fenoOpts(pick.g).map(f=><button key={f.pheno_id||`l:${f.pheno_label}`} onClick={()=>addRow(pick.g,"esqueje",f)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.purple}55`,background:C.purpleLight,color:C.purple,fontWeight:900,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}>{f.code}</button>)}
         </div>
       </>}
     </Modal>}
 
     {showDiff&&<Modal z={400} title="Revisá el reconteo" onClose={()=>{if(!saving)setShowDiff(false);}}>
       {ceros.length>0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:600,marginBottom:12,lineHeight:1.5}}>
-        Quedaron en 0: {ceros.map(c=>nombre(c.r)).join(", ")}. Si te salteaste alguna fila, volvé y contala.
+        Quedaron en 0: {ceros.map(c=>nombre(c.r)).join(", ")}.
       </div>}
       {bajan.length>0?<>
         <div style={{fontSize:14.5,fontWeight:800,color:C.text,margin:"2px 0 6px"}}>Se registran {perdidas} pérdida{perdidas===1?"":"s"}</div>
@@ -3497,7 +3684,7 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
 // Por ubicar = lo que llegó por tandas − lo que ya está dibujado en las mesas.
 // ══════════════════════════════════════════════════════════════════════════════
 const poolKey=(g,org,pid,lab)=>`${g||""}|${org==="semilla"?"semilla":"esqueje"}|${pid?sid(pid):""}|${pid?"":(lab||"")}`;
-const buildPool=(lines=[],cells=[])=>{
+const buildPool=(lines=[],cells=[],phenoMap={},losses=[])=>{
   const acc={};
   lines.forEach(l=>{
     const n=l.current_count||0;if(n<=0||!l.genetic_name)return;
@@ -3506,8 +3693,10 @@ const buildPool=(lines=[],cells=[])=>{
     acc[k].arrived+=n;
   });
   cells.forEach(c=>{if(!c.genetic_name)return;const k=poolKey(c.genetic_name,c.origin,c.pheno_id,c.pheno_label);if(acc[k])acc[k].placed++;});
+  // Las que se murieron en las mesas ya se ubicaron: no vuelven a quedar "por ubicar".
+  losses.forEach(x=>{if(!x.genetic_name)return;const k=poolKey(x.genetic_name,x.origin,x.pheno_id,x.pheno_label);if(acc[k])acc[k].placed+=(x.qty||1);});
   return Object.values(acc).map(p=>({...p,left:Math.max(0,p.arrived-p.placed)}))
-    .sort((a,b)=>byName(a.genetic_name,b.genetic_name)||(a.origin==="semilla"?1:0)-(b.origin==="semilla"?1:0)||byName(a.pheno_label,b.pheno_label));
+    .sort((a,b)=>byName(a.genetic_name,b.genetic_name)||(a.origin==="semilla"?1:0)-(b.origin==="semilla"?1:0)||byName(fenoTxt(a,phenoMap)||"",fenoTxt(b,phenoMap)||""));
 };
 // Estado de una sala para recibir una tanda: sin ciclo (se abre en vege), en vege (se suma) o en flora (no recibe).
 const salaRecibe=(cyc)=>!cyc?{ok:true,txt:"Sin ciclo: se abre en vegetativo"}
@@ -3765,20 +3954,23 @@ function VGPage({genetics,user,roomConfig=[]}){
         </div>}
       </Card>
 
-      {VG_ORIG.map(o=>{
-        const lo=ls.filter(l=>(o.k==="semilla")===(l.origin==="semilla")).sort((a,b)=>byName(a.genetic_name,b.genetic_name));
-        if(!lo.length)return null;
-        return <Card key={o.k} style={{padding:"12px 16px 4px"}}>
+      {ls.length>0&&(()=>{
+        // Una sola lista por genética (alfabético); adentro esqueje primero, después semilla, y los fenos en orden numérico.
+        const lo=[...ls].sort((a,b)=>byName(a.genetic_name,b.genetic_name)||((a.origin==="semilla")-(b.origin==="semilla"))||byName(fenoTxt(a,phenoMap)||"",fenoTxt(b,phenoMap)||""));
+        let prevG=null;
+        return <Card style={{padding:"12px 16px 4px"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"2px 0 6px"}}>
-            <span style={{fontSize:15.5,fontWeight:800,color:C.text}}>{o.l}</span><span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{sumK(lo,"current_count")}</span>
+            <span style={{fontSize:15.5,fontWeight:800,color:C.text}}>Plantas</span><span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{origTxt||""}</span>
           </div>
           {lo.map(l=>{
             const cur=l.current_count||0,ini=l.initial_count||0,perd=ini-cur;const col=genMap[l.genetic_name]||C.green;
-            return <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
-              <span style={{width:10,alignSelf:"stretch",minHeight:38,borderRadius:4,background:col,flexShrink:0}}/>
+            const nuevaG=l.genetic_name!==prevG;prevG=l.genetic_name;
+            const sem=l.origin==="semilla";
+            return <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:`1px solid ${nuevaG?C.borderStrong:C.border}`}}>
+              <span style={{width:10,alignSelf:"stretch",minHeight:38,borderRadius:4,background:col,flexShrink:0,opacity:nuevaG?1:0.45}}/>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:15.5,fontWeight:800,color:C.text}}>{l.genetic_name}<FenoChip txt={fenoTxt(l,phenoMap)}/></div>
-                <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>Entraron {ini}{perd>0?` (−${perd})`:""}</div>
+                <div style={{fontSize:15.5,fontWeight:800,color:nuevaG?C.text:C.textMid}}>{l.genetic_name}<FenoChip txt={fenoTxt(l,phenoMap)}/>{sem&&<span style={{display:"inline-block",marginLeft:7,fontSize:10.5,fontWeight:800,padding:"1px 7px",borderRadius:99,background:C.amberLight,color:C.amber,textTransform:"uppercase",verticalAlign:"middle"}}>semilla</span>}</div>
+                <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{sem?"De semilla":"De esqueje"} · entraron {ini}{perd>0?` (−${perd})`:""}</div>
               </div>
               <div style={{fontSize:24,fontWeight:800,color:C.text,minWidth:36,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{cur}</div>
               {!cerrada&&isAdmin&&<button onClick={()=>murio(l)} disabled={cur<=0}
@@ -3786,14 +3978,14 @@ function VGPage({genetics,user,roomConfig=[]}){
             </div>;
           })}
         </Card>;
-      })}
+      })()}
       {ls.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:13.5,padding:"18px 0"}}>Esta tanda no tiene plantas cargadas.</Card>}
 
       <Fold icon="history" title="Registro de pérdidas" count={perdidasB.length}>
         {perdidasB.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"4px 0"}}>Sin pérdidas registradas.</div>}
         {perdidasB.map((x,idx)=><div key={x.id} style={{display:"flex",gap:10,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
           <span style={{color:C.textSoft,fontWeight:700,minWidth:42}}>{fmtDM(x.loss_date)}</span>
-          <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b> −{x.qty} <span style={{color:C.textSoft}}>· {x.author||"—"}</span></span>
+          <span style={{flex:1,minWidth:0,color:C.text}}><b>{x.genetic_name}</b>{(()=>{const l=lines.find(y=>sid(y.id)===sid(x.line_id));const f=l?fenoTxt(l,phenoMap):null;return f?` ${f}`:"";})()} −{x.qty} <span style={{color:C.textSoft}}>· {x.author||"—"}</span></span>
           <span style={{fontSize:12,color:C.textSoft,fontWeight:700,whiteSpace:"nowrap"}}>{x.method==="reconteo"?"reconteo":x.method==="trasplante"?"trasplante":"murió"}</span>
         </div>)}
       </Fold>
@@ -3947,6 +4139,14 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
         outcome:"cosechada", notes:notes||null, created_by:user?.name||"sistema",
       }));
       if(filas.length>0){try{await db.insert("cloner_batches",filas);}catch{/* el archivo no bloquea la cosecha */}}
+      // Los que no prendieron quedan anotados como bajas de la bandeja.
+      try{
+        const base={place:clonerKind(cloner),ref_id:cloner.id,ref_label:cloner.label,origin:"esqueje",method:"no_prendio",author:user?.name||"sistema"};
+        const bj=phenoMode
+          ? bajasDeCeldas(ocupados.filter(x=>muertos.has(x.i)).map(x=>({g:x.g,pid:slotPhenos[x.i]||null})),base)
+          : Object.entries(muertosPorGen).filter(([,n])=>n>0).map(([g,n])=>({...base,genetic_name:g,qty:n}));
+        await registrarBajas(bj);
+      }catch{/* sin la tabla de bajas la cosecha sigue igual */}
 
       // El feno NO cambia de estado acá: un feno es la planta madre de semilla y
       // vive en su mesa. Que se muera un clon no mata al feno, solo se pierde ese esqueje.
@@ -4017,6 +4217,7 @@ function EliminarTandaModal({cloner,cells,slotPhenos,phenoMode,progress,user,onC
         outcome:"fallida", notes:motivo||null, created_by:user?.name||"sistema",
       }));
       if(filas.length>0){try{await db.insert("cloner_batches",filas);}catch{}}
+      try{await registrarBajas(Object.entries(gCount).map(([g,n])=>({place:clonerKind(cloner),ref_id:cloner.id,ref_label:cloner.label,genetic_name:g,origin:"esqueje",qty:n,method:"fallida",notes:motivo||null,author:user?.name||"sistema"})));}catch{}
       await db.deleteWhere("cloner_slots","cloner_id",cloner.id);
       try{await db.update("cloners",cloner.id,{start_date:null});}catch{}
       await logA(user?.name||"sistema",`Eliminó la tanda de ${cloner.label} (${ocupados.length} esquejes)`,"esquejera");
@@ -4042,8 +4243,11 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
   const [slotPhenos,setSlotPhenos]=useState(()=>{const arr=Array(cloner.capacity).fill(null);slots.forEach(s=>{if(s.slot_index<arr.length)arr[s.slot_index]=sid(s.pheno_id);});return arr;});
   // Guardamos la fecha de corte que ya tenía cada celda, para no pisar esquejes viejos al guardar.
   const [prevDates]=useState(()=>{const m={};slots.forEach(s=>{if(s.cut_date)m[s.slot_index]=s.cut_date;});return m;});
-  const [brush,setBrush]=useState(genetics[0]?.name||null);
+  const [brush,setBrush]=useState(sortGen(genetics)[0]?.name||null);
   const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const [killMode,setKillMode]=useState(false);   // pincel "Murió": saca el esqueje y lo anota como baja
+  const [muertas,setMuertas]=useState([]);        // bajas pendientes de guardar: {i,g,pid}
   const [phenoMode,setPhenoMode]=useState(!!cloner.pheno_mode);
   const [phenoMap,setPhenoMap]=useState({});
   const [hunts,setHunts]=useState([]);            // búsquedas disponibles
@@ -4090,7 +4294,23 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     setBrushPheno(mios[0]?sid(mios[0].id):null);
   };
 
+  const kind=clonerKind(cloner);
   const paint=i=>{
+    if(killMode){
+      // Pincel "Murió": la celda se vacía y queda anotada. Tocar de nuevo una celda recién marcada la devuelve.
+      const ya=muertas.find(m=>m.i===i);
+      if(ya){
+        setCells(prev=>{const n=[...prev];n[i]=ya.g;return n;});
+        setSlotPhenos(prev=>{const n=[...prev];n[i]=ya.pid;return n;});
+        setMuertas(prev=>prev.filter(m=>m.i!==i));
+        return;
+      }
+      if(!cells[i])return;
+      setMuertas(prev=>[...prev,{i,g:cells[i],pid:slotPhenos[i]||null}]);
+      setCells(prev=>{const n=[...prev];n[i]=null;return n;});
+      setSlotPhenos(prev=>{const n=[...prev];n[i]=null;return n;});
+      return;
+    }
     if(phenoMode&&hunt&&brushPheno){
       // El pincel es un feno: DS-1 puede ocupar A1 y A2, son dos clones del mismo.
       const ya=slotPhenos[i]===brushPheno;
@@ -4109,21 +4329,28 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     try{await db.update("cloners",cloner.id,{pheno_mode:next});}catch{}
   };
   const save=async()=>{
-    setSaving(true);
+    setSaving(true);setErr(null);
     try{
       // Los fenos ya existen: la bandeja solo guarda qué feno hay en cada slot.
       const ids=[...slotPhenos];
+      // Primero las bajas: si no se pueden anotar, no se toca la bandeja.
+      if(muertas.length){
+        await registrarBajas(bajasDeCeldas(muertas,{place:kind,ref_id:cloner.id,ref_label:cloner.label,origin:"esqueje",method:"murio",author:user?.name||"sistema"}));
+        await logA(user?.name||"sistema",`Registró ${muertas.length} baja${muertas.length===1?"":"s"} en ${cloner.label}`,"esquejera");
+      }
       // La fecha de inicio y los días de la tanda son de la bandeja entera.
-      try{await db.update("cloners",cloner.id,{start_date:startDate||null,ready_days:readyDays||CLONER_READY_DAYS});}catch{}
+      try{await db.update("cloners",cloner.id,{start_date:startDate||null,ready_days:readyDays||batchReadyDays(cloner)});}catch{}
       await db.deleteWhere("cloner_slots","cloner_id",cloner.id);
       // Cada esqueje guarda igual su fecha para no perder el histórico de bandejas viejas.
       const newSlots=cells.map((g,i)=>({cloner_id:cloner.id,slot_index:i,genetic_name:g,pheno_id:ids[i]||null,cut_date:g?(prevDates[i]||startDate):null,status:g?"activo":"vacío",updated_at:new Date().toISOString()})).filter(s=>s.genetic_name);
       if(newSlots.length>0)await db.insert("cloner_slots",newSlots);
-      onSaved();
-    }finally{setSaving(false);}
+      onSaved(muertas.length?`${cloner.label} guardada · ${muertas.length} baja${muertas.length===1?"":"s"} anotada${muertas.length===1?"":"s"} ✓`:undefined);
+    }catch(e){setErr(errMsg(e).includes("plant_losses")?"No pude anotar las bajas. ¿Corriste el SQL de esta actualización?":errMsg(e));}
+    finally{setSaving(false);}
   };
   const prog=batchProgress({...cloner,start_date:startDate,ready_days:readyDays},slots);
-  return <Sheet title={cloner.label} sub={`${clonerRows(cloner.capacity,cloner.cols||CLONER_COLS)} × ${cloner.cols||CLONER_COLS} · ${used} de ${cloner.capacity} lugares`} onClose={onClose}>
+  return <Sheet title={cloner.label} sub={`${CLONER_KINDS[kind].l} · ${clonerRows(cloner.capacity,cloner.cols||CLONER_COLS)} × ${cloner.cols||CLONER_COLS} · ${used} de ${cloner.capacity} lugares`} onClose={onClose}>
+    <ErrBox err={err}/>
     {showCosechar&&<CosecharTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMap={phenoMap} phenoMode={phenoMode} genMap={genMap} progress={prog} user={user} onClose={()=>setShowCosechar(false)} onDone={(n)=>{setShowCosechar(false);onSaved(`Cosechada: ${n} esqueje${n===1?"":"s"} pasaron a VG ✓`);}}/>}
     {showEliminar&&<EliminarTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMode={phenoMode} progress={prog} user={user} onClose={()=>setShowEliminar(false)} onDone={()=>{setShowEliminar(false);onSaved();}}/>}
     <div style={{margin:"2px 0 12px"}}><Bar value={used} max={cloner.capacity} h={8}/></div>
@@ -4171,21 +4398,29 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
 
     {isAdmin&&<div style={{display:"flex",gap:10,marginBottom:4}}>
       <div style={{flex:1}}><FI label="Inicio de la tanda" type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}/></div>
-      <div style={{width:112}}><NumField label="Días al corte" value={readyDays} onCommit={v=>setReadyDays(Math.max(1,+v||CLONER_READY_DAYS))} min={1} max={60}/></div>
+      <div style={{width:112}}><NumField label="Días al corte" value={readyDays} onCommit={v=>setReadyDays(Math.max(1,+v||CLONER_KINDS[kind].days))} min={1} max={60}/></div>
     </div>}
-    {isAdmin&&<div style={{fontSize:11.5,color:C.textSoft,marginTop:-6,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>La fecha vale para toda la bandeja. Si dejás los días vacíos toma {CLONER_READY_DAYS} como referencia.</div>}
+    {isAdmin&&<div style={{fontSize:11.5,color:C.textSoft,marginTop:-6,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>La fecha vale para toda la bandeja. Si dejás los días vacíos toma {CLONER_KINDS[kind].days} como referencia.</div>}
 
-    {isAdmin&&used>0&&<div style={{display:"flex",gap:9,marginBottom:14}}>
-      <Btn onClick={()=>setShowCosechar(true)} style={{flex:1,minHeight:46}}>Cosechar tanda</Btn>
-      <Btn onClick={()=>setShowEliminar(true)} v="secondary" style={{flex:1,minHeight:46,color:C.red,borderColor:`${C.red}55`}}>Eliminar tanda</Btn>
+    {isAdmin&&used>0&&<div style={{display:"flex",gap:9,marginBottom:muertas.length?6:14}}>
+      <Btn onClick={()=>setShowCosechar(true)} disabled={muertas.length>0} style={{flex:1,minHeight:46}}>Cosechar tanda</Btn>
+      <Btn onClick={()=>setShowEliminar(true)} disabled={muertas.length>0} v="secondary" style={{flex:1,minHeight:46,color:C.red,borderColor:`${C.red}55`}}>Eliminar tanda</Btn>
     </div>}
+    {isAdmin&&used>0&&muertas.length>0&&<div style={{fontSize:12,color:C.textSoft,fontWeight:600,marginBottom:14}}>Guardá primero las bajas marcadas para poder cosechar.</div>}
     {isAdmin&&!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      {genetics.map(g=>{const col=genMap[g.name]||C.green;const on=brush===g.name;return <button key={g.name} onClick={()=>setBrush(g.name)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{g.name}</button>;})}
-      <button onClick={()=>setBrush(null)} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:brush===null?C.red:C.redLight,color:brush===null?"#fff":C.red,border:`1.5px solid ${C.red}`}}>Borrar</button>
+      {sortGen(genetics).map(g=>{const col=genMap[g.name]||C.green;const on=!killMode&&brush===g.name;return <button key={g.name} onClick={()=>{setKillMode(false);setBrush(g.name);}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{g.name}</button>;})}
+      <button onClick={()=>{setKillMode(false);setBrush(null);}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:!killMode&&brush===null?C.textMid:C.surfaceAlt,color:!killMode&&brush===null?C.surface:C.textMid,border:`1.5px solid ${C.border}`}}>Borrar</button>
     </div>}
+    {isAdmin&&used+muertas.length>0&&<button onClick={()=>setKillMode(k=>!k)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:killMode?C.redLight:C.surfaceAlt,border:`1.5px solid ${killMode?C.red:C.border}`,color:killMode?C.red:C.textMid}}>
+      <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:killMode?C.red:C.surface,color:killMode?"#fff":C.red}}><Icon n="stop" size={18}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:800}}>Pincel “Murió”{muertas.length?` · ${muertas.length} marcada${muertas.length===1?"":"s"}`:""}</span>
+        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{killMode?"Tocá los esquejes que se murieron. Quedan anotados al guardar.":"Para anotar esquejes muertos con la fecha de hoy"}</span>
+      </span>
+    </button>}
     <div style={{overflowX:"auto",marginBottom:14}}>
-      <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):null} onPaint={isAdmin?paint:null}
-        labelAt={phenoMode?(i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}):null}
+      <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):(muertas.some(m=>m.i===i)?C.redLight:null)} onPaint={isAdmin?paint:null}
+        labelAt={i=>{if(muertas.some(m=>m.i===i))return "✕";if(!phenoMode)return null;const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}}
         ringAt={phenoMode?(i=>slotPhenos[i]&&slotPhenos[i]===brushPheno):null}/>
     </div>
     {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:-8,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>El número de cada slot es el feno que le corresponde, igual que en el cuaderno.</div>}
@@ -4360,7 +4595,7 @@ function FenosPage({user,genetics}){
   if(loading)return <Spin/>;
 
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
-  const conFenos=[...new Set(phenos.map(p=>p.genetic_name).filter(Boolean))].sort();
+  const conFenos=[...new Set(phenos.map(p=>p.genetic_name).filter(Boolean))].sort(byName);
 
   const ordenar=arr=>[...arr].sort((a,b)=>
     orden==="score" ? (b.score||0)-(a.score||0) || (b.grams||0)-(a.grams||0)
@@ -4910,6 +5145,8 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
   const [vistaPl,setVistaPl]=useState("ahora");
   const [clRange,setClRange]=useState("24h");
   const [clSeries,setClSeries]=useState([]);
+  const [selCycle,setSelCycle]=useState(null);     // tanda elegida en "Por tanda" (null = la última)
+  const [tandaVista,setTandaVista]=useState("gen");
 
   useEffect(()=>{
     const desde12=new Date(Date.now()-370*24*3600*1000).toISOString();
@@ -4926,8 +5163,12 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
       db.query("pot_cells","select=cycle_id,genetic_name&limit=3000").catch(()=>[]),
       db.query("veg_stock","select=type,genetic_name,count,status").catch(()=>[]),
       db.query("cloner_slots","select=genetic_name").catch(()=>[]),
-    ]).then(([tasks,wl,nl,closed,cgAll,climate24,active,hy,climHist,cells,veg,slots])=>{
-      setRaw({tasks,wl,nl,closed:closed||[],cgAll:cgAll||[],climate24:climate24||[],active:active||[],hy:hy||[],climHist:climHist||[],cells:cells||[],veg:veg||[],slots:slots||[]});
+      db.query("vg_batches","status=eq.vg&select=id").catch(()=>[]),
+      db.query("vg_lines","select=batch_id,genetic_name,current_count").catch(()=>[]),
+    ]).then(([tasks,wl,nl,closed,cgAll,climate24,active,hy,climHist,cells,veg,slots,vgB,vgL])=>{
+      const abiertas=new Set((vgB||[]).map(b=>sid(b.id)));
+      setRaw({tasks,wl,nl,closed:closed||[],cgAll:cgAll||[],climate24:climate24||[],active:active||[],hy:hy||[],climHist:climHist||[],cells:cells||[],veg:veg||[],slots:slots||[],
+        vg:(vgL||[]).filter(l=>abiertas.has(sid(l.batch_id)))});
     }).finally(()=>setLoading(false));
   },[]);
   useEffect(()=>{
@@ -4997,16 +5238,47 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
     .sort((a,b)=>genOrden==="gpp"?(b.gpp||0)-(a.gpp||0):genOrden==="plants"?b.plants-a.plants:b.grams-a.grams);
   const mejorGpp=[...genStats].filter(g=>g.gpp).sort((a,b)=>b.gpp-a.gpp)[0]||null;
 
-  // Plantas en pie ahora: mesas de los ciclos activos + madres, VG y esquejeras
+  // Plantas en pie ahora: mesas de los ciclos activos + vege (madres, tandas abiertas de VG y esquejeras/hueveras).
+  // Antes faltaba sumar VG: por eso una genética con 30 plantas en VG aparecía con 2 (solo las madres).
   const activosId=new Set(raw.active.filter(c=>sala==="todas"||c.room_id===sala).map(c=>String(c.id)));
   const enPie={};
-  const sumPie=(g,k,n)=>{if(!g||!n)return;const d=enPie[g]=enPie[g]||{salas:0,vege:0};d[k]+=n;};
+  const sumPie=(g,k,n)=>{if(!g||!n)return;const d=enPie[g]=enPie[g]||{salas:0,madres:0,vg:0,esq:0};d[k]+=n;};
   raw.cells.forEach(c=>{if(activosId.has(String(c.cycle_id)))sumPie(c.genetic_name,"salas",1);});
   if(sala==="todas"){
-    raw.veg.forEach(v=>{if(v.status==="inactiva")return;sumPie(v.genetic_name,"vege",+v.count||0);});
-    raw.slots.forEach(s=>sumPie(s.genetic_name,"vege",1));
+    raw.veg.forEach(v=>{if(v.type!=="madre"||v.status==="inactiva")return;sumPie(v.genetic_name,"madres",+v.count||0);});
+    raw.vg.forEach(l=>sumPie(l.genetic_name,"vg",+l.current_count||0));
+    raw.slots.forEach(s=>sumPie(s.genetic_name,"esq",1));
   }
-  const pieStats=Object.entries(enPie).map(([name,d])=>({name,...d,total:d.salas+d.vege})).sort((a,b)=>b.total-a.total);
+  const pieStats=Object.entries(enPie).map(([name,d])=>{const vege=d.madres+d.vg+d.esq;return {name,...d,vege,total:d.salas+vege};}).filter(p=>p.total>0).sort((a,b)=>b.total-a.total||byName(a.name,b.name));
+  const pieTot=pieStats.reduce((a,p)=>({salas:a.salas+p.salas,vege:a.vege+p.vege}),{salas:0,vege:0});
+
+  // Por tanda: un ciclo cerrado elegido, con el rendimiento por genética y por mesa.
+  const genColor={};genetics.forEach(g=>{genColor[g.name]=g.color;});
+  const tandas=raw.closed.filter(c=>sala==="todas"||c.room_id===sala).sort((a,b)=>String(fechaCiclo(b)).localeCompare(String(fechaCiclo(a))));
+  const tanda=tandas.find(c=>sid(c.id)===selCycle)||tandas[0]||null;
+  const tandaStats=(()=>{
+    if(!tanda)return null;
+    const hr=raw.hy.filter(r=>String(r.cycle_id)===String(tanda.id));
+    const gpp=(g,p)=>p>0&&g>0?Math.round(g/p):null;
+    const gAcc={};const mAcc={};
+    if(hr.length){
+      hr.forEach(r=>{
+        const g=r.genetic_name||"Sin genética";const gr=+r.grams||0;const pl=r.plant_count||0;
+        const a=gAcc[g]=gAcc[g]||{name:g,grams:0,plants:0};a.grams+=gr;a.plants+=pl;
+        const ml=r.pot_label||"General";const m=mAcc[ml]=mAcc[ml]||{label:ml,grams:0,plants:0,g:{}};m.grams+=gr;m.plants+=pl;
+        const mg=m.g[g]=m.g[g]||{name:g,grams:0,plants:0};mg.grams+=gr;mg.plants+=pl;
+      });
+    }else{
+      (cgByCycle[String(tanda.id)]||[]).forEach(r=>{const g=r.genetic_name;if(!g)return;const a=gAcc[g]=gAcc[g]||{name:g,grams:0,plants:0};a.grams+=r.yield_grams||0;a.plants+=r.plant_count||0;});
+    }
+    const gens=Object.values(gAcc).map(g=>({...g,gpp:gpp(g.grams,g.plants)})).sort((a,b)=>byName(a.name,b.name));
+    const mesas=Object.values(mAcc).map(m=>({...m,gpp:gpp(m.grams,m.plants),gens:Object.values(m.g).map(g=>({...g,gpp:gpp(g.grams,g.plants)})).sort((a,b)=>byName(a.name,b.name))}))
+      .sort((a,b)=>(a.label==="General")-(b.label==="General")||byName(a.label,b.label));
+    const grams=gens.reduce((a,g)=>a+g.grams,0)||(+tanda.yield_grams||0);
+    const plants=gens.reduce((a,g)=>a+g.plants,0);
+    const dias=tanda.flower_start&&fechaCiclo(tanda)?Math.round((new Date(fechaCiclo(tanda)+"T12:00:00")-new Date(String(tanda.flower_start).slice(0,10)+"T12:00:00"))/86400000):null;
+    return {gens,mesas,grams,plants,gpp:gpp(grams,plants),dias};
+  })();
 
   const conClima=cycleStats.filter(c=>c.clima&&(c.clima.temp!=null||c.clima.hum!=null));
   const clFor=field=>CL_ROOMS.map((r,i)=>({
@@ -5032,51 +5304,75 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
   const periodoTxt=meses>0?ST_PERIODS.find(p=>p[0]===meses)[1].toLowerCase():"todo el historial";
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
-    <PageTitle sub={`${sala==="todas"?"Las dos salas":getRC(roomConfig,sala).display_name} · ${periodoTxt}`}>Estadísticas</PageTitle>
+    <PageTitle sub={sala==="todas"?"Las dos salas":getRC(roomConfig,sala).display_name}>Estadísticas</PageTitle>
 
     <div style={{display:"flex",background:C.surfaceAlt,borderRadius:16,padding:4,border:`1px solid ${C.border}`}}>
-      {segBtn(sala==="todas","Las dos",()=>setSala("todas"),"todas")}
-      {salasAll.map(r=>segBtn(sala===r,getRC(roomConfig,r).display_name,()=>setSala(r),r))}
-    </div>
-    <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none"}}>
-      {ST_PERIODS.map(([m,l])=>{const on=meses===m;return <button key={m} onClick={()=>setMeses(m)} style={{padding:"8px 14px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.green:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{l}</button>;})}
+      {segBtn(sala==="todas","Las dos",()=>{setSala("todas");setSelCycle(null);},"todas")}
+      {salasAll.map(r=>segBtn(sala===r,getRC(roomConfig,r).display_name,()=>{setSala(r);setSelCycle(null);},r))}
     </div>
 
-    <div style={{display:"flex",gap:8}}>
-      {stat(totalG>0?`${(totalG/1000).toFixed(1).replace(".",",")} kg`:"—","cosechado")}
-      {stat(plantasT>0&&totalG>0?Math.round(totalG/plantasT):"—","g/planta")}
-      {stat(conG.length,`ciclo${conG.length===1?"":"s"} con peso`)}
-    </div>
-
-    {conG.length>0&&<Card style={{padding:"16px 16px 14px"}}>
-      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Cosecha ciclo a ciclo</div>
-      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:6}}>Cada barra es un ciclo cerrado, en orden de cosecha.</div>
-      <CycleBars data={conG} roomConfig={roomConfig}/>
-    </Card>}
-
-    {genStats.length>0&&<Card style={{padding:"16px 16px 14px"}}>
-      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Rendimiento por genética</div>
-      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{mejorGpp?`La más rendidora es ${mejorGpp.name}, con ${mejorGpp.gpp} g por planta.`:"Sobre los ciclos cerrados del período."}</div>
-      <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
-        {segBtn(genOrden==="grams","Gramos",()=>setGenOrden("grams"),"g")}
-        {segBtn(genOrden==="gpp","g/planta",()=>setGenOrden("gpp"),"gpp")}
-        {segBtn(genOrden==="plants","Plantas",()=>setGenOrden("plants"),"pl")}
-      </div>
-      {(()=>{
-        const val=g=>genOrden==="gpp"?(g.gpp||0):genOrden==="plants"?g.plants:g.grams;
-        const max=Math.max(...genStats.map(val),1);
-        return genStats.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
-            <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
-            <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{Math.round(g.grams)} g · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
+    <Card style={{padding:"16px 16px 14px"}}>
+      <div style={{fontSize:16,fontWeight:800,color:C.text}}>Por tanda</div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>Cómo rindió cada genética en un ciclo cerrado. Elegí la tanda.</div>
+      {tandas.length===0
+        ? <div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0"}}>Todavía no hay ciclos cerrados{sala==="todas"?"":` en ${getRC(roomConfig,sala).display_name}`}.</div>
+        : <>
+          <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none",paddingBottom:2,marginBottom:12}}>
+            {tandas.map(c=>{const on=tanda&&sid(tanda.id)===sid(c.id);const col=roomColor(c.room_id);
+              return <button key={c.id} onClick={()=>setSelCycle(sid(c.id))} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 13px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.text:C.surface,color:on?C.bg:C.textMid,border:`1px solid ${on?C.text:C.border}`}}>
+                <span style={{width:8,height:8,borderRadius:"50%",background:col}}/>{getRC(roomConfig,c.room_id).display_name} · {fmtDM(fechaCiclo(c))}
+              </button>;})}
           </div>
-          <Bar value={val(g)} max={max} color={genOrden==="gpp"?C.purple:genOrden==="plants"?C.blue:C.green} h={8}/>
-        </div>);})()}
-    </Card>}
+          {tanda&&(()=>{
+            const t=tandaStats;
+            return <>
+              <div style={{fontSize:13,color:C.textSoft,fontWeight:700,marginBottom:10}}>
+                {getRC(roomConfig,tanda.room_id).display_name} · flora {tanda.flower_start?fmtDM(tanda.flower_start):"—"} a {fmtDM(fechaCiclo(tanda))}{t.dias!=null?` · ${t.dias} días`:""}
+                {tanda.harvest_status==="secando"&&<span style={{color:C.amber}}> · falta terminar de pesar</span>}
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                {[[t.grams>0?(t.grams>=1000?`${(t.grams/1000).toFixed(2).replace(".",",")} kg`:`${Math.round(t.grams)} g`):"—","cosechado"],[t.plants||"—","plantas"],[t.gpp||"—","g/planta"]].map(([v,l])=><div key={l} style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"10px 12px",minWidth:0}}>
+                  <div style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{v}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>{l}</div>
+                </div>)}
+              </div>
+              <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
+                {segBtn(tandaVista==="gen","Por genética",()=>setTandaVista("gen"),"tg")}
+                {segBtn(tandaVista==="mesa","Por mesa",()=>setTandaVista("mesa"),"tm")}
+              </div>
+              {tandaVista==="gen"&&(t.gens.length===0
+                ? <div style={{fontSize:13,color:C.textSoft}}>Este ciclo no tiene genéticas cargadas.</div>
+                : (()=>{const max=Math.max(...t.gens.map(g=>g.grams),1);return t.gens.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
+                      <span style={{display:"flex",alignItems:"center",gap:7,fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><span style={{width:9,height:9,borderRadius:"50%",background:genColor[g.name]||C.green,flexShrink:0}}/>{g.name}</span>
+                      <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{g.grams>0?`${Math.round(g.grams)} g`:"— g"} · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
+                    </div>
+                    <Bar value={g.grams} max={max} color={genColor[g.name]||C.green} h={8}/>
+                  </div>);})())}
+              {tandaVista==="mesa"&&(t.mesas.length===0
+                ? <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Este ciclo no tiene el desglose por mesa (se cerró antes de que existiera o no se pintaron las mesas).</div>
+                : t.mesas.map((m,i)=><div key={m.label} style={{padding:"11px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+                      <span style={{flex:1,fontSize:15.5,fontWeight:800,color:C.text}}>{m.label==="General"?"Sin mesa":`Mesa ${m.label}`}</span>
+                      <span style={{fontSize:13,color:C.textSoft,fontWeight:700,whiteSpace:"nowrap"}}>{m.plants} pl{m.gpp?` · ${m.gpp} g/pl`:""}</span>
+                      <span style={{fontSize:17,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{m.grams>0?Math.round(m.grams):"—"}<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}> g</span></span>
+                    </div>
+                    <div style={{marginTop:6}}><Stripe mix={m.gens.map(g=>[g.name,Math.max(1,g.plants)])} genMap={genColor} h={7}/></div>
+                    <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>
+                      {m.gens.map(g=><span key={g.name} style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:C.textMid,fontWeight:600}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:genColor[g.name]||C.green,flexShrink:0}}/>
+                        <span style={{flex:1,minWidth:0}}>{g.name}</span>
+                        <span style={{whiteSpace:"nowrap"}}>{g.grams>0?`${Math.round(g.grams)} g`:"—"} · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
+                      </span>)}
+                    </div>
+                  </div>))}
+            </>;
+          })()}
+        </>}
+    </Card>
 
     <Card style={{padding:"16px 16px 14px"}}>
       <div style={{fontSize:16,fontWeight:800,color:C.text}}>Plantas por genética</div>
-      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{vistaPl==="ahora"?"Lo que está en pie hoy: mesas en producción, madres, VG y esquejeras.":`Plantas cosechadas en ${periodoTxt}.`}</div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{vistaPl==="ahora"?(sala==="todas"?"Lo que está en pie hoy: en las salas y en vege (madres, VG y esquejeras).":`Lo que está en pie hoy en ${getRC(roomConfig,sala).display_name}.`):`Plantas cosechadas en ${periodoTxt}.`}</div>
       <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
         {segBtn(vistaPl==="ahora","En pie ahora",()=>setVistaPl("ahora"),"ahora")}
         {segBtn(vistaPl==="hist","Histórico",()=>setVistaPl("hist"),"hist")}
@@ -5084,13 +5380,30 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
       {vistaPl==="ahora"
         ? (pieStats.length===0
             ? <div style={{fontSize:13,color:C.textSoft}}>No hay plantas cargadas en las mesas ni en vege.</div>
-            : (()=>{const max=Math.max(...pieStats.map(p=>p.total),1);return pieStats.map((p,i)=><div key={p.name} style={{marginTop:i?12:0}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
-                  <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
-                  <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{p.total} pl{p.vege?` · ${p.salas} en salas, ${p.vege} en vege`:""}</span>
-                </div>
-                <Bar value={p.total} max={max} color={C.green} h={8}/>
-              </div>);})())
+            : <>
+              {sala==="todas"&&<div style={{display:"flex",gap:8,marginBottom:12}}>
+                {[[pieTot.salas,"en salas"],[pieTot.vege,"en vege"]].map(([v,l])=><div key={l} style={{flex:1,background:C.surfaceAlt,borderRadius:14,padding:"9px 12px"}}>
+                  <div style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{v}</div><div style={{fontSize:12,color:C.textSoft,fontWeight:700}}>{l}</div>
+                </div>)}
+              </div>}
+              {(()=>{const max=Math.max(...pieStats.map(p=>p.total),1);return pieStats.map((p,i)=>{
+                const det=[p.madres?`${p.madres} madre${p.madres===1?"":"s"}`:null,p.vg?`${p.vg} en VG`:null,p.esq?`${p.esq} esqueje${p.esq===1?"":"s"}`:null].filter(Boolean).join(" · ");
+                return <div key={p.name} style={{marginTop:i?12:0}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2,gap:8}}>
+                    <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                    <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{p.total} pl{sala==="todas"?` · ${p.salas} en sala, ${p.vege} en vege`:""}</span>
+                  </div>
+                  {det&&<div style={{fontSize:12,color:C.textSoft,fontWeight:600,marginBottom:4,textAlign:"right"}}>Vege: {det}</div>}
+                  <div style={{display:"flex",height:8,borderRadius:99,overflow:"hidden",background:C.border}}>
+                    <span style={{width:`${p.salas/max*100}%`,background:C.amber}}/>
+                    <span style={{width:`${p.vege/max*100}%`,background:C.green}}/>
+                  </div>
+                </div>;});})()}
+              {sala==="todas"&&<div style={{display:"flex",gap:14,marginTop:12}}>
+                <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:700,color:C.textMid}}><span style={{width:10,height:10,borderRadius:3,background:C.amber}}/>En sala</span>
+                <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:700,color:C.textMid}}><span style={{width:10,height:10,borderRadius:3,background:C.green}}/>En vege</span>
+              </div>}
+            </>)
         : (genStats.filter(g=>g.plants>0).length===0
             ? <div style={{fontSize:13,color:C.textSoft}}>Sin cosechas cargadas en este período.</div>
             : (()=>{const list=[...genStats].filter(g=>g.plants>0).sort((a,b)=>b.plants-a.plants);const max=Math.max(...list.map(g=>g.plants),1);
@@ -5103,24 +5416,61 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
                 </div>);})())}
     </Card>
 
-    {cycleStats.length>0&&<Card style={{padding:"16px 16px 6px"}}>
-      <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:4}}>Ciclos cerrados</div>
-      {[...cycleStats].reverse().map((c,i)=>{
-        const name=getRC(roomConfig,c.room).display_name;const dif=c.realDays!=null&&c.estDays!=null?c.realDays-c.estDays:null;
-        return <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
-          <span style={{width:10,alignSelf:"stretch",minHeight:34,borderRadius:4,background:roomColor(c.room),flexShrink:0}}/>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{name}{c.date?` · ${fmtDM(c.date)}`:""}</div>
-            <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.grams>0?`${c.plants||"—"} plantas${c.gpp?` · ${c.gpp} g/pl`:""}${c.gm2?` · ${c.gm2} g/m²`:""}`:"Falta cargar la cosecha"}{c.realDays!=null?` · ${c.realDays} días`:""}</div>
-            {c.clima&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.clima.temp!=null?`${fmtNum(c.clima.temp,1)} °C`:"—"}{c.clima.hum!=null?` · ${fmtNum(c.clima.hum,0)} % hum`:""} promedio</div>}
-          </div>
-          <span style={{textAlign:"right"}}>
-            <span style={{display:"block",fontSize:18,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{c.grams>0?Math.round(c.grams):"—"}<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}> g</span></span>
-            {dif!=null&&<span style={{fontSize:11.5,fontWeight:800,color:dif===0?C.green:C.amber}}>{dif===0?"en fecha":dif>0?`+${dif} días`:`${dif} días`}</span>}
-          </span>
-        </div>;})}
-    </Card>}
+    <Fold icon="chart" title="Resumen general" right={<span style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{periodoTxt}</span>}>
+      <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none",marginBottom:12}}>
+        {ST_PERIODS.map(([m,l])=>{const on=meses===m;return <button key={m} onClick={()=>setMeses(m)} style={{padding:"8px 14px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.green:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{l}</button>;})}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {stat(totalG>0?`${(totalG/1000).toFixed(1).replace(".",",")} kg`:"—","cosechado")}
+        {stat(plantasT>0&&totalG>0?Math.round(totalG/plantasT):"—","g/planta")}
+        {stat(conG.length,`ciclo${conG.length===1?"":"s"} con peso`)}
+      </div>
 
+      {conG.length>0&&<div style={{marginTop:18}}>
+        <div style={{fontSize:15,fontWeight:800,color:C.text}}>Cosecha ciclo a ciclo</div>
+        <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:6}}>Cada barra es un ciclo cerrado, en orden de cosecha.</div>
+        <CycleBars data={conG} roomConfig={roomConfig}/>
+      </div>}
+
+      {genStats.length>0&&<div style={{marginTop:18}}>
+        <div style={{fontSize:15,fontWeight:800,color:C.text}}>Rendimiento por genética</div>
+        <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10}}>{mejorGpp?`La más rendidora es ${mejorGpp.name}, con ${mejorGpp.gpp} g por planta.`:"Sobre los ciclos cerrados del período."}</div>
+        <div style={{display:"flex",background:C.surfaceAlt,borderRadius:14,padding:3,border:`1px solid ${C.border}`,marginBottom:12}}>
+          {segBtn(genOrden==="grams","Gramos",()=>setGenOrden("grams"),"g")}
+          {segBtn(genOrden==="gpp","g/planta",()=>setGenOrden("gpp"),"gpp")}
+          {segBtn(genOrden==="plants","Plantas",()=>setGenOrden("plants"),"pl")}
+        </div>
+        {(()=>{
+          const val=g=>genOrden==="gpp"?(g.gpp||0):genOrden==="plants"?g.plants:g.grams;
+          const max=Math.max(...genStats.map(val),1);
+          return genStats.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
+              <span style={{fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
+              <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{Math.round(g.grams)} g · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
+            </div>
+            <Bar value={val(g)} max={max} color={genOrden==="gpp"?C.purple:genOrden==="plants"?C.blue:C.green} h={8}/>
+          </div>);})()}
+      </div>}
+
+      {cycleStats.length>0&&<div style={{marginTop:18}}>
+        <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>Ciclos cerrados</div>
+        {[...cycleStats].reverse().map((c,i)=>{
+          const name=getRC(roomConfig,c.room).display_name;const dif=c.realDays!=null&&c.estDays!=null?c.realDays-c.estDays:null;
+          return <button key={c.id} onClick={()=>{setSelCycle(sid(c.id));setTandaVista("gen");try{window.scrollTo({top:0,behavior:"smooth"});}catch{}}} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"11px 0",background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+            <span style={{width:10,alignSelf:"stretch",minHeight:34,borderRadius:4,background:roomColor(c.room),flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{name}{c.date?` · ${fmtDM(c.date)}`:""}</div>
+              <div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.grams>0?`${c.plants||"—"} plantas${c.gpp?` · ${c.gpp} g/pl`:""}${c.gm2?` · ${c.gm2} g/m²`:""}`:"Falta cargar la cosecha"}{c.realDays!=null?` · ${c.realDays} días`:""}</div>
+              {c.clima&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600}}>{c.clima.temp!=null?`${fmtNum(c.clima.temp,1)} °C`:"—"}{c.clima.hum!=null?` · ${fmtNum(c.clima.hum,0)} % hum`:""} promedio</div>}
+            </div>
+            <span style={{textAlign:"right"}}>
+              <span style={{display:"block",fontSize:18,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{c.grams>0?Math.round(c.grams):"—"}<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}> g</span></span>
+              {dif!=null&&<span style={{fontSize:11.5,fontWeight:800,color:dif===0?C.green:C.amber}}>{dif===0?"en fecha":dif>0?`+${dif} días`:`${dif} días`}</span>}
+            </span>
+          </button>;})}
+        <div style={{fontSize:12,color:C.textSoft,marginTop:6}}>Tocá un ciclo para verlo arriba, en “Por tanda”.</div>
+      </div>}
+    </Fold>
     <Fold icon="thermo" title="Clima por ciclo" count={conClima.length}>
       {conClima.length===0
         ? <div style={{fontSize:13,color:C.textSoft,lineHeight:1.5}}>Todavía no hay mediciones de clima dentro de estos ciclos. A medida que se cargue el clima, acá vas a poder comparar si una sala rindió más con más calor o más humedad.</div>
@@ -6132,6 +6482,8 @@ function EsqCfgSheet({cloner,cloners,used,user,onClose,onSaved}){
   const [name,setName]=useState(cloner.label||"");
   const [rows,setRows]=useState(clonerRows(cloner.capacity,cols0));
   const [cols,setCols]=useState(cols0);
+  const [kind,setKind]=useState(clonerKind(cloner));
+  const [days,setDays]=useState(batchReadyDays(cloner));
   const [confirmDel,setConfirmDel]=useState(false);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState(null);
@@ -6140,13 +6492,13 @@ function EsqCfgSheet({cloner,cloners,used,user,onClose,onSaved}){
   const save=async()=>{
     const nm=name.trim();
     if(!nm){setErr("Poné un nombre.");return;}
-    if(cloners.some(x=>sid(x.id)!==sid(cloner.id)&&String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay otra esquejera con ese nombre.");return;}
+    if(cloners.some(x=>sid(x.id)!==sid(cloner.id)&&String(x.label||"").toLowerCase()===nm.toLowerCase())){setErr("Ya hay otra bandeja con ese nombre.");return;}
     setSaving(true);setErr(null);
     try{
-      const data={label:nm};
+      const data={label:nm,kind,ready_days:Math.max(1,+days||CLONER_KINDS[kind].days)};
       if(vacia){data.capacity=r*c;data.cols=c;}
       await db.update("cloners",cloner.id,data);
-      await logA(user.name,`Editó esquejera: ${cloner.label}${nm!==cloner.label?` → ${nm}`:""}`,"esquejera");
+      await logA(user.name,`Editó ${CLONER_KINDS[kind].l.toLowerCase()}: ${cloner.label}${nm!==cloner.label?` → ${nm}`:""}`,"esquejera");
       onSaved(`${nm} guardada ✓`);
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
@@ -6158,7 +6510,10 @@ function EsqCfgSheet({cloner,cloners,used,user,onClose,onSaved}){
   };
   return <Sheet title={cloner.label} sub={vacia?"Vacía":`${used} esqueje${used===1?"":"s"} cargados`} onClose={onClose}>
     <ErrBox err={err}/>
-    <div style={{marginTop:4}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)}/></div>
+    <FLabel style={{marginTop:4}}>Tipo</FLabel>
+    <Pills options={[["esquejera","Esquejera"],["huevera","Huevera"]]} value={kind} onChange={k=>{if(k!==kind){setKind(k);setDays(CLONER_KINDS[k].days);}}}/>
+    <div style={{marginTop:12}}><FI label="Nombre" value={name} onChange={e=>setName(e.target.value)}/></div>
+    <div style={{width:"50%",paddingRight:5}}><NumField label="Días para enraizar" value={days} onCommit={v=>setDays(v===""?CLONER_KINDS[kind].days:+v)} min={1} max={60}/></div>
     {vacia?<>
       <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
         <div style={{flex:1}}><NumField label="Filas" value={rows} onCommit={v=>setRows(v===""?1:+v)} min={1} max={20}/></div>
@@ -6171,7 +6526,7 @@ function EsqCfgSheet({cloner,cloners,used,user,onClose,onSaved}){
       </div>
     </>:<div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45}}>Medida {clonerRows(cloner.capacity,cols0)} × {cols0}. Para cambiarla o borrarla, primero cosechá o vaciá la bandeja.</div>}
     <SheetActions onSave={save} onCancel={onClose} saving={saving}/>
-    {vacia&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="trash" label={confirmDel?"Tocá de nuevo para eliminar":"Eliminar esquejera"} danger onClick={borrar}/></div>}
+    {vacia&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}><SheetRow icon="trash" label={confirmDel?"Tocá de nuevo para eliminar":`Eliminar ${CLONER_KINDS[kind].l.toLowerCase()}`} danger onClick={borrar}/></div>}
   </Sheet>;
 }
 
@@ -6268,7 +6623,7 @@ function ConfigPage({user,roomConfig,onChanged,onTargetsChanged}){
     {newEsq&&<NuevaEsquejeraSheet cloners={cloners} user={user} onClose={()=>setNewEsq(false)} onSaved={done}/>}
     {userSel&&<UserCfgSheet u={userSel} users={users} me={user} onClose={()=>setUserSel(null)} onSaved={done}/>}
 
-    <PageTitle sub="Salas, esquejeras y usuarios">Configuración</PageTitle>
+    <PageTitle sub="Salas, esquejeras, hueveras y usuarios">Configuración</PageTitle>
 
     {gTitle("Salas")}
     <Card style={{padding:0,overflow:"hidden"}}>
@@ -6277,11 +6632,11 @@ function ConfigPage({user,roomConfig,onChanged,onTargetsChanged}){
       {row("veg-clima",<Icon n="thermo" size={20}/>,C.green,"Clima de Vege","Objetivos de temperatura y humedad",()=>setTargetsRoom("Vegetativo"),1)}
     </Card>
 
-    {gTitle("Esquejeras",addBtn(()=>setNewEsq(true),"Agregar"))}
+    {gTitle("Esquejeras y hueveras",addBtn(()=>setNewEsq(true),"Agregar"))}
     <Card style={{padding:0,overflow:"hidden"}}>
-      {cloners.length===0&&<div style={{padding:"16px 14px",fontSize:13.5,color:C.textSoft}}>Sin esquejeras. Tocá “Agregar”.</div>}
-      {cloners.map((cl,i)=>{const n=usedOf(cl);const cols=cl.cols||CLONER_COLS;
-        return row(cl.id,<Icon n="scissors" size={20}/>,C.green,cl.label,`${clonerRows(cl.capacity,cols)} × ${cols} · ${n?`${n} esqueje${n===1?"":"s"}`:"vacía"}`,()=>setEsqSel(cl),i);})}
+      {cloners.length===0&&<div style={{padding:"16px 14px",fontSize:13.5,color:C.textSoft}}>Sin bandejas. Tocá “Agregar”.</div>}
+      {[...cloners].sort((a,b)=>(clonerKind(a)===clonerKind(b)?0:clonerKind(a)==="esquejera"?-1:1)||byName(a.label,b.label)).map((cl,i)=>{const n=usedOf(cl);const cols=cl.cols||CLONER_COLS;const k=clonerKind(cl);
+        return row(cl.id,<Icon n={k==="huevera"?"seed":"scissors"} size={20}/>,C.green,cl.label,`${CLONER_KINDS[k].l} · ${clonerRows(cl.capacity,cols)} × ${cols} · ${batchReadyDays(cl)} días · ${n?`${n} esqueje${n===1?"":"s"}`:"vacía"}`,()=>setEsqSel(cl),i);})}
     </Card>
 
     {gTitle("Usuarios",addBtn(()=>setUserSel({}),"Agregar"))}
