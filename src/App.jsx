@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 const SUPA_URL = "https://spirakozxkymwstelrph.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwaXJha296eGt5bXdzdGVscnBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDgwNzYsImV4cCI6MjA5NDY4NDA3Nn0.wsKIWwEgxmSSWNSzwOwvyqRMnOM1AztZuhvnaQnV7Jw";
@@ -230,6 +230,66 @@ const genAbbr = (name) => {
   return w.slice(0,2).map(x=>x[0]).join("");
 };
 const phenoCode = (prefix,n) => `${prefix||"F"}-${n}`;
+
+// ── SIGLAS ───────────────────────────────────────────────────────────────────
+// Cada genética se identifica con letras además del color (los colores se parecen).
+// Orden: la sigla cargada a mano en Genéticas → el prefijo de feno (Dos y Choc = DS) →
+// la automática: una letra por palabra (G-Funk = GF, Amaretto Tarmac S1 = AT),
+// una palabra sola = una letra (Zorrino = Z), el número se suma (Zorrino #1 = Z1),
+// las que ya son sigla quedan (ICC, LPP). Si dos coinciden, a la segunda se le suma
+// la letra siguiente de su última palabra (Tangie Funk = TF, Tangie Friter = TFR).
+const autoSiglaParts = (name) => {
+  const toks=String(name||"").trim().split(/[\s\-_/]+/).filter(Boolean);
+  const words=[];let num="";
+  toks.forEach(t=>{
+    const n=t.match(/^#?(\d+)$/);if(n){num+=n[1];return;}
+    if(/^[a-z]\d+$/i.test(t))return;                      // S1, F2: generación, no va en la sigla
+    const clean=t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñÜü0-9]/g,"");if(clean)words.push(clean);
+  });
+  const up=w=>w.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const base=words.map(w=>/^[A-ZÑ]{2,5}$/.test(w)?w:up(w[0])).join("");
+  return {base:base||up(String(name||"?").replace(/[^A-Za-z]/g,"").slice(0,2))||"?",num,last:words[words.length-1]||""};
+};
+const autoSigla = (name) => {const p=autoSiglaParts(name);return p.base+p.num;};
+const buildSiglas = (list=[]) => {
+  const out={};const used=new Set();
+  const fija=g=>String(g.sigla||g.pheno_prefix||"").trim().toUpperCase();
+  list.forEach(g=>{const f=fija(g);if(f&&g.name){out[g.name]=f;used.add(f);}});
+  [...list].filter(g=>g.name&&!out[g.name]).sort((a,b)=>byName(a.name,b.name)).forEach(g=>{
+    const {base,num,last}=autoSiglaParts(g.name);
+    let s=base+num;let k=1;
+    const extra=String(last).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g,"");
+    while(used.has(s)&&k<extra.length){s=base+extra.slice(1,k+1)+num;k++;}
+    let c=2;const s0=s;while(used.has(s)){s=`${s0}${c}`;c++;}
+    out[g.name]=s;used.add(s);
+  });
+  return out;
+};
+// Se recalcula cada vez que cambia la lista de genéticas (lo hace App).
+let SIGLAS = {};
+const setSiglas = (list) => { SIGLAS = buildSiglas(list||[]); return SIGLAS; };
+const siglaDe = (name) => name ? (SIGLAS[name] || autoSigla(name)) : "";
+// Contenido de una celda (mesa, esquejera, huevera): la sigla grande, el número del feno
+// debajo si lo tiene y un puntito en la esquina si vino de semilla.
+function CellTxt({name,num=null,seed=false,size=34}){
+  const s=siglaDe(name);
+  const big=s.length<=2?0.4:s.length===3?0.32:0.26;
+  return <>
+    {num!=null
+      ? <span style={{display:"flex",flexDirection:"column",alignItems:"center",lineHeight:1,gap:1}}>
+          <span style={{fontSize:Math.max(7,Math.round(size*(s.length<=3?0.26:0.22))),fontWeight:900,opacity:0.85,letterSpacing:"-0.02em"}}>{s}</span>
+          <span style={{fontSize:Math.max(8,Math.round(size*0.34)),fontWeight:900}}>{num}</span>
+        </span>
+      : <span style={{fontSize:Math.max(7,Math.round(size*big)),fontWeight:900,letterSpacing:"-0.03em",lineHeight:1}}>{s}</span>}
+    {seed&&<span style={{position:"absolute",top:Math.max(2,Math.round(size*0.08)),right:Math.max(2,Math.round(size*0.08)),width:Math.max(4,Math.round(size*0.14)),height:Math.max(4,Math.round(size*0.14)),borderRadius:"50%",background:"currentColor",opacity:0.8}}/>}
+  </>;
+}
+const Swatch = ({color,name,size=34,txt}) => {
+  const s=txt!=null?txt:siglaDe(name);
+  return <span style={{width:size,height:size,borderRadius:Math.round(size*0.3),flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+    background:color||C.surfaceAlt,color:color?inkFill(color):C.textMid,border:color?"none":`1px solid ${C.border}`,
+    fontSize:Math.max(8,Math.round(size*(String(s).length<=2?0.38:String(s).length===3?0.31:0.25))),fontWeight:900,letterSpacing:"-0.03em"}}>{s}</span>;
+};
 const PHENO_ST = {
   activo:      {label:"En búsqueda",  color:C.blue,   bg:C.blueLight},
   candidato:   {label:"Candidato",    color:C.amber,  bg:C.amberLight},
@@ -354,10 +414,10 @@ function ClonerGrid({capacity,colorAt,onPaint=null,cell=null,showCoords=false,la
         return <div key={i} onClick={()=>used&&onPaint&&onPaint(i)} title={used?slotCoord(i,cols)+(col?"":" · vacío"):""}
           style={{width:cellSize,height:cellSize,borderRadius:interactive?6:3,background:used?(col||C.border):"transparent",
             border:used?`${ring?2:1}px solid ${ring?C.purple:(col?"transparent":C.borderStrong)}`:"none",cursor:interactive&&used?"pointer":"default",
-            opacity:used?1:0.25,transition:"background 0.08s",
+            opacity:used?1:0.25,transition:"background 0.08s",position:"relative",
             display:"flex",alignItems:"center",justifyContent:"center",
             fontSize:Math.max(7,Math.round(cellSize*0.32)),fontWeight:900,letterSpacing:"-0.03em",
-            color:col?"rgba(0,0,0,0.72)":C.textSoft}}>
+            color:col&&String(col).startsWith("#")?inkFill(col):(col?C.red:C.textSoft)}}>
           {lab}
         </div>;
       }),
@@ -1745,14 +1805,15 @@ function PotMap({roomId,genetics,cycleGenetics,selectedPot,onSelect,equipment=[]
 
 // Arrancar una búsqueda: define genética, prefijo y cuántas semillas hay.
 // Crea los N fenos de una (DS-1 ... DS-28) y los ubica en la mesa por número.
-function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCreate}){
+function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCreate,canAutofill=true}){
   const cap=gridW*gridH;
-  // El prefijo sale del que se guardó en Genéticas; si no hay, se deduce del nombre.
-  const prefijoDe=n=>{const g=(genetics||[]).find(x=>x.name===n);return (g?.pheno_prefix||"").trim().toUpperCase()||genAbbr(n||"");};
-  const [gen,setGen]=useState(cycleGenetics[0]?.genetic_name||"");
-  const [prefix,setPrefix]=useState(()=>prefijoDe(cycleGenetics[0]?.genetic_name||""));
-  const [count,setCount]=useState(cap);
-  const [autofill,setAutofill]=useState(true);
+  // El prefijo sale del que se guardó en Genéticas; si no hay, de la sigla.
+  const prefijoDe=n=>{const g=(genetics||[]).find(x=>x.name===n);return (g?.pheno_prefix||"").trim().toUpperCase()||siglaDe(n||"");};
+  const opciones=sortGen(cycleGenetics.map(c=>({name:c.genetic_name}))).map(g=>genOpt({name:g.name,color:(genetics.find(x=>x.name===g.name)||{}).color}));
+  const [gen,setGen]=useState(opciones[0]?.key||"");
+  const [prefix,setPrefix]=useState(()=>prefijoDe(opciones[0]?.key||""));
+  const [count,setCount]=useState(canAutofill?cap:6);
+  const [autofill,setAutofill]=useState(canAutofill);
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState(null);
   const cambiarGen=v=>{setGen(v);setPrefix(prefijoDe(v));};
@@ -1768,7 +1829,7 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
     <div style={{fontSize:13,color:C.textSoft,marginBottom:14,lineHeight:1.55}}>
       Cada semilla es un feno distinto. Se crean todos ahora y después les vas asignando esquejes en las bandejas.
     </div>
-    <FS label="Genética" value={gen} onChange={e=>cambiarGen(e.target.value)} options={[...cycleGenetics].sort((a,b)=>byName(a.genetic_name,b.genetic_name)).map(g=>({value:g.genetic_name,label:g.genetic_name}))}/>
+    <Picker label="Genética" title="Genética de la búsqueda" placeholder="Elegí la genética" options={opciones} value={gen} onChange={cambiarGen}/>
     <div style={{display:"flex",gap:10}}>
       <div style={{flex:1}}><FI label="Prefijo" value={prefix} onChange={e=>setPrefix(e.target.value.slice(0,5))} placeholder="DS"/></div>
       <div style={{width:126}}><NumField label="Cuántos fenos" value={count} onCommit={v=>setCount(Math.max(1,+v||1))} min={1} max={999}/></div>
@@ -1776,7 +1837,8 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
     <div style={{background:C.purpleLight,borderRadius:11,padding:"10px 13px",marginBottom:12,fontSize:12.5,color:C.purple,lineHeight:1.5}}>
       Se van a crear <strong>{prefix.trim().toUpperCase()||"F"}-1</strong> hasta <strong>{prefix.trim().toUpperCase()||"F"}-{n}</strong>.
     </div>
-    <div onClick={()=>setAutofill(a=>!a)} style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:C.bg,border:`1px solid ${autofill?C.green+"55":C.border}`}}>
+    {!canAutofill&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginBottom:12,lineHeight:1.45}}>La mesa ya tiene otra búsqueda: los fenos nuevos los ubicás a mano con el pincel.</div>}
+    {canAutofill&&<div onClick={()=>setAutofill(a=>!a)} style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"9px 12px",borderRadius:11,cursor:"pointer",background:C.bg,border:`1px solid ${autofill?C.green+"55":C.border}`}}>
       <div style={{width:34,height:20,borderRadius:99,background:autofill?C.green:C.borderStrong,position:"relative",flexShrink:0}}>
         <div style={{position:"absolute",top:3,left:autofill?17:3,width:14,height:14,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
       </div>
@@ -1784,7 +1846,7 @@ function NuevaBusquedaModal({cycleGenetics,genetics=[],gridW,gridH,onClose,onCre
         <div style={{fontSize:12.5,fontWeight:800,color:autofill?C.green:C.textMid}}>Ubicar en la mesa por número</div>
         <div style={{fontSize:11,color:C.textSoft,lineHeight:1.4}}>Cuenta desde abajo a la izquierda: el 1 va en A{gridH} y el {cap} en {COL_LETTERS[gridW-1]}1.</div>
       </div>
-    </div>
+    </div>}
     {n>cap&&autofill&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"8px 12px",fontSize:12,marginBottom:12,lineHeight:1.45}}>La mesa tiene {cap} lugares y pediste {n} fenos. Se ubican los primeros {cap}; el resto queda creado sin lugar.</div>}
     <div style={{display:"flex",gap:10}}>
       <Btn onClick={crear} disabled={busy} style={{flex:1}}>{busy?"Creando...":"Crear búsqueda"}</Btn>
@@ -1811,7 +1873,6 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [editing,setEditing]=useState(false);   // arranca en modo lectura: no se pinta hasta tocar "Editar"
   const [snapshot,setSnapshot]=useState(null);   // copia para poder Cancelar sin perder lo guardado
   const [showSize,setShowSize]=useState(false);
-  const [showOtras,setShowOtras]=useState(false);
   const [showExtra,setShowExtra]=useState(false);// hoja para sumar una genética que no vino en la tanda
   const [extraBusy,setExtraBusy]=useState(null);
   // Búsqueda de fenos: el modo queda prendido en la mesa hasta que un admin lo apague.
@@ -1819,9 +1880,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [cellPhenos,setCellPhenos]=useState(()=>Array(W0*H0).fill(null)); // pheno_id por celda
   const [cellLabels,setCellLabels]=useState(()=>Array(W0*H0).fill(null)); // feno escrito a mano (sin id)
   const [cellOrigins,setCellOrigins]=useState(()=>Array(W0*H0).fill(null)); // esqueje o semilla
-  const [phenoMap,setPhenoMap]=useState({});    // id -> feno de la búsqueda de esta mesa
-  const [hunt,setHunt]=useState(null);          // búsqueda activa en esta mesa
-  const [huntPhenos,setHuntPhenos]=useState([]);// los N fenos de esa búsqueda, ordenados
+  const [phenoMap,setPhenoMap]=useState({});    // id -> feno de las búsquedas de esta mesa
+  const [hunts,setHunts]=useState([]);          // búsquedas de esta mesa (puede haber varias: TAT, TFR, AT...)
+  const [huntPhenos,setHuntPhenos]=useState([]);// todos los fenos de esas búsquedas
   const [showNueva,setShowNueva]=useState(false);
   const [brushPheno,setBrushPheno]=useState(null); // en modo feno el pincel es un feno
   const [killMode,setKillMode]=useState(false);    // pincel "Murió": saca la planta y la anota como baja
@@ -1829,20 +1890,20 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const [err,setErr]=useState(null);
   const genMap={};genetics.forEach(g=>{genMap[g.name]=g.color;});
 
-  // Carga la búsqueda de esta mesa y todos sus fenos.
+  // Carga las búsquedas de esta mesa y todos sus fenos.
   const reloadHunt=useCallback(async(pid)=>{
     if(!pid)return;
     try{
-      const hs=await db.query("pheno_hunts",`pot_id=eq.${sid(pid)}&order=created_at.desc`);
-      const h=hs[0]||null;
-      setHunt(h);
-      if(!h){setHuntPhenos([]);setPhenoMap({});return;}
-      const ps=await db.query("phenos",`hunt_id=eq.${sid(h.id)}&order=number.asc`);
+      const hs=await db.query("pheno_hunts",`pot_id=eq.${sid(pid)}&order=created_at.asc`);
+      setHunts(hs);
+      if(!hs.length){setHuntPhenos([]);setPhenoMap({});return;}
+      const ps=await db.query("phenos",`hunt_id=in.(${hs.map(h=>sid(h.id)).join(",")})&order=number.asc`);
       setHuntPhenos(ps);
       const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
       setBrushPheno(prev=>prev&&ps.some(p=>sid(p.id)===prev)?prev:(ps[0]?sid(ps[0].id):null));
-    }catch{ setHunt(null);setHuntPhenos([]); }
+    }catch{ setHunts([]);setHuntPhenos([]); }
   },[]);
+  const hunt=hunts[0]||null;   // hay al menos una búsqueda en la mesa
 
   useEffect(()=>{
     db.query("pots",`room_id=eq.${roomId}&pot_label=eq.${potLabel}`).then(async pots=>{
@@ -1904,9 +1965,9 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
     }
     if(phenoMode&&hunt){
       // El pincel es un feno concreto. Volver a tocar la misma celda la vacía.
+      const p=phenoMap[brushPheno];if(!p)return;
       const ya=cellPhenos[i]===brushPheno;
-      const p=phenoMap[brushPheno];
-      setCell(i,ya?null:(p?.genetic_name||hunt.genetic_name),ya?null:brushPheno,null,"semilla");
+      setCell(i,ya?null:p.genetic_name,ya?null:brushPheno,null,"semilla");
       return;
     }
     if(brushPool){
@@ -1929,7 +1990,6 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       await logA(user?.name||"sistema",`Sumó ${g.name} al ciclo de ${roomId} desde la mesa ${potLabel}`,"cycle");
       setBrushPool(null);setBrush(g.name);setShowExtra(false);
       setToastLocal(`${g.name} sumada al ciclo. Ya podés pintarla.`);
-      setShowOtras(true);
     }catch(e){setToastLocal(errMsg(e));}
     finally{setExtraBusy(null);}
   };
@@ -1957,8 +2017,8 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       });
       setCells(nc);setCellPhenos(np);setCellLabels(nl);setCellOrigins(no);
     }
-    setHunt(h);setHuntPhenos(ps);
-    const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);
+    setHunts(prev=>[...prev,h]);setHuntPhenos(prev=>[...prev,...ps]);
+    setPhenoMap(prev=>{const m={...prev};ps.forEach(p=>{m[sid(p.id)]=p;});return m;});
     setBrushPheno(ps[0]?sid(ps[0].id):null);
     setPhenoMode(true);
     try{await db.update("pots",potId,{pheno_mode:true});}catch{/* se reintenta al guardar */}
@@ -2010,32 +2070,27 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
   const extraGen={};poolItems.forEach(p=>{if(p.extra>0)extraGen[p.genetic_name]=(extraGen[p.genetic_name]||0)+p.extra;});
   const sumRows=sortPairs(summary);
   const total=cells.filter(Boolean).length;
-  const ubicados=new Set(cellPhenos.filter(Boolean)).size;
-  const sinUbicar=hunt?huntPhenos.filter(p=>!cellPhenos.includes(sid(p.id))).length:0;
+  const vivos=huntPhenos.filter(p=>p.status!=="muerto"&&p.status!=="descartado");
+  const ubicados=vivos.filter(p=>cellPhenos.includes(sid(p.id))).length;
+  const sinUbicar=vivos.length-ubicados;
+  const huntTxt=hunts.length===1?`${hunts[0].prefix}-1 a ${hunts[0].prefix}-${hunts[0].total} · ${hunts[0].genetic_name}`
+    :`${hunts.length} búsquedas: ${[...hunts].sort((a,b)=>byName(a.prefix,b.prefix)).map(h=>h.prefix).join(", ")}`;
   const enCiclo=n=>cycleGenetics.some(c=>c.genetic_name===n);
 
-  const chip=(on,col,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,cursor:"pointer",fontSize:13,fontWeight:800,fontFamily:"inherit",whiteSpace:"nowrap",
-    background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{children}</button>;
-  const miniBadge=(txt,on,col)=><span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,textTransform:"uppercase",letterSpacing:"0.04em",background:on?"rgba(255,255,255,0.3)":C.surfaceAlt,color:on?inkFill(col):C.textMid}}>{txt}</span>;
+  const tool=(on,children,onClick,key,danger)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+    background:on?(danger?C.redLight:C.greenLight):C.surfaceAlt,color:on?(danger?C.red:C.green):C.textMid,border:`1px solid ${on?(danger?C.red:C.green):C.border}`}}>{children}</button>;
   const lbl=t=><div style={{fontSize:12.5,fontWeight:800,color:C.textSoft,margin:"2px 0 7px"}}>{t}</div>;
+  const limpiar=()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(null));};
   const wrap=inSheet?{}:{marginTop:16,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${editing?C.green+"66":C.border}`,padding:16};
   const sz=phenoMode?36:34;
 
   return <div style={wrap}>
     {toastLocal&&<Toast msg={toastLocal} type="error" onClose={()=>setToastLocal(null)}/>}
-    {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} genetics={genetics} gridW={gridW} gridH={gridH} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
-    {showExtra&&<Sheet title="Agregar genética" sub="Cualquier genética, esté o no en la tanda" onClose={()=>setShowExtra(false)} z={300}>
-      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:10,lineHeight:1.45}}>Tocá una y queda como pincel. Si no venía en la tanda se suma al ciclo y las plantas quedan anotadas como fuera de la tanda.</div>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-        {[...genetics].sort((a,b)=>String(a.name).localeCompare(String(b.name),"es")).map(g=>{
-          const col=g.color||C.green;const ya=enCiclo(g.name);
-          return <button key={g.name} onClick={()=>ya?(setBrushPool(null),setBrush(g.name),setShowExtra(false)):sumarGenetica(g)} disabled={!!extraBusy}
-            style={{display:"flex",alignItems:"center",gap:6,padding:"9px 13px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:extraBusy===g.name?0.5:1}}>
-            {!ya&&<Icon n="plus" size={15}/>}{g.name}{ya&&<span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,background:C.surfaceAlt,color:C.textMid,textTransform:"uppercase"}}>en el ciclo</span>}
-          </button>;})}
-      </div>
-      <Btn v="secondary" full onClick={()=>setShowExtra(false)} style={{marginTop:16,minHeight:48}}>Cerrar</Btn>
-    </Sheet>}
+    {showNueva&&<NuevaBusquedaModal cycleGenetics={cycleGenetics} genetics={genetics} gridW={gridW} gridH={gridH} canAutofill={hunts.length===0} onClose={()=>setShowNueva(false)} onCreate={crearBusqueda}/>}
+    {showExtra&&<PickSheet title="Agregar genética" sub="Si no venía en la tanda se suma al ciclo y queda como pincel." z={330}
+      options={genetics.map(g=>genOpt(g,{sub:enCiclo(g.name)?"Ya está en el ciclo":"Se suma al ciclo",disabled:!!extraBusy}))}
+      value={brushPool?null:brush} onClose={()=>setShowExtra(false)}
+      onPick={name=>{const g=genetics.find(x=>x.name===name);if(!g)return;if(enCiclo(g.name)){setBrushPool(null);setBrush(g.name);setShowExtra(false);}else sumarGenetica(g);}}/>}
 
     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
       <span style={{width:46,height:46,borderRadius:pot?.circular?"50%":14,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:editing?C.greenLight:C.surfaceAlt,color:editing?C.green:C.text,fontSize:21,fontWeight:800}}>{potLabel}</span>
@@ -2053,10 +2108,7 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
         <Icon n="pot" size={18}/>Por ubicar en la sala: {poolLeft}{poolExtra>0&&<span style={{fontSize:12.5,fontWeight:800,color:C.textMid}}>· {poolExtra} fuera de la tanda</span>}{editing&&<span style={{fontSize:12.5,fontWeight:700,color:C.textMid,marginLeft:4}}>· tocá una y después las celdas</span>}
       </div>
       {!editing&&isAdmin&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:3}}>Tocá Editar y usalas como pincel.</div>}
-      {editing&&<div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-        {poolItems.map(it=>{const col=genMap[it.genetic_name]||C.green;const f=fenoDe(it.pheno_id,it.pheno_label);const on=brushPool===it.key;
-          return chip(on,col,<>{it.genetic_name}{it.origin==="semilla"&&miniBadge("semilla",on,col)}{f&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.purpleLight,color:on?inkFill(col):C.purple}}>{f}</span>}<span style={{fontVariantNumeric:"tabular-nums",opacity:it.left?1:0.6}}>{it.left}</span>{it.extra>0&&<span style={{fontSize:11,fontWeight:800,padding:"1px 6px",borderRadius:99,background:on?"rgba(255,255,255,0.3)":C.surfaceAlt,color:on?inkFill(col):C.textMid}}>+{it.extra}</span>}</>,()=>{setBrushPool(it.key);setBrush(it.genetic_name);},it.key);})}
-      </div>}
+      {editing&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,marginTop:-3}}>Elegilas abajo en “Pincel”: aparecen primero, con lo que falta ubicar de cada una.</div>}
     </div>}
 
     {/* Búsqueda de fenos: cada semilla es un feno numerado (DS-1, DS-2...) */}
@@ -2064,62 +2116,57 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:phenoMode?C.purple:C.surface,color:phenoMode?"#fff":C.textMid}}><Icon n="flask" size={18}/></span>
       <span style={{flex:1,minWidth:0}}>
         <span style={{display:"block",fontSize:14,fontWeight:800,color:phenoMode?C.purple:C.text}}>Búsqueda de fenos</span>
-        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{hunt?`${hunt.prefix}-1 a ${hunt.prefix}-${hunt.total} · ${hunt.genetic_name}`:"Tocá para arrancar una búsqueda de semillas"}</span>
+        <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{hunt?huntTxt:"Tocá para arrancar una búsqueda de semillas"}</span>
       </span>
       <span style={{width:38,height:22,borderRadius:99,background:phenoMode?C.purple:C.borderStrong,position:"relative",flexShrink:0}}>
         <span style={{position:"absolute",top:3,left:phenoMode?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
       </span>
     </button>}
     {phenoMode&&hunt&&<div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:13,color:C.textSoft,fontWeight:600,margin:"-4px 2px 12px"}}>
-      <span><b style={{color:C.text}}>{ubicados}</b> de {hunt.total} ubicados</span>
+      <span><b style={{color:C.text}}>{ubicados}</b> de {vivos.length} ubicados</span>
       {sinUbicar>0&&<span style={{color:C.amber,fontWeight:800}}>{sinUbicar} sin lugar</span>}
     </div>}
 
-    {editing&&phenoMode&&hunt&&<div style={{marginBottom:12}}>
-      {lbl("Tocá un feno y después las celdas donde va")}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
-        {huntPhenos.map(p=>{
-          const pid=sid(p.id);const n=cellPhenos.filter(x=>x===pid).length;const on=brushPheno===pid;
-          return <button key={pid} onClick={()=>setBrushPheno(pid)} title={p.code}
-            style={{minWidth:40,padding:"7px 8px",borderRadius:10,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",
-              background:on?C.purple:(n>0?C.purpleLight:C.surfaceAlt),color:on?"#fff":(n>0?C.purple:C.textSoft),
-              border:`1.5px solid ${on?C.purple:(n>0?C.purple+"55":C.border)}`}}>{p.number}{n>1?<sup style={{fontSize:8.5}}>×{n}</sup>:null}</button>;
-        })}
-      </div>
-      <div style={{display:"flex",gap:8,marginTop:9,flexWrap:"wrap"}}>
-        <button onClick={()=>{const nc=[...cells],np=[...cellPhenos],nl=[...cellLabels],no=[...cellOrigins];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);nl[idx]=null;no[idx]="semilla";}});setCells(nc);setCellPhenos(np);setCellLabels(nl);setCellOrigins(no);}}
-          style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:C.purpleLight,color:C.purple,border:`1px solid ${C.purple}55`}}>Ubicar por número</button>
-        <button onClick={()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(null));}}
-          style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:C.surfaceAlt,color:C.textMid,border:`1px solid ${C.border}`}}>Limpiar</button>
-      </div>
-    </div>}
+    {editing&&phenoMode&&hunt&&(()=>{
+      const hById={};hunts.forEach(h=>{hById[sid(h.id)]=h;});
+      const opts=[...huntPhenos].sort((a,b)=>byName(hById[sid(a.hunt_id)]?.prefix||"",hById[sid(b.hunt_id)]?.prefix||"")||(a.number||0)-(b.number||0)).map(p=>{
+        const pid=sid(p.id);const n=cellPhenos.filter(x=>x===pid).length;const h=hById[sid(p.hunt_id)];
+        const st=p.status==="muerto"?"perdido":p.status==="descartado"?"descartado":null;
+        return {key:pid,label:p.code,color:genMap[p.genetic_name]||null,sigla:siglaDe(p.genetic_name),group:h?`${h.prefix} · ${h.genetic_name}`:"",
+          sub:[p.genetic_name,st].filter(Boolean).join(" · "),right:n>0?(n>1?`en ${n} lugares`:"ubicado"):"sin lugar"};
+      });
+      return <div style={{marginBottom:12}}>
+        <Picker label="Pincel: feno" title="Elegí el feno" sub="Después tocá las celdas donde está" options={opts} value={brushPheno} onChange={setBrushPheno}/>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:-2}}>
+          {tool(false,<><Icon n="plus" size={15}/>Otra búsqueda</>,()=>setShowNueva(true),"otra")}
+          {hunts.length===1&&tool(false,"Ubicar por número",()=>{const nc=[...cells],np=[...cellPhenos],nl=[...cellLabels],no=[...cellOrigins];huntPhenos.forEach(p=>{const idx=seedIndex(p.number,gridW,gridH);if(idx>=0&&idx<nc.length){nc[idx]=p.genetic_name;np[idx]=sid(p.id);nl[idx]=null;no[idx]="semilla";}});setCells(nc);setCellPhenos(np);setCellLabels(nl);setCellOrigins(no);},"num")}
+          {tool(false,"Limpiar",limpiar,"limpiar")}
+        </div>
+      </div>;
+    })()}
 
     {editing&&!phenoMode&&(()=>{
-      // Si llegó stock de VG, los pinceles son esos (arriba, una sola vez). Las genéticas
-      // del ciclo que no vinieron de VG quedan en "Otras genéticas".
-      const poolGen=new Set(poolItems.map(p=>p.genetic_name));
-      const otras=cycleGenetics.filter(g=>!poolGen.has(g.genetic_name));
-      const genChips=list=>sortGen(list).map(g=>{const col=genMap[g.genetic_name]||C.green;const on=!brushPool&&brush===g.genetic_name;
-        return chip(on,col,<>{g.genetic_name}{on&&brushOrigin==="semilla"&&miniBadge("semilla",on,col)}</>,()=>{setBrushPool(null);setBrush(g.genetic_name);},g.genetic_name);});
-      const tool=(on,children,onClick,key)=><button key={key} onClick={onClick} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:on?C.greenLight:C.surfaceAlt,color:on?C.green:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{children}</button>;
-      const hayPool=poolItems.length>0;
-      const limpiar=()=>{setCells(Array(gridW*gridH).fill(null));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(null));};
+      // Un solo desplegable: primero lo que llegó de VG (con lo que falta ubicar), después las genéticas del ciclo.
+      const poolOpts=poolItems.map(it=>{const f=fenoDe(it.pheno_id,it.pheno_label);
+        return {key:`pool:${it.key}`,label:`${it.genetic_name}${f?` · ${f}`:""}`,color:genMap[it.genetic_name]||null,sigla:siglaDe(it.genetic_name),group:"Llegaron de VG (por ubicar)",
+          sub:`${it.origin==="semilla"?"Semilla":"Esqueje"}${it.extra>0?` · ${it.extra} fuera de la tanda`:""}`,right:it.left};});
+      const genOpts=sortGen(cycleGenetics.map(g=>({name:g.genetic_name}))).map(g=>genOpt({name:g.name,color:genMap[g.name]||null},{key:`gen:${g.name}`,group:poolOpts.length?"Genéticas del ciclo":""}));
+      const val=brushPool?`pool:${brushPool}`:(brush?`gen:${brush}`:null);
+      const elegir=k=>{if(k.startsWith("pool:")){const key=k.slice(5);const it=poolItems.find(p=>p.key===key);setBrushPool(key);setBrush(it?.genetic_name||null);}else{setBrushPool(null);setBrush(k.slice(4));}setKillMode(false);};
       return <div style={{marginBottom:12}}>
-        {!hayPool&&cycleGenetics.length>0&&<>{lbl("Genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(cycleGenetics)}</div></>}
-        {hayPool&&showOtras&&otras.length>0&&<>{lbl("Otras genéticas del ciclo")}<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:9}}>{genChips(otras)}</div></>}
-        {!brushPool&&brush&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9,flexWrap:"wrap"}}>
+        <Picker label="Pincel" title="¿Qué vas a pintar?" placeholder="Elegí una genética" options={[...poolOpts,...genOpts]} value={killMode||val==null?null:val} onChange={elegir}
+          footer={isAdmin&&<Btn v="secondary" full onClick={()=>setShowExtra(true)} style={{marginTop:12,minHeight:46}}>+ Otra genética (que no está en el ciclo)</Btn>}/>
+        {!brushPool&&brush&&!killMode&&<div style={{display:"flex",alignItems:"center",gap:8,margin:"-4px 0 10px",flexWrap:"wrap"}}>
           <span style={{fontSize:12.5,fontWeight:800,color:C.textSoft}}>{brush} es de</span>
           <div style={{display:"flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
             {[["esqueje","Esqueje"],["semilla","Semilla"]].map(([k,l])=>{const on=brushOrigin===k;return <button key={k} onClick={()=>setBrushOrigin(k)} style={{padding:"7px 14px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:800,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
           </div>
         </div>}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {chip(!brushPool&&brush===null,C.red,"Borrar",()=>{setBrushPool(null);setBrush(null);},"__borrar__")}
-          {isAdmin&&tool(false,<><Icon n="plus" size={15}/>Agregar genética</>,()=>setShowExtra(true),"extra")}
-          {!brushPool&&brush&&tool(false,`Llenar con ${brush}`,()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(brushOrigin));},"llenar")}
+          {tool(!killMode&&!brushPool&&brush===null,"Borrar",()=>{setKillMode(false);setBrushPool(null);setBrush(null);},"__borrar__",true)}
+          {!brushPool&&brush&&tool(false,`Llenar con ${siglaDe(brush)}`,()=>{setCells(Array(gridW*gridH).fill(brush));setCellPhenos(Array(gridW*gridH).fill(null));setCellLabels(Array(gridW*gridH).fill(null));setCellOrigins(Array(gridW*gridH).fill(brushOrigin));},"llenar")}
           {tool(false,"Limpiar",limpiar,"limpiar")}
           {tool(showSize,<><Icon n="sliders" size={15}/>Medidas {gridW}×{gridH}</>,()=>setShowSize(s=>!s),"medidas")}
-          {hayPool&&otras.length>0&&tool(showOtras,`Otras genéticas (${otras.length})`,()=>setShowOtras(s=>!s),"otras")}
         </div>
       </div>;
     })()}
@@ -2149,31 +2196,33 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
           const ph=cellPhenos[i]?(phenoMap[cellPhenos[i]]||phenoAll[cellPhenos[i]]):null;
           const sel=phenoMode&&editing&&cellPhenos[i]&&cellPhenos[i]===brushPheno;
           const esSem=cell&&cellOrigins[i]==="semilla";
-          const conFeno=!phenoMode&&(cellPhenos[i]||cellLabels[i]);
-          const txt=phenoMode?(ph?ph.number:null):(ph?ph.number:(cellLabels[i]?String(cellLabels[i]).slice(0,4):(esSem?"S":null)));
-          const box=<div key={i} onClick={()=>paint(i)} title={ph?.code||cellLabels[i]||(cell?`${cell} · ${cellOrigins[i]||"esqueje"}`:(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:""))}
-            style={{width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?genMap[cell]||C.green:(muertas.some(m=>m.i===i)?C.redLight:C.surfaceAlt),
-              border:`2px solid ${sel||conFeno?C.purple:(cell?"transparent":C.borderStrong)}`,transition:"background 0.08s",
+          const muerta=muertas.some(m=>m.i===i);
+          const num=ph?ph.number:(cellLabels[i]?String(cellLabels[i]).replace(/^[A-Za-z]+-?/,"").slice(0,3)||String(cellLabels[i]).slice(0,3):null);
+          const col=cell?(genMap[cell]||C.green):null;
+          const box=<div key={i} onClick={()=>paint(i)} title={cell?`${cell}${ph?` · ${ph.code}`:cellLabels[i]?` · ${cellLabels[i]}`:""} · ${cellOrigins[i]||"esqueje"}`:(phenoMode?`Vacío · pos ${seedNum(i,gridW,gridH)}`:"Vacío")}
+            style={{position:"relative",width:sz,height:sz,borderRadius:8,cursor:editing?"pointer":"default",background:cell?col:(muerta?C.redLight:C.surfaceAlt),
+              border:`2px solid ${sel?C.text:(cell?"transparent":C.borderStrong)}`,boxShadow:sel?`0 0 0 2px ${C.surface} inset`:"none",transition:"background 0.08s",
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:txt&&String(txt).length>2?9.5:12.5,fontWeight:800,color:cell?inkFill(genMap[cell]||C.green):C.textSoft,letterSpacing:"-0.03em",overflow:"hidden"}}>
-            {muertas.some(m=>m.i===i)?<span style={{color:C.red,display:"flex"}}><Icon n="x" size={16} sw={2.6}/></span>:txt!=null?txt:(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:(cell?<span style={{width:9,height:9,borderRadius:"50%",background:"rgba(255,255,255,0.45)"}}/>:null))}
+              color:cell?inkFill(col):C.textSoft,overflow:"hidden"}}>
+            {muerta?<span style={{color:C.red,display:"flex"}}><Icon n="x" size={16} sw={2.6}/></span>
+              :cell?<CellTxt name={cell} num={(phenoMode||ph||cellLabels[i])?num:null} seed={esSem} size={sz}/>
+              :(phenoMode?<span style={{fontSize:9,opacity:0.5,fontWeight:600}}>{seedNum(i,gridW,gridH)}</span>:null)}
           </div>;
           return first?[<span key={"rh"+i} style={{fontSize:10,fontWeight:800,color:C.textSoft}}>{Math.floor(i/gridW)+1}</span>,box]:box;
         })}
       </div>
     </div>
-    {phenoMode&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,lineHeight:1.45,textAlign:"center"}}>Los números se cuentan desde abajo a la izquierda, como en el cuaderno.</div>}
-    {!phenoMode&&cells.some((c,i)=>c&&cellOrigins[i]==="semilla")&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,textAlign:"center"}}>“S”: la planta vino de semilla. El resto son esquejes.</div>}
-    {!phenoMode&&cells.some((c,i)=>c&&(cellPhenos[i]||cellLabels[i]))&&<div style={{fontSize:12,color:C.textSoft,marginTop:4,textAlign:"center"}}>Borde violeta: la planta lleva su feno.</div>}
+    {total>0&&<div style={{fontSize:12,color:C.textSoft,marginTop:6,lineHeight:1.45,textAlign:"center"}}>Las letras son la sigla de la genética{cells.some((c,i)=>c&&(cellPhenos[i]||cellLabels[i]))?" y el número, su feno":""}.{cells.some((c,i)=>c&&cellOrigins[i]==="semilla")?" El puntito en la esquina: vino de semilla.":""}</div>}
+    {phenoMode&&hunts.length===1&&<div style={{fontSize:12,color:C.textSoft,marginTop:4,lineHeight:1.45,textAlign:"center"}}>Los lugares vacíos se numeran desde abajo a la izquierda, como en el cuaderno.</div>}
 
     <div style={{marginTop:12,borderTop:`1px solid ${C.border}`}}>
       {sumRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"12px 0 0"}}>{editing?"Elegí un pincel arriba y tocá las celdas.":"Esta mesa todavía no tiene plantas cargadas."}</div>}
       {sumRows.map(([g,s],k)=><div key={g} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:k?`1px solid ${C.border}`:"none"}}>
-        <span style={{width:10,alignSelf:"stretch",minHeight:26,borderRadius:4,background:genMap[g]||C.green,flexShrink:0}}/>
+        <Swatch color={genMap[g]||C.green} name={g} size={32}/>
         <span style={{flex:1,minWidth:0}}>
           <span style={{display:"block",fontSize:14.5,fontWeight:800,color:C.text}}>{g}</span>
           {(s.sem>0||extraGen[g])&&<span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:700}}>{s.sem>0?`${s.n-s.sem} esqueje${s.n-s.sem===1?"":"s"} · ${s.sem} semilla${s.sem===1?"":"s"}`:""}{s.sem>0&&extraGen[g]?" · ":""}{extraGen[g]?`${extraGen[g]} fuera de la tanda`:""}</span>}
-          {Object.keys(s.f).length>0&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700}}>{Object.entries(s.f).map(([f,n])=>n>1?`${f} ×${n}`:f).join(" · ")}</span>}
+          {Object.keys(s.f).length>0&&<span style={{display:"block",fontSize:12,color:C.purple,fontWeight:700}}>{Object.entries(s.f).sort((a,b)=>byName(a[0],b[0])).map(([f,n])=>n>1?`${f} ×${n}`:f).join(" · ")}</span>}
         </span>
         <span style={{fontSize:20,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{s.n}</span>
       </div>)}
@@ -2484,16 +2533,13 @@ function AddGenModal({cycleId,genetics,existing,counts,onClose,onSaved}){
     <ErrBox err={err}/>
     {rows.length===0&&<div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0 8px"}}>Todavía no hay genéticas en el ciclo.</div>}
     {[...rows].sort((a,b)=>byName(a.genetic_name,b.genetic_name)).map((r,i)=><div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
-      <span style={{width:10,alignSelf:"stretch",minHeight:30,borderRadius:4,background:genMap[r.genetic_name]||C.green,flexShrink:0}}/>
+      <Swatch color={genMap[r.genetic_name]||C.green} name={r.genetic_name} size={30}/>
       <span style={{flex:1,minWidth:0,fontSize:15,fontWeight:700,color:C.text}}>{r.genetic_name}</span>
       <span style={{fontSize:13,color:C.textSoft,fontWeight:700}}>{counts?.[r.genetic_name]||0} pl.</span>
       <button onClick={()=>remove(r)} disabled={busy===r.id} style={{padding:"7px 11px",borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:800,border:"none",background:confirmId===r.id?C.red:C.redLight,color:confirmId===r.id?"#fff":C.red}}>{confirmId===r.id?"¿Seguro?":"Quitar"}</button>
     </div>)}
     {avail.length>0&&<>
-      <FLabel>Tocá para agregar</FLabel>
-      <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-        {avail.map(g=>{const col=g.color||C.green;return <button key={g.name} onClick={()=>add(g.name)} disabled={!!busy} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderRadius:99,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:`${col}1F`,color:inkOn(col),border:`1.5px solid ${col}`,opacity:busy===g.name?0.5:1}}><Icon n="plus" size={15}/>{g.name}</button>;})}
-      </div>
+      <div style={{marginTop:12}}><Picker label="Agregar al ciclo" title="Agregar genética al ciclo" placeholder={busy?"Agregando...":"Elegí una genética"} disabled={!!busy} options={sortGen(avail).map(g=>genOpt(g))} value={null} onChange={add}/></div>
     </>}
     {confirmId&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:10}}>Quitarla del ciclo no borra lo pintado en las mesas.</div>}
     <Btn onClick={()=>onSaved()} full style={{marginTop:16,minHeight:48}}>Listo</Btn>
@@ -2769,7 +2815,7 @@ const bajasDeCeldas = (items,base) => {
   items.forEach(({g,pid})=>{if(!g)return;const k=`${g}|${pid||""}`;acc[k]=acc[k]||{...base,genetic_name:g,pheno_id:pid||null,qty:0};acc[k].qty++;});
   return Object.values(acc);
 };
-const BAJA_METHOD = {murio:"murió",no_prendio:"no prendió",fallida:"tanda fallida"};
+const BAJA_METHOD = {murio:"murió",no_prendio:"no prendió",fallida:"tanda fallida",macho:"macho"};
 function BajasFold({rows=[],phenoMap={},showPlace=false,title="Bajas",empty="Sin bajas registradas."}){
   const total=rows.reduce((a,x)=>a+(x.qty||1),0);
   return <Fold icon="history" title={title} count={total}>
@@ -2827,6 +2873,58 @@ function Fold({icon,title,count,right,children,defaultOpen=false}){
     {open&&<div style={{padding:"0 16px 14px"}}>{children}</div>}
   </Card>;
 }
+// ── DESPLEGABLES ────────────────────────────────────────────────────────────
+// Las listas largas (genéticas, fenos, tandas) no van más como pila de chips de colores:
+// un botón muestra lo elegido y al tocarlo se abre la lista ordenada, con buscador.
+// options: [{key,label,color?,sigla?,sub?,right?,group?,disabled?}]
+function PickSheet({title,sub,options=[],value,onPick,onClose,z=330,footer,emptyTxt="No hay opciones."}){
+  const [q,setQ]=useState("");
+  const f=foldTxt(q.trim());
+  const vis=options.filter(o=>!f||foldTxt(`${o.label} ${o.sigla||""} ${o.sub||""} ${o.group||""}`).includes(f));
+  const groups=[];vis.forEach(o=>{const g=o.group||"";let gr=groups.find(x=>x.g===g);if(!gr){gr={g,items:[]};groups.push(gr);}gr.items.push(o);});
+  return <Sheet title={title} sub={sub} onClose={onClose} z={z}>
+    {options.length>7&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar" aria-label="Buscar"
+      style={{width:"100%",margin:"2px 0 10px",padding:"11px 13px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.text,fontSize:15,fontFamily:"inherit",outline:"none"}}/>}
+    {vis.length===0&&<div style={{fontSize:13.5,color:C.textSoft,padding:"8px 2px"}}>{options.length?"Nada coincide con la búsqueda.":emptyTxt}</div>}
+    {groups.map(gr=><div key={gr.g||"_"}>
+      {gr.g&&<div style={{fontSize:12.5,fontWeight:800,color:C.textSoft,margin:"10px 2px 4px"}}>{gr.g}</div>}
+      {gr.items.map((o,i)=>{const on=value!=null&&o.key===value;
+        return <button key={o.key} disabled={o.disabled} onClick={()=>onPick(o.key,o)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",minHeight:54,padding:"7px 8px",borderRadius:12,border:"none",borderTop:i&&!on?`1px solid ${C.border}`:"1px solid transparent",
+          background:on?C.greenLight:"transparent",cursor:o.disabled?"default":"pointer",opacity:o.disabled?0.45:1,fontFamily:"inherit",textAlign:"left",color:C.text}}>
+          {(o.color!==undefined||o.sigla!=null)&&<Swatch color={o.color} txt={o.sigla!=null?o.sigla:""} size={34}/>}
+          <span style={{flex:1,minWidth:0}}>
+            <span style={{display:"block",fontSize:15,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.label}</span>
+            {o.sub&&<span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.sub}</span>}
+          </span>
+          {o.right!=null&&<span style={{fontSize:14,fontWeight:800,color:C.textMid,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"}}>{o.right}</span>}
+          {on&&<span style={{color:C.green}}><Icon n="check" size={20} sw={2.4}/></span>}
+        </button>;})}
+    </div>)}
+    {footer}
+  </Sheet>;
+}
+function Picker({label,placeholder="Elegir",options=[],value,onChange,title,sub,disabled=false,footer,style}){
+  const [open,setOpen]=useState(false);
+  const cur=options.find(o=>o.key===value)||null;
+  return <div style={{marginBottom:12,...style}}>
+    {label&&<div style={{fontSize:13.5,color:C.textMid,fontWeight:600,marginBottom:5}}>{label}</div>}
+    <button type="button" onClick={()=>!disabled&&setOpen(true)} aria-haspopup="listbox" style={{display:"flex",alignItems:"center",gap:11,width:"100%",minHeight:52,padding:"7px 12px 7px 8px",borderRadius:12,
+      border:`1.5px solid ${C.border}`,background:C.surface,color:C.text,cursor:disabled?"default":"pointer",opacity:disabled?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+      {cur&&(cur.color!==undefined||cur.sigla!=null)?<Swatch color={cur.color} txt={cur.sigla!=null?cur.sigla:""} size={34}/>:<span style={{width:34,height:34,borderRadius:10,flexShrink:0,border:`1.5px dashed ${C.borderStrong}`}}/>}
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:15,fontWeight:800,color:cur?C.text:C.textSoft,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cur?cur.label:placeholder}</span>
+        {cur?.sub&&<span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cur.sub}</span>}
+      </span>
+      {cur?.right!=null&&<span style={{fontSize:14,fontWeight:800,color:C.textMid}}>{cur.right}</span>}
+      <span style={{color:C.textSoft,transform:"rotate(90deg)"}}><Icon n="chev" size={18}/></span>
+    </button>
+    {open&&<PickSheet title={title||label||placeholder} sub={sub} options={options} value={value} footer={footer}
+      onPick={k=>{setOpen(false);onChange(k);}} onClose={()=>setOpen(false)}/>}
+  </div>;
+}
+// Opción de lista para una genética: color, sigla y nombre.
+const genOpt = (g,extra={}) => ({key:g.name,label:g.name,color:g.color||null,sigla:siglaDe(g.name),...extra});
+
 const PageTitle=({children,right,sub})=><div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:12,padding:"4px 2px 0"}}>
   <div><div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",lineHeight:1.1}}>{children}</div>{sub&&<div style={{fontSize:13.5,color:C.textSoft,fontWeight:600,marginTop:3}}>{sub}</div>}</div>{right}
 </div>;
@@ -3606,7 +3704,8 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
           const col=genMap[g]||C.green;const sub=rs.reduce((a,r)=>a+r.n,0);
           const hayE=rs.some(r=>r.origin==="esqueje"),hayS=rs.some(r=>r.origin==="semilla");
           return <div key={g} style={{background:C.surface,border:`1px solid ${C.border}`,borderLeft:`6px solid ${col}`,borderRadius:16,padding:"11px 12px 12px",marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:9}}>
+              <Swatch color={col} name={g} size={28}/>
               <span style={{flex:1,minWidth:0,fontSize:16.5,fontWeight:900,color:C.text}}>{g}</span>
               <span style={{fontFamily:MONO,fontSize:18,fontWeight:700,color:C.textMid}}>{sub}</span>
             </div>
@@ -3629,30 +3728,19 @@ function VGCounter({mode,batch,batchLines=[],genetics,madres=[],phenoMap={},onCl
       </div>
     </div>
 
-    {pick&&<Modal z={400} title={pick.step==="gen"?"Agregar genética":pick.step==="orig"?`${pick.g}: ¿esqueje o semilla?`:`${pick.g}: ¿de qué feno?`} onClose={()=>setPick(null)}>
-      {pick.step==="gen"&&<>
-        <FI value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar genética"/>
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"50vh",overflowY:"auto"}}>
-          {sortGen(genetics).filter(g=>(g.name||"").toLowerCase().includes(search.trim().toLowerCase())).map(g=><button key={g.id||g.name} onClick={()=>{setSearch("");setPick({step:"orig",g:g.name});}}
-            style={{display:"flex",alignItems:"center",gap:11,minHeight:50,padding:"0 12px",borderRadius:11,border:`1px solid ${C.border}`,background:C.bg,fontWeight:700,fontSize:15,color:C.text,textAlign:"left",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
-            <span style={{width:16,height:16,borderRadius:"50%",background:g.color||C.green,flexShrink:0}}/><span style={{flex:1}}>{g.name}</span>
-            {grupos[g.name]&&<span style={{fontSize:11.5,fontWeight:800,color:C.textSoft}}>ya está</span>}
-          </button>)}
-        </div>
-      </>}
-      {pick.step==="orig"&&<div style={{display:"flex",gap:10}}>
+    {pick&&pick.step==="gen"&&<PickSheet z={400} title="Agregar genética" sub="Después elegís si es esqueje o semilla" onClose={()=>setPick(null)}
+      options={sortGen(genetics).map(g=>genOpt(g,{right:grupos[g.name]?"ya está":null}))} value={null}
+      onPick={name=>{setSearch("");setPick({step:"orig",g:name});}}/>}
+    {pick&&pick.step==="orig"&&<Modal z={400} title={`${pick.g}: ¿esqueje o semilla?`} onClose={()=>setPick(null)}>
+      <div style={{display:"flex",gap:10}}>
         {[["esqueje","Esqueje","scissors"],["semilla","Semilla","seed"]].map(([k,l,ic])=><button key={k} onClick={()=>elegirOrigen(pick.g,k)} style={{flex:1,minHeight:84,borderRadius:14,border:`1.5px solid ${C.border}`,background:C.surfaceAlt,color:C.text,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,fontSize:15.5,fontWeight:800}}>
           <span style={{color:k==="semilla"?C.amber:C.green}}><Icon n={ic} size={24}/></span>{l}
         </button>)}
-      </div>}
-      {pick.step==="feno"&&<>
-        <div style={{fontSize:13.5,color:C.textMid,marginBottom:12,lineHeight:1.5}}>Hay madres de esta genética con feno. Elegí de cuál salieron los esquejes.</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-          <button onClick={()=>addRow(pick.g,"esqueje",null)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.border}`,background:C.bg,color:C.textMid,fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Sin feno</button>
-          {fenoOpts(pick.g).map(f=><button key={f.pheno_id||`l:${f.pheno_label}`} onClick={()=>addRow(pick.g,"esqueje",f)} style={{minHeight:46,padding:"0 16px",borderRadius:12,border:`1.5px solid ${C.purple}55`,background:C.purpleLight,color:C.purple,fontWeight:900,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}>{f.code}</button>)}
-        </div>
-      </>}
+      </div>
     </Modal>}
+    {pick&&pick.step==="feno"&&<PickSheet z={400} title={`${pick.g}: ¿de qué feno?`} sub="Hay madres de esta genética con feno. Elegí de cuál salieron los esquejes." onClose={()=>setPick(null)}
+      options={[{key:"__sin__",label:"Sin feno"},...fenoOpts(pick.g).map(f=>({key:f.pheno_id||`l:${f.pheno_label}`,label:f.code,color:genMap[pick.g]||null,sigla:siglaDe(pick.g)}))]} value={null}
+      onPick={k=>{if(k==="__sin__")addRow(pick.g,"esqueje",null);else addRow(pick.g,"esqueje",fenoOpts(pick.g).find(f=>(f.pheno_id||`l:${f.pheno_label}`)===k));}}/>}
 
     {showDiff&&<Modal z={400} title="Revisá el reconteo" onClose={()=>{if(!saving)setShowDiff(false);}}>
       {ceros.length>0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"10px 12px",fontSize:13,fontWeight:600,marginBottom:12,lineHeight:1.5}}>
@@ -4063,16 +4151,12 @@ function VegModal({type="madre",genetics,item,phenos=[],onClose,onSaved,onDelete
       onSaved();
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
-  const fenoOpts=[["","Sin feno"],...fenosGen.map(p=>[sid(p.id),p.code]),["__otro__","Otro"]];
+  const fenoOpts=[{key:"",label:"Sin feno",sub:"Madre sin feno identificado"},...fenosGen.map(p=>({key:sid(p.id),label:p.code,color:genMap[gn]||null,sigla:siglaDe(gn),sub:p.status==="seleccionado"?"Seleccionado":p.status==="candidato"?"Candidato":null})),{key:"__otro__",label:"Otro",sub:"Selección vieja, se escribe a mano (ej: F2)"}];
   return <Sheet title={type==="madre"?(item?"Editar madre":"Nueva madre"):(item?"Editar post-esqueje":"Nuevo post-esqueje")} sub={item?`${item.genetic_name}${item.pot_label?` · maceta ${item.pot_label}`:""}`:null} onClose={onClose}>
     <ErrBox err={err}/>
-    <div style={{display:"flex",alignItems:"flex-end",gap:10,marginTop:4}}>
-      <div style={{flex:1}}><FS label="Genética" value={gn} onChange={e=>{setGn(e.target.value);if(fenoSel!=="__otro__")setFenoSel("");}} options={genetics.map(g=>({value:g.name,label:g.name}))}/></div>
-      <div title="Color de la genética" style={{width:44,height:44,borderRadius:12,background:genMap[gn]||C.green,marginBottom:12,flexShrink:0}}/>
-    </div>
+    <div style={{marginTop:4}}><Picker label="Genética" title="Genética" options={sortGen(genetics).map(g=>genOpt(g))} value={gn} onChange={v=>{setGn(v);if(fenoSel!=="__otro__")setFenoSel("");}}/></div>
     {type==="madre"&&<>
-      <FLabel style={{marginTop:0}}>Feno</FLabel>
-      <div style={{maxHeight:150,overflowY:"auto"}}><Pills options={fenoOpts} value={fenoSel} onChange={setFenoSel} col={C.purple}/></div>
+      <Picker label="Feno" title={`Feno de ${gn}`} options={fenoOpts} value={fenoSel} onChange={setFenoSel}/>
       {fenosGen.length===0&&fenoSel!=="__otro__"&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:7,lineHeight:1.45}}>Esta genética no tiene búsqueda cargada. Si es una selección vieja, usá “Otro” y anotala (ej: F2).</div>}
       {fenoSel==="__otro__"&&<div style={{marginTop:10}}><FI value={fenoLabel} onChange={e=>setFenoLabel(e.target.value)} placeholder="Ej: F2"/></div>}
     </>}
@@ -4171,7 +4255,7 @@ function CosecharTandaModal({cloner,cells,slotPhenos,phenoMap,phenoMode,genMap,p
             <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS}
               colorAt={i=>cells[i]?(muertos.has(i)?C.borderStrong:(genMap[cells[i]]||C.green)):null}
               onPaint={i=>cells[i]&&toggle(i)}
-              labelAt={i=>{const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:(cells[i]?slotCoord(i,cloner.cols||CLONER_COLS):null);}}/>
+              labelAt={i=>{if(!cells[i])return null;if(muertos.has(i))return "✕";const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return <CellTxt name={cells[i]} num={p?p.number:null} size={34}/>;}}/>
           </div>
         </>
       : <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
@@ -4265,7 +4349,7 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
   // Celdas nuevas = las que ahora tienen esqueje pero antes estaban vacías: a esas les toca la fecha de hoy.
   const nuevas=cells.filter((g,i)=>g&&!prevDates[i]).length;
   const sinEtiqueta=phenoMode?cells.filter((g,i)=>g&&!slotPhenos[i]).length:0;
-  const hunt=hunts.find(h=>sid(h.id)===huntId)||null;
+  const hunt=hunts.length?(hunts.find(h=>sid(h.id)===huntId)||hunts[0]):null;
 
   // Trae todas las búsquedas y sus fenos: la bandeja no crea fenos, solo les asigna esquejes.
   useEffect(()=>{
@@ -4311,11 +4395,11 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
       setSlotPhenos(prev=>{const n=[...prev];n[i]=null;return n;});
       return;
     }
-    if(phenoMode&&hunt&&brushPheno){
+    if(phenoMode&&brushPheno&&phenoMap[brushPheno]){
       // El pincel es un feno: DS-1 puede ocupar A1 y A2, son dos clones del mismo.
       const ya=slotPhenos[i]===brushPheno;
       const p=phenoMap[brushPheno];
-      setCells(prev=>{const n=[...prev];n[i]=ya?null:(p?.genetic_name||hunt.genetic_name);return n;});
+      setCells(prev=>{const n=[...prev];n[i]=ya?null:p.genetic_name;return n;});
       setSlotPhenos(prev=>{const n=[...prev];n[i]=ya?null:brushPheno;return n;});
       return;
     }
@@ -4369,23 +4453,14 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     {phenoMode&&hunts.length===0&&<div style={{background:C.amberLight,color:C.amber,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12,lineHeight:1.5}}>
       Todavía no hay ninguna búsqueda creada. Arrancala desde la mesa donde están las semillas y después volvé acá a asignar los esquejes.
     </div>}
-    {phenoMode&&hunts.length>0&&<div style={{marginBottom:12}}>
-      <FS label="Búsqueda" value={huntId||""} onChange={e=>cambiarHunt(e.target.value)}
-        options={hunts.map(h=>({value:sid(h.id),label:`${h.genetic_name} · ${h.prefix}-1 a ${h.prefix}-${h.total}`}))}/>
-      <div style={{fontSize:12,color:C.textSoft,marginBottom:7}}>Elegí un feno y tocá los slots donde pusiste sus esquejes. Un mismo feno puede ir en varios.</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:150,overflowY:"auto"}}>
-        {huntPhenos.map(p=>{
-          const pid=sid(p.id);
-          const n=slotPhenos.filter(x=>x===pid).length;
-          const on=brushPheno===pid;
-          return <button key={pid} onClick={()=>setBrushPheno(pid)} title={p.code}
-            style={{minWidth:38,padding:"6px 8px",borderRadius:9,fontSize:12.5,fontWeight:800,cursor:"pointer",
-              background:on?C.purple:(n>0?C.purpleLight:C.bg),color:on?"#fff":(n>0?C.purple:C.textSoft),
-              border:`1.5px solid ${on?C.purple:(n>0?C.purple+"55":C.border)}`}}>{p.number}{n>0?<sup style={{fontSize:8.5}}>×{n}</sup>:null}</button>;
-        })}
-      </div>
-      {brushPheno&&phenoMap[brushPheno]&&<div style={{fontSize:12,color:C.purple,fontWeight:700,marginTop:8}}>Pincel: {phenoMap[brushPheno].code}</div>}
-    </div>}
+    {phenoMode&&hunts.length>0&&isAdmin&&(()=>{
+      const hById={};hunts.forEach(h=>{hById[sid(h.id)]=h;});
+      const opts=Object.values(phenoMap).filter(p=>hById[sid(p.hunt_id)]).sort((a,b)=>byName(hById[sid(a.hunt_id)].prefix,hById[sid(b.hunt_id)].prefix)||(a.number||0)-(b.number||0)).map(p=>{
+        const pid=sid(p.id);const n=slotPhenos.filter(x=>x===pid).length;const h=hById[sid(p.hunt_id)];
+        return {key:pid,label:p.code,color:genMap[p.genetic_name]||null,sigla:siglaDe(p.genetic_name),group:`${h.prefix} · ${h.genetic_name}`,sub:p.genetic_name,right:n>0?`×${n}`:null};
+      });
+      return <Picker label="Pincel: feno" title="Elegí el feno" sub="Un mismo feno puede ir en varios lugares (son clones)" options={opts} value={brushPheno} onChange={v=>{setKillMode(false);setBrushPheno(v);}}/>;
+    })()}
 
     {/* Contador de la tanda: desde el corte hasta que están listos para tierra */}
     {prog&&used>0&&<div style={{background:C.bg,border:`1px solid ${prog.color}44`,borderRadius:12,padding:"11px 13px",marginBottom:12}}>
@@ -4407,9 +4482,9 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
       <Btn onClick={()=>setShowEliminar(true)} disabled={muertas.length>0} v="secondary" style={{flex:1,minHeight:46,color:C.red,borderColor:`${C.red}55`}}>Eliminar tanda</Btn>
     </div>}
     {isAdmin&&used>0&&muertas.length>0&&<div style={{fontSize:12,color:C.textSoft,fontWeight:600,marginBottom:14}}>Guardá primero las bajas marcadas para poder cosechar.</div>}
-    {isAdmin&&!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-      {sortGen(genetics).map(g=>{const col=genMap[g.name]||C.green;const on=!killMode&&brush===g.name;return <button key={g.name} onClick={()=>{setKillMode(false);setBrush(g.name);}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:on?col:`${col}1F`,color:on?inkFill(col):inkOn(col),border:`1.5px solid ${col}`}}>{g.name}</button>;})}
-      <button onClick={()=>{setKillMode(false);setBrush(null);}} style={{padding:"8px 12px",borderRadius:99,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:!killMode&&brush===null?C.textMid:C.surfaceAlt,color:!killMode&&brush===null?C.surface:C.textMid,border:`1.5px solid ${C.border}`}}>Borrar</button>
+    {isAdmin&&!(phenoMode&&hunt)&&<div style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:2}}>
+      <div style={{flex:1,minWidth:0}}><Picker label="Pincel" title="¿Qué genética vas a pintar?" placeholder="Elegí una genética" options={sortGen(genetics).map(g=>genOpt(g))} value={!killMode?brush:null} onChange={v=>{setKillMode(false);setBrush(v);}}/></div>
+      <button onClick={()=>{setKillMode(false);setBrush(null);}} style={{marginTop:24,minHeight:52,padding:"0 14px",borderRadius:12,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",background:!killMode&&brush===null?C.redLight:C.surfaceAlt,color:!killMode&&brush===null?C.red:C.textMid,border:`1.5px solid ${!killMode&&brush===null?C.red:C.border}`}}>Borrar</button>
     </div>}
     {isAdmin&&used+muertas.length>0&&<button onClick={()=>setKillMode(k=>!k)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:killMode?C.redLight:C.surfaceAlt,border:`1.5px solid ${killMode?C.red:C.border}`,color:killMode?C.red:C.textMid}}>
       <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:killMode?C.red:C.surface,color:killMode?"#fff":C.red}}><Icon n="stop" size={18}/></span>
@@ -4420,12 +4495,12 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     </button>}
     <div style={{overflowX:"auto",marginBottom:14}}>
       <ClonerGrid capacity={cells.length} cols={cloner.cols||CLONER_COLS} colorAt={(i)=>cells[i]?(genMap[cells[i]]||C.green):(muertas.some(m=>m.i===i)?C.redLight:null)} onPaint={isAdmin?paint:null}
-        labelAt={i=>{if(muertas.some(m=>m.i===i))return "✕";if(!phenoMode)return null;const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return p?p.number:null;}}
+        labelAt={i=>{if(muertas.some(m=>m.i===i))return "✕";if(!cells[i])return null;const p=slotPhenos[i]?phenoMap[slotPhenos[i]]:null;return <CellTxt name={cells[i]} num={p?p.number:null} size={34}/>;}}
         ringAt={phenoMode?(i=>slotPhenos[i]&&slotPhenos[i]===brushPheno):null}/>
     </div>
-    {phenoMode&&<div style={{fontSize:10.5,color:C.textSoft,marginTop:-8,marginBottom:12,fontStyle:"italic",lineHeight:1.45}}>El número de cada slot es el feno que le corresponde, igual que en el cuaderno.</div>}
-    <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-      {sortPairs(gC).map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[g]||C.green}}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
+    {used>0&&<div style={{fontSize:11.5,color:C.textSoft,marginTop:-8,marginBottom:12,lineHeight:1.45}}>Las letras son la sigla de la genética{phenoMode?" y el número, el feno":""}.</div>}
+    <div style={{display:"flex",gap:"6px 12px",marginBottom:14,flexWrap:"wrap"}}>
+      {sortPairs(gC).map(([g,n])=><span key={g} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:C.textMid}}><Swatch color={genMap[g]||C.green} name={g} size={22}/>{g} <b style={{color:C.text}}>{n}</b></span>)}
     </div>
     {isAdmin
       ? <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Guardar esquejera"/>
@@ -4655,7 +4730,7 @@ function FenosPage({user,genetics}){
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
     {sel&&<PhenoSheet pheno={sel} user={user} onClose={()=>setSel(null)} onSaved={()=>{setSel(null);load();setToast({msg:"Cata guardada ✓",type:"success"});}}/>}
     {showFiltro&&<Sheet title="Filtrar" onClose={()=>setShowFiltro(false)}>
-      <FS label="Genética" value={gen} onChange={e=>setGen(e.target.value)} options={[{value:"__todas__",label:"Todas las genéticas"},...conFenos.map(g=>({value:g,label:g}))]}/>
+      <Picker label="Genética" title="Filtrar por genética" options={[{key:"__todas__",label:"Todas las genéticas"},...conFenos.map(g=>genOpt({name:g,color:genMap[g]||null}))]} value={gen} onChange={setGen}/>
       <FS label="Ordenar por" value={orden} onChange={e=>setOrden(e.target.value)} options={[{value:"score",label:"Puntaje"},{value:"grams",label:"Gramos"},{value:"code",label:"Número"}]}/>
       <Btn onClick={()=>setShowFiltro(false)} full>Ver resultados</Btn>
     </Sheet>}
@@ -4692,14 +4767,74 @@ function FenosPage({user,genetics}){
 }
 
 // ── GENÉTICAS ────────────────────────────────────────────────────────────────
+// ── NOMBRES DE GENÉTICA EN TODA LA BASE ──────────────────────────────────────
+// El color y la sigla se unen a las plantas por el nombre exacto. Estas son todas las
+// tablas que guardan el nombre: al renombrar o unir, se actualizan todas.
+const GEN_TABLES_FENO = ["pot_cells","cloner_slots","veg_stock","vg_lines","plant_losses"];   // además tienen feno
+const GEN_TABLES = ["cycle_genetics","harvest_yields","vg_losses","cloner_batches","phenos","pheno_hunts",...GEN_TABLES_FENO];
+const renombrarEnTodo = async (from,to) => {
+  for(const tbl of GEN_TABLES){
+    if(tbl==="cycle_genetics")continue;
+    try{await db.updateWhere(tbl,"genetic_name",from,{genetic_name:to});}catch{/* tabla vieja o sin filas */}
+  }
+  // En un ciclo la genética va una sola vez: si ya estaba la de destino, se borra la repetida.
+  try{
+    const rows=await db.query("cycle_genetics",`genetic_name=eq.${encodeURIComponent(from)}`);
+    for(const r of rows){
+      const ya=await db.query("cycle_genetics",`cycle_id=eq.${sid(r.cycle_id)}&genetic_name=eq.${encodeURIComponent(to)}`);
+      if(ya.length)await db.delete("cycle_genetics",r.id);else await db.update("cycle_genetics",r.id,{genetic_name:to});
+    }
+  }catch{}
+};
+// Unir: todo lo que dice "from" pasa a "to". Si se elige un feno, las plantas quedan con ese feno.
+const unirGenetica = async ({from,to,phenoId=null,user}) => {
+  if(!from||!to||from===to)return;
+  if(phenoId){
+    for(const tbl of GEN_TABLES_FENO){try{await db.updateWhere(tbl,"genetic_name",from,{pheno_id:sid(phenoId)});}catch{}}
+  }
+  await renombrarEnTodo(from,to);
+  try{const g=await db.query("genetics",`name=eq.${encodeURIComponent(from)}`);for(const x of g)await db.delete("genetics",x.id);}catch{}
+  await logA(user||"sistema",`Unió “${from}” con “${to}”${phenoId?" (como feno)":""}`,"genetics");
+};
+
+// Unir con otra genética, eligiendo de los desplegables. Sirve para nombres sueltos
+// ("Terp and Tonic #3") que en realidad son un feno de otra genética.
+function UnirSheet({from,genetics,user,onClose,onDone}){
+  const [to,setTo]=useState(null);
+  const [phenos,setPhenos]=useState([]);
+  const [feno,setFeno]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    setFeno("");setPhenos([]);
+    if(!to)return;
+    db.query("phenos",`genetic_name=eq.${encodeURIComponent(to)}&order=number.asc`).then(setPhenos).catch(()=>setPhenos([]));
+  },[to]);
+  const gMap={};genetics.forEach(g=>{gMap[g.name]=g.color;});
+  const run=async()=>{
+    if(!to){setErr("Elegí con cuál unirla.");return;}
+    setBusy(true);setErr(null);
+    try{await unirGenetica({from,to,phenoId:feno||null,user:user?.name});onDone(`“${from}” ahora es ${to}${feno?` ${phenos.find(p=>sid(p.id)===feno)?.code||""}`:""} ✓`);}
+    catch(e){setErr(errMsg(e));setBusy(false);}
+  };
+  return <Sheet title={`Unir “${from}”`} sub="Todo lo que tiene este nombre pasa a la genética que elijas" onClose={()=>{if(!busy)onClose();}} z={300}>
+    <ErrBox err={err}/>
+    <div style={{marginTop:4}}><Picker label="Unir con" title="¿Con qué genética?" placeholder="Elegí la genética" options={sortGen(genetics.filter(g=>g.name!==from)).map(g=>genOpt(g))} value={to} onChange={setTo}/></div>
+    {to&&<Picker label="Feno (opcional)" title={`Feno de ${to}`} options={[{key:"",label:"Sin feno",sub:"Solo cambia el nombre"},...phenos.map(p=>({key:sid(p.id),label:p.code,color:gMap[to]||null,sigla:siglaDe(to),sub:p.status==="muerto"?"perdido":p.status==="descartado"?"descartado":null}))]} value={feno} onChange={setFeno}/>}
+    {to&&<div style={{fontSize:12.5,color:C.textMid,fontWeight:600,lineHeight:1.5,marginBottom:12}}>Mesas, esquejeras, madres, VG, cosechas y bajas que dicen “{from}” pasan a “{to}”{feno?" con ese feno":""}.{genetics.some(g=>g.name===from)?` “${from}” sale de la lista de genéticas.`:""}</div>}
+    <SheetActions onSave={run} onCancel={onClose} saving={busy} label="Unir" busyLabel="Uniendo..." disabled={!to}/>
+  </Sheet>;
+}
+
 // Una sola hoja por genética: ficha arriba, edición abajo y borrado al final.
-function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete}){
+function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete,onUnir}){
   const isNew=!g?.id;
   const [name,setName]=useState(g?.name||"");
   const [color,setColor]=useState(g?.color||nextGenColor(genetics));
   const [flowerDays,setFlowerDays]=useState(String(g?.flower_days??65));
   const [height,setHeight]=useState(g?.height||"media");
   const [prefix,setPrefix]=useState(g?.pheno_prefix||"");
+  const [sigla,setSigla]=useState(g?.sigla||"");
   const [notes,setNotes]=useState(g?.notes||"");
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState(null);
@@ -4711,6 +4846,10 @@ function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete}){
     if(dup){setErr("Ya existe otra genética con ese nombre.");return;}
     setSaving(true);setErr(null);
     const datos={name:nm,color,flower_days:+flowerDays||null,height,notes:notes||null,pheno_prefix:prefix.trim().toUpperCase()||null};
+    // La sigla solo viaja si se cargó (así anda aunque falte la columna en una base vieja).
+    if(sigla.trim()||g?.sigla)datos.sigla=sigla.trim().toUpperCase()||null;
+    const sDup=datos.sigla&&genetics.find(x=>sid(x.id)!==sid(g?.id)&&siglaDe(x.name)===datos.sigla);
+    if(sDup){setErr(`La sigla ${datos.sigla} ya la usa ${sDup.name}.`);setSaving(false);return;}
     try{
       if(isNew){
         const ins=await db.insert("genetics",datos);
@@ -4720,19 +4859,16 @@ function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete}){
       }else{
         const renamed=nm!==g.name;
         await db.update("genetics",g.id,datos);
-        // Renombrar en cascada: todo lo que referencia la genética por su nombre.
-        if(renamed){
-          for(const tbl of ["cycle_genetics","pot_cells","cloner_slots","veg_stock","phenos","pheno_hunts"]){
-            try{await db.updateWhere(tbl,"genetic_name",g.name,{genetic_name:nm});}catch{/* tabla vieja o sin filas */}
-          }
-        }
+        // Renombrar en cascada: todo lo que referencia la genética por su nombre (VG y cosechas incluidas).
+        if(renamed)await renombrarEnTodo(g.name,nm);
         await logA(user.name,`Editó genética: ${g.name}${renamed?` → ${nm}`:""}`,"genetics");
         setGenetics(prev=>sortGen(prev.map(x=>sid(x.id)===sid(g.id)?{...x,...datos}:x)));
         onToast&&onToast(renamed?"Genética actualizada y referencias renombradas ✓":"Genética actualizada ✓");
       }
       onClose();
-    }catch(e){setErr(errMsg(e));setSaving(false);}
+    }catch(e){const t=errMsg(e);setErr(/sigla/i.test(t)?"Falta correr el SQL de esta actualización para guardar la sigla.":t);setSaving(false);}
   };
+  const auto=(()=>{const m=buildSiglas([...genetics.filter(x=>sid(x.id)!==sid(g?.id)),{name:name.trim()||"?",pheno_prefix:prefix.trim()||null}]);return m[name.trim()||"?"];})();
 
   return <Sheet title={isNew?"Nueva genética":g.name} sub={isNew?"El color se usa en mesas, VG, madres y esquejeras":`${g.flower_days?`~${g.flower_days} días de flora`:"Sin días de flora"}${g.height?` · altura ${g.height}`:""}`} onClose={onClose}>
     {err&&<div style={{background:C.redLight,color:C.red,borderRadius:10,padding:"9px 12px",fontSize:12.5,marginBottom:12}}>{err}</div>}
@@ -4742,8 +4878,13 @@ function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete}){
       <div style={{flex:1}}><NumField label="Días de floración" value={flowerDays} onCommit={setFlowerDays} min={1} max={200}/></div>
       <div style={{flex:1}}><FS label="Altura" value={height} onChange={e=>setHeight(e.target.value)} options={[{value:"baja",label:"Baja"},{value:"media",label:"Media"},{value:"alta",label:"Alta"}]}/></div>
     </div>
+    <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+      <div style={{flex:1}}><FI label="Sigla" value={sigla} onChange={e=>setSigla(e.target.value.replace(/\s/g,"").slice(0,4).toUpperCase())} placeholder={auto}/></div>
+      <div style={{marginBottom:12}}><Swatch color={color} txt={sigla.trim().toUpperCase()||auto} size={46}/></div>
+    </div>
+    <div style={{fontSize:12,color:C.textSoft,marginTop:-6,marginBottom:12,lineHeight:1.45}}>Las letras que se ven en cada celda de las mesas, esquejeras y hueveras. Vacía = automática ({auto}).</div>
     <FI label="Prefijo de fenos (opcional)" value={prefix} onChange={e=>setPrefix(e.target.value.slice(0,5).toUpperCase())} placeholder="Ej: DS"/>
-    <div style={{fontSize:12,color:C.textSoft,marginTop:-6,marginBottom:12,lineHeight:1.45}}>Se sugiere solo al abrir una búsqueda de fenos con esta genética. Igual lo podés cambiar ahí.</div>
+    <div style={{fontSize:12,color:C.textSoft,marginTop:-6,marginBottom:12,lineHeight:1.45}}>Se sugiere al abrir una búsqueda de fenos con esta genética (DS-1, DS-2...).</div>
     <FT label="Notas de cultivo" value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Características, comportamiento..." rows={3}/>
     <div style={{marginBottom:14}}>
       <label style={{fontSize:12,color:C.textSoft,display:"block",marginBottom:8}}>Color</label>
@@ -4759,8 +4900,9 @@ function GenSheet({g,genetics,setGenetics,user,onClose,onToast,onDelete}){
       <Btn onClick={save} disabled={saving} style={{flex:1}}>{saving?"Guardando...":isNew?"Agregar":"Guardar cambios"}</Btn>
       <Btn onClick={onClose} v="secondary" disabled={saving} style={{flex:1}}>Cancelar</Btn>
     </div>
-    {!isNew&&onDelete&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}>
-      <SheetRow icon="trash" label="Eliminar genética" danger onClick={onDelete}/>
+    {!isNew&&(onDelete||onUnir)&&<div style={{marginTop:10,borderTop:`1px solid ${C.border}`}}>
+      {onUnir&&<SheetRow icon="swap" label="Unir con otra genética" onClick={onUnir}/>}
+      {onDelete&&<SheetRow i={onUnir?1:0} icon="trash" label="Eliminar genética" danger onClick={onDelete}/>}
     </div>}
   </Sheet>;
 }
@@ -4769,9 +4911,43 @@ function GeneticasPage({genetics,setGenetics,user}){
   const isAdmin=user?.role==="admin";
   const [sel,setSel]=useState(null);      // genética abierta; {} = nueva
   const [delG,setDelG]=useState(null);
+  const [unir,setUnir]=useState(null);    // nombre a unir con otra genética
+  const [huerf,setHuerf]=useState(null);  // nombres que se usan en la app y no están en la lista
   const [busy,setBusy]=useState(false);
   const [toast,setToast]=useState(null);
-  const lista=[...genetics].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||"")));
+  const [tick,setTick]=useState(0);
+  const lista=sortGen(genetics);
+  // Busca nombres de genética que aparecen en mesas, ciclos, VG, bandejas o madres
+  // y que no existen tal cual en la lista: esas plantas quedan sin color ni sigla.
+  useEffect(()=>{
+    let vivo=true;
+    (async()=>{
+      try{
+        const act=await db.query("cycles","active=eq.true&select=id").catch(()=>[]);
+        const ids=act.map(c=>sid(c.id));
+        const vb=await db.query("vg_batches","status=eq.vg&select=id").catch(()=>[]);
+        const vbIds=vb.map(b=>sid(b.id));
+        const [cells,cg,vl,sl,vs]=await Promise.all([
+          ids.length?db.query("pot_cells",`select=genetic_name,cycle_id&cycle_id=in.(${ids.join(",")})`).catch(()=>[]):[],
+          ids.length?db.query("cycle_genetics",`select=genetic_name&cycle_id=in.(${ids.join(",")})`).catch(()=>[]):[],
+          vbIds.length?db.query("vg_lines",`select=genetic_name,current_count&batch_id=in.(${vbIds.join(",")})`).catch(()=>[]):[],
+          db.query("cloner_slots","select=genetic_name").catch(()=>[]),
+          db.query("veg_stock","select=genetic_name,count,status").catch(()=>[]),
+        ]);
+        const known=new Set(genetics.map(g=>g.name));
+        const acc={};
+        const add=(n,where,q=1)=>{if(!n||known.has(n))return;const a=acc[n]=acc[n]||{name:n,n:0,where:new Set()};a.n+=q;a.where.add(where);};
+        cells.forEach(c=>add(c.genetic_name,"mesas"));
+        cg.forEach(c=>add(c.genetic_name,"ciclos",0));
+        vl.forEach(l=>add(l.genetic_name,"VG",l.current_count||0));
+        sl.forEach(x=>add(x.genetic_name,"bandejas"));
+        vs.forEach(v=>{if(v.status!=="inactiva")add(v.genetic_name,"madres",v.count||0);});
+        if(vivo)setHuerf(Object.values(acc).sort((a,b)=>byName(a.name,b.name)));
+      }catch{if(vivo)setHuerf([]);}
+    })();
+    return ()=>{vivo=false;};
+  },[genetics,tick]);
+  const recargarGen=async()=>{try{const g=await db.get("genetics");setGenetics(sortGen(await ensureGenColors(g)));}catch{}};
   const del=async()=>{
     const g=delG;if(!g)return;setBusy(true);
     try{
@@ -4781,26 +4957,55 @@ function GeneticasPage({genetics,setGenetics,user}){
       setDelG(null);setSel(null);setToast({msg:"Genética eliminada",type:"success"});
     }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
   };
-  const row=(g,i)=><button key={g.id} onClick={()=>{if(isAdmin)setSel(g);}} style={{display:"flex",alignItems:"center",gap:13,width:"100%",padding:"12px 14px",minHeight:62,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:isAdmin?"pointer":"default",fontFamily:"inherit",color:C.text,textAlign:"left"}}>
-    <span style={{width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:g.color||C.green,color:"#fff",fontSize:17,fontWeight:800,fontFamily:H}}>{(g.name||"?")[0]}</span>
+  // Agregar un nombre suelto a la lista: queda con un color libre y se abre para ajustarlo.
+  const agregar=async(name)=>{
+    setBusy(true);
+    try{
+      const ins=await db.insert("genetics",{name,color:nextGenColor(genetics),flower_days:65,height:"media"});
+      await logA(user.name,`Agregó genética desde nombres sin cargar: ${name}`,"genetics");
+      setGenetics(prev=>sortGen([...prev,ins[0]]));
+      setSel(ins[0]);setToast({msg:`${name} agregada: elegile color y sigla`,type:"success"});
+    }catch(e){setToast({msg:errMsg(e),type:"error"});}finally{setBusy(false);}
+  };
+  const row=(g,i)=><button key={g.id} onClick={()=>{if(isAdmin)setSel(g);}} style={{display:"flex",alignItems:"center",gap:13,width:"100%",padding:"10px 14px",minHeight:60,background:"transparent",border:"none",borderTop:i?`1px solid ${C.border}`:"none",cursor:isAdmin?"pointer":"default",textAlign:"left",fontFamily:"inherit",color:C.text}}>
+    <Swatch color={g.color||C.green} name={g.name} size={40}/>
     <span style={{flex:1,minWidth:0}}>
       <span style={{display:"block",fontSize:15.5,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.name}</span>
-      <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{g.flower_days?`~${g.flower_days} días`:"Sin días de flora"}{g.height?` · ${g.height}`:""}</span>
+      <span style={{display:"block",fontSize:12.5,color:C.textSoft,fontWeight:600}}>{g.flower_days?`~${g.flower_days} días`:"Sin días de flora"}{g.height?` · ${g.height}`:""}{g.pheno_prefix&&g.pheno_prefix!==siglaDe(g.name)?` · fenos ${g.pheno_prefix}`:""}</span>
     </span>
-    {g.pheno_prefix&&<span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,background:C.purpleLight,color:C.purple}}>{g.pheno_prefix}</span>}
     {isAdmin&&<span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>}
   </button>;
 
   return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
-    {sel&&!delG&&<GenSheet g={sel} genetics={genetics} setGenetics={setGenetics} user={user}
+    {sel&&!delG&&!unir&&<GenSheet g={sel} genetics={genetics} setGenetics={setGenetics} user={user}
       onClose={()=>setSel(null)} onToast={m=>setToast({msg:m,type:"success"})}
+      onUnir={isAdmin&&sel.id?()=>{setUnir(sel.name);setSel(null);}:null}
       onDelete={isAdmin&&sel.id?()=>setDelG(sel):null}/>}
     {delG&&<ConfirmModal title={`¿Eliminar ${delG.name}?`} busy={busy} onClose={()=>setDelG(null)} onConfirm={del}
-      text="La genética desaparece de la lista. Las plantas que ya la tienen cargada conservan el nombre pero pierden el color. No se puede deshacer."/>}
+      text="La genética desaparece de la lista. Las plantas que ya la tienen cargada conservan el nombre pero pierden el color y la sigla. Si en realidad es la misma que otra, usá “Unir con otra genética”. No se puede deshacer."/>}
+    {unir&&<UnirSheet from={unir} genetics={genetics} user={user} onClose={()=>setUnir(null)}
+      onDone={async m=>{setUnir(null);await recargarGen();setTick(t=>t+1);setToast({msg:m,type:"success"});}}/>}
 
-    <PageTitle sub={`${genetics.length} genética${genetics.length===1?"":"s"} · el color se usa en mesas, VG, madres y esquejeras`}
+    <PageTitle sub={`${genetics.length} genética${genetics.length===1?"":"s"} · color y sigla se ven en mesas, esquejeras y hueveras`}
       right={isAdmin&&<button onClick={()=>setSel({})} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:14,padding:"10px 14px",fontWeight:800,fontSize:14.5,cursor:"pointer",fontFamily:"inherit"}}><Icon n="plus" size={18}/>Agregar</button>}>Genéticas</PageTitle>
+
+    {isAdmin&&huerf&&huerf.length>0&&<Card style={{padding:"14px 16px",border:`1.5px solid ${C.amber}66`}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <span style={{color:C.amber}}><Icon n="alert" size={20}/></span>
+        <span style={{flex:1,fontSize:16,fontWeight:800,color:C.text}}>Nombres sin cargar ({huerf.length})</span>
+      </div>
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45,marginBottom:6}}>Se usan en la app pero no están en esta lista, por eso no tienen color propio. Agregalos o unilos con la genética que corresponde.</div>
+      {huerf.map((h,i)=><div key={h.name} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderTop:`1px solid ${C.border}`}}>
+        <Swatch color={null} name={h.name} size={34}/>
+        <span style={{flex:1,minWidth:0}}>
+          <span style={{display:"block",fontSize:14.5,fontWeight:800,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</span>
+          <span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{h.n>0?`${h.n} planta${h.n===1?"":"s"} · `:""}{[...h.where].join(", ")}</span>
+        </span>
+        <button onClick={()=>agregar(h.name)} disabled={busy} style={{padding:"8px 11px",borderRadius:10,border:"none",background:C.greenLight,color:C.green,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Agregar</button>
+        <button onClick={()=>setUnir(h.name)} disabled={busy} style={{padding:"8px 11px",borderRadius:10,border:`1px solid ${C.border}`,background:C.surfaceAlt,color:C.textMid,fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Unir</button>
+      </div>)}
+    </Card>}
 
     {lista.length===0
       ? <Card style={{textAlign:"center",padding:"26px 18px"}}>
@@ -5317,12 +5522,10 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
       {tandas.length===0
         ? <div style={{fontSize:13.5,color:C.textSoft,padding:"4px 0"}}>Todavía no hay ciclos cerrados{sala==="todas"?"":` en ${getRC(roomConfig,sala).display_name}`}.</div>
         : <>
-          <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none",paddingBottom:2,marginBottom:12}}>
-            {tandas.map(c=>{const on=tanda&&sid(tanda.id)===sid(c.id);const col=roomColor(c.room_id);
-              return <button key={c.id} onClick={()=>setSelCycle(sid(c.id))} style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 13px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.text:C.surface,color:on?C.bg:C.textMid,border:`1px solid ${on?C.text:C.border}`}}>
-                <span style={{width:8,height:8,borderRadius:"50%",background:col}}/>{getRC(roomConfig,c.room_id).display_name} · {fmtDM(fechaCiclo(c))}
-              </button>;})}
-          </div>
+          <Picker title="Elegí la tanda" options={tandas.map(c=>{const rc=getRC(roomConfig,c.room_id);const g=+c.yield_grams||0;
+              return {key:sid(c.id),label:`${rc.display_name} · cosecha ${fmtDM(fechaCiclo(c))}`,color:roomColor(c.room_id),sigla:c.room_id,
+                sub:`Flora desde ${c.flower_start?fmtDM(c.flower_start):"—"}${c.harvest_status==="secando"?" · falta pesar":""}`,right:g>0?(g>=1000?`${(g/1000).toFixed(1).replace(".",",")} kg`:`${g} g`):null};})}
+            value={tanda?sid(tanda.id):null} onChange={k=>{setSelCycle(k);setTandaVista("gen");}}/>
           {tanda&&(()=>{
             const t=tandaStats;
             return <>
@@ -5343,7 +5546,7 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
                 ? <div style={{fontSize:13,color:C.textSoft}}>Este ciclo no tiene genéticas cargadas.</div>
                 : (()=>{const max=Math.max(...t.gens.map(g=>g.grams),1);return t.gens.map((g,i)=><div key={g.name} style={{marginTop:i?12:0}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,gap:8}}>
-                      <span style={{display:"flex",alignItems:"center",gap:7,fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><span style={{width:9,height:9,borderRadius:"50%",background:genColor[g.name]||C.green,flexShrink:0}}/>{g.name}</span>
+                      <span style={{display:"flex",alignItems:"center",gap:7,fontSize:14.5,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><Swatch color={genColor[g.name]||C.green} name={g.name} size={22}/>{g.name}</span>
                       <span style={{fontSize:13.5,color:C.textMid,fontWeight:800,whiteSpace:"nowrap"}}>{g.grams>0?`${Math.round(g.grams)} g`:"— g"} · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
                     </div>
                     <Bar value={g.grams} max={max} color={genColor[g.name]||C.green} h={8}/>
@@ -5359,7 +5562,7 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
                     <div style={{marginTop:6}}><Stripe mix={m.gens.map(g=>[g.name,Math.max(1,g.plants)])} genMap={genColor} h={7}/></div>
                     <div style={{display:"flex",flexDirection:"column",gap:2,marginTop:6}}>
                       {m.gens.map(g=><span key={g.name} style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:C.textMid,fontWeight:600}}>
-                        <span style={{width:7,height:7,borderRadius:"50%",background:genColor[g.name]||C.green,flexShrink:0}}/>
+                        <Swatch color={genColor[g.name]||C.green} name={g.name} size={18}/>
                         <span style={{flex:1,minWidth:0}}>{g.name}</span>
                         <span style={{whiteSpace:"nowrap"}}>{g.grams>0?`${Math.round(g.grams)} g`:"—"} · {g.plants} pl{g.gpp?` · ${g.gpp} g/pl`:""}</span>
                       </span>)}
@@ -6673,6 +6876,8 @@ export default function App(){
   const navDepth=useRef(0);
   const setPage=useCallback(p=>setPageState(p),[]);
   const [genetics,setGenetics]=useState([]);
+  // Las siglas dependen de toda la lista (por las que coinciden): se recalculan cuando cambia.
+  useMemo(()=>setSiglas(genetics),[genetics]);
   const [roomConfig,setRoomConfig]=useState([]);
   const [targets,setTargets]=useState([]);
   const [textScale,setTextScaleState]=useState(1);
