@@ -3,21 +3,59 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 const SUPA_URL = "https://spirakozxkymwstelrph.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNwaXJha296eGt5bXdzdGVscnBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMDgwNzYsImV4cCI6MjA5NDY4NDA3Nn0.wsKIWwEgxmSSWNSzwOwvyqRMnOM1AztZuhvnaQnV7Jw";
 
+// ── Avisos globales ─────────────────────────────────────────────────────────
+// Toda lectura o guardado pasa por dbFetch. Si algo falla, además de tirar el error
+// le avisa a <GMWatch/> para que se vea en pantalla: ninguna falla queda muda.
+const gmBus = { fn:null, seen:{} };
+const gmFail = (f) => {
+  try {
+    if (f.table === "activity_log") return;            // el registro de actividad no molesta
+    const k = `${f.table}|${f.write?1:0}|${f.net?1:0}`;
+    const now = Date.now();
+    if (gmBus.seen[k] && now - gmBus.seen[k] < 20000) return;   // no repetir el mismo aviso
+    gmBus.seen[k] = now;
+    if (gmBus.fn) gmBus.fn(f);
+  } catch (_) { /* un aviso nunca rompe la app */ }
+};
+const dbFetch = async (url, opts={}) => {
+  const write = String(opts.method||"GET").toUpperCase() !== "GET";
+  const table = String(url).split("/rest/v1/")[1]?.split("?")[0] || "";
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  // Con wifi flojo un pedido puede quedar colgado para siempre: se corta a los 15 s (lectura) o 30 s (guardado).
+  const timer = ctrl ? setTimeout(()=>ctrl.abort(), write ? 30000 : 15000) : null;
+  let r;
+  try { r = await fetch(url, ctrl ? { ...opts, signal: ctrl.signal } : opts); }
+  catch (e) {
+    const slow = !!(ctrl && ctrl.signal.aborted);
+    gmFail({ table, write, net:true, slow });
+    throw new Error(slow ? "La conexión tardó demasiado. Probá de nuevo." : "Sin conexión. Revisá el wifi y probá de nuevo.");
+  }
+  finally { if (timer) clearTimeout(timer); }
+  if (!r.ok) {
+    const txt = await r.text();
+    gmFail({ table, write, net:false, status:r.status, msg:txt });
+    throw new Error(txt);
+  }
+  return r;
+};
+// Si la app se recarga sola por cambio de día, vuelve con la misma persona.
+const GM_RESUME = (() => { try { const v = sessionStorage.getItem("gm_resume"); if (v) { sessionStorage.removeItem("gm_resume"); return JSON.parse(v); } } catch (_) {} return null; })();
+
 const db = {
   async get(table, filters={}) {
     let url = `${SUPA_URL}/rest/v1/${table}?select=*`;
     Object.entries(filters).forEach(([k,v]) => { url += `&${k}=eq.${encodeURIComponent(v)}`; });
-    const r = await fetch(url, { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } });
+    const r = await dbFetch(url, { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   async query(table, qs) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${qs}`, { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } });
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?${qs}`, { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
   async insert(table, data) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}`, {
       method: "POST",
       headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify(data),
@@ -26,7 +64,7 @@ const db = {
     return r.json();
   },
   async update(table, id, data) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: "PATCH",
       headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify(data),
@@ -35,14 +73,14 @@ const db = {
     return r.json();
   },
   async delete(table, id) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
       method: "DELETE", headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
     });
     if (!r.ok) throw new Error(await r.text());
     return true;
   },
   async deleteWhere(table, field, value) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${value}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${value}`, {
       method: "DELETE", headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
     });
     if (!r.ok) throw new Error(await r.text());
@@ -50,14 +88,14 @@ const db = {
   },
   // Borrado con filtro libre (para condiciones múltiples, ej: pot_id + cycle_id)
   async deleteQuery(table, qs) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${qs}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?${qs}`, {
       method: "DELETE", headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
     });
     if (!r.ok) throw new Error(await r.text());
     return true;
   },
   async updateWhere(table, field, value, data) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(value)}`, {
+    const r = await dbFetch(`${SUPA_URL}/rest/v1/${table}?${field}=eq.${encodeURIComponent(value)}`, {
       method: "PATCH",
       headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify(data),
@@ -1135,7 +1173,7 @@ function MorePageAdmin({user,setPage,textScale,setTextScale,theme,setTheme,onLog
   const groups=[
     {t:"Cultivo",c:C.green,items:[["geneticas","dna","Genéticas","Colores, días de flora y notas"],["fenos","flask","Fenos","Búsquedas, cata y ranking"],["plagas","bug","Plagas","Registro de intervenciones"],["guia","book","Guía","Protocolos del cultivo"]]},
     {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"],["estadisticas","chart","Estadísticas","Rendimiento y clima"]]},
-    {t:"Club",c:C.amber,items:[["bot","chat","Asistente","Consultas de cultivo","Sin conexión"]]},
+    {t:"Club",c:C.amber,items:[["bot","chat","Asistente","Consultas y carga rápida de tareas"]]},
   ];
   const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
   const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
@@ -1272,7 +1310,7 @@ function QuickTaskSheet({user,rooms,onClose,onCreated,task}){
 }
 
 // ── INICIO (admin) ───────────────────────────────────────────────────────────
-function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
+function Dashboard({setPage,user,roomConfig,rooms,wide,targets,genetics=[]}){
   const [cycles,setCycles]=useState([]);
   const [tasks,setTasks]=useState([]);
   const [overdue,setOverdue]=useState([]);
@@ -1288,6 +1326,9 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [railIdx,setRailIdx]=useState(0);
   const [showQuick,setShowQuick]=useState(false);
   const [toast,setToast]=useState(null);
+  const [cosechar,setCosechar]=useState(null);     // esquejera que se cosecha desde el aviso
+  const [harvestFor,setHarvestFor]=useState(null); // ciclo en secado al que se le carga el peso
+  const [tick,setTick]=useState(0);                // vuelve a traer todo después de resolver un aviso
   const railRef=useRef(null);
 
   const loadTasks=useCallback(()=>Promise.all([
@@ -1309,11 +1350,13 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
       ]).catch(()=>null),
     ]).then(([,c,v,cl,co,cs,dry,vg])=>{
       setCycles(c);setVegStock(v);setClimate(cl);setCloners(co);setClSlots(cs);setDrying(dry||[]);
+      (dry||[]).forEach(dc=>{const lim=String(dc.real_harvest||dc.closed_at||"").slice(0,10);if(!lim)return;
+        autoCompletar(dc.room_id,t=>(t.type==="cosecha"||/^cosecha\b/i.test(t.title||""))&&t.due_date<=lim,"el ciclo ya se cosechó").then(n=>{if(n>0)loadTasks();}).catch(()=>{});});
       if(!vg){setVgErr(true);return;}
       const [vb,vl]=vg;
       setVgTandas(vb.map(b=>({id:sid(b.id),start_date:b.start_date,plantas:vl.filter(l=>sid(l.batch_id)===sid(b.id)).reduce((a,l)=>a+(l.current_count||0),0)})));
     }).finally(()=>setLoading(false));
-  },[loadTasks]);
+  },[loadTasks,tick]);
   useEffect(()=>{
     const id=setInterval(()=>{
       db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).then(setClimate).catch(()=>{});
@@ -1357,7 +1400,8 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   climAlert("Vege",lastClimate("Vegetativo"),getTargets(targets,"Vegetativo",null,null),"vegetativo");
   cycles.forEach(c=>{const dL=daysTo(c.estimated_harvest);if(c.phase==="floración"&&dL>=0&&dL<=7)alerts.push({k:"amber",ic:"harvest",go:`sala_${c.room_id}`,t:`Cosecha próxima en ${getRC(roomConfig,c.room_id).display_name}`,s:`Estimada en ${dL} día${dL===1?"":"s"}`});});
   if(renewM>0)alerts.push({k:"amber",ic:"tree",go:"veg_madres",t:`${renewM} madre${renewM>1?"s":""} para renovar`,s:"Revisalas en Madres"});
-  drying.forEach(c=>{const d=-daysTo(c.real_harvest||c.closed_at);alerts.push({k:"amber",ic:"harvest",go:"historial",t:`${getRC(roomConfig,c.room_id).display_name}: falta cargar la cosecha`,s:`Cortado hace ${d} día${d===1?"":"s"}. Cargalo en Historial.`});});
+  drying.forEach(c=>{const d=-daysTo(c.real_harvest||c.closed_at);alerts.push({k:"amber",ic:"harvest",go:"historial",t:`${getRC(roomConfig,c.room_id).display_name}: falta cargar la cosecha`,s:`Cortado hace ${d} día${d===1?"":"s"}. Cargá los gramos acá mismo.`,act:{l:"Cargar cosecha",fn:()=>setHarvestFor(c)}});});
+  vgTandas.forEach(b=>{const d=daysFrom(b.start_date);if(d>=7&&d<=10&&b.plantas>0)alerts.push({k:"amber",ic:"pot",go:"veg_vg",t:`Tanda del ${fmtDM(b.start_date)}: trasplantar a 1,5 L`,s:`Día ${d} en VG (${b.plantas} plantas). Va entre el día 7 y el 10.`});});
   cloners.forEach(cl=>{
     const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name);
     if(slots.length===0)return;
@@ -1366,9 +1410,11 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
     if(d===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: prender timer`,s:`Día 1 desde el corte (${slots.length} esquejes)`});
     else if(d===2)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: dejar semi tapadas`,s:"Día 2 desde el corte"});
     else if(prog.left===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: falta 1 día`,s:`${prog.label}. Preparate para cosechar.`});
-    else if(prog.ready)alerts.push({k:prog.left<-2?"red":"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: lista para cosechar`,s:`${prog.label}. Lo que prendió pasa a VG.`});
+    else if(prog.ready)alerts.push({k:prog.left<-2?"red":"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: lista para cosechar`,s:`${prog.label}. Lo que prendió pasa a VG.`,act:{l:"Cosechar ahora",fn:()=>setCosechar(cl)}});
   });
-  alerts.sort((a,b)=>(a.k==="red"?0:1)-(b.k==="red"?0:1));
+  const GO_LABEL={vegetativo:"Ver Vege",veg_madres:"Ver madres",veg_esquejeras:"Ver bandejas",veg_vg:"Ver tanda",historial:"Ver historial"};
+  const aRank=a=>(a.act?0:2)+(a.k==="red"?0:1);
+  alerts.sort((a,b)=>aRank(a)-aRank(b));
 
   // ── Tareas de hoy ──
   const mine=t=>who==="mias"?t.assignee===user.name:true;
@@ -1453,10 +1499,13 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
       </div>
       :<>
         <div ref={railRef} className="gm-rail" onScroll={onRail} style={{display:"flex",gap:10,overflowX:"auto",scrollSnapType:"x mandatory",margin:wide?0:"0 -16px",padding:wide?"2px 0 4px":"2px 16px 4px",scrollbarWidth:"none"}}>
-          {alerts.map((a,i)=>{const tn=alertTone(a.k);return <button key={i} onClick={()=>setPage(a.go)} style={{scrollSnapAlign:"start",flex:`0 0 ${alerts.length===1?"100%":"86%"}`,borderRadius:20,padding:"15px 16px",display:"flex",gap:12,alignItems:"flex-start",minHeight:92,background:tn.bg,color:tn.c,border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+          {alerts.map((a,i)=>{const tn=alertTone(a.k);return <div key={i} role="button" tabIndex={0} onClick={()=>setPage(a.go)} onKeyDown={e=>{if(e.key==="Enter")setPage(a.go);}} style={{scrollSnapAlign:"start",flex:`0 0 ${alerts.length===1?"100%":"86%"}`,borderRadius:20,padding:"15px 16px",display:"flex",gap:12,alignItems:"flex-start",minHeight:92,background:tn.bg,color:tn.c,border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
             <span style={{width:36,height:36,borderRadius:12,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={a.ic} size={20}/></span>
-            <span style={{minWidth:0}}><span style={{display:"block",fontWeight:800,fontSize:15.5,lineHeight:1.25}}>{a.t}</span><span style={{display:"block",fontSize:13.5,marginTop:3,color:C.textMid}}>{a.s}</span></span>
-          </button>;})}
+            <span style={{minWidth:0}}><span style={{display:"block",fontWeight:800,fontSize:15.5,lineHeight:1.25}}>{a.t}</span><span style={{display:"block",fontSize:13.5,marginTop:3,color:C.textMid}}>{a.s}</span>
+              {(()=>{const act=a.act||{l:GO_LABEL[a.go]||(String(a.go).startsWith("sala_")?"Ver sala":"Ver"),fn:()=>setPage(a.go),soft:true};
+                return <button onClick={e=>{e.stopPropagation();act.fn();}} style={{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,padding:"8px 13px",minHeight:38,borderRadius:11,border:"none",background:act.soft?C.surface:tn.c,color:act.soft?tn.c:C.bg,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{act.l}<Icon n="chev" size={15} sw={2.4}/></button>;})()}
+            </span>
+          </div>;})}
         </div>
         {alerts.length>1&&<div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10}}>{alerts.map((_,i)=><span key={i} style={{width:i===railIdx?18:6,height:6,borderRadius:99,background:i===railIdx?C.textMid:C.borderStrong,transition:"width .2s"}}/>)}</div>}
       </>}
@@ -1483,6 +1532,8 @@ function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
 
   return <div style={{paddingBottom:24}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
+    {cosechar&&<CosecharInicio cloner={cosechar} slots={clSlots.filter(x=>sid(x.cloner_id)===sid(cosechar.id))} genetics={genetics} user={user} onClose={()=>setCosechar(null)} onDone={n=>{const lbl=cosechar.label;setCosechar(null);setTick(t=>t+1);setToast({msg:typeof n==="number"?`${lbl}: ${n} pasaron a VG ✓`:`${lbl} cosechada ✓`,type:"success"});}}/>}
+    {harvestFor&&<HarvestModal cycle={harvestFor} rc={getRC(roomConfig,harvestFor.room_id)} user={user} onClose={()=>setHarvestFor(null)} onSaved={()=>{setHarvestFor(null);setTick(t=>t+1);setToast({msg:"Cosecha guardada ✓",type:"success"});}}/>}
     {showQuick&&<QuickTaskSheet user={user} rooms={rooms} onClose={()=>setShowQuick(false)} onCreated={t=>{setShowQuick(false);loadTasks();setToast({msg:`Tarea creada para ${t.assignee===user.name?"vos":t.assignee}, ${t.due_date===todayISO?"hoy":fmtDM(t.due_date)}`,type:"success"});}}/>}
     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0 18px"}}>
       <div>
@@ -1534,6 +1585,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [cycleCells,setCycleCells]=useState([]); // todas las celdas del ciclo, para saber qué falta ubicar
   const [phenoAll,setPhenoAll]=useState({});
   const [showDescarte,setShowDescarte]=useState(false);
+  const [poolOpen,setPoolOpen]=useState(false);   // lista de plantas por ubicar: plegada hasta que la toquen
   const [descBusy,setDescBusy]=useState(false);
   const [cycleLosses,setCycleLosses]=useState([]);   // plantas que se murieron en las mesas de este ciclo
 
@@ -1543,15 +1595,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
 
   const getMilestones=c=>{
     if(!c||!c.flower_start)return[];
-    return [
-      {label:"Inicio floración",   date:c.flower_start,                          type:"start"    },
-      {label:"Zoil Monkey 1",      date:c.flower_start,                          type:"nutricion"},
-      {label:"Poda 1 — día 15",    date:addDays(c.flower_start,15),              type:"poda"     },
-      {label:"Zoil Monkey 2",      date:addDays(c.flower_start,15),              type:"nutricion"},
-      {label:"Poda 2 — día 21",    date:addDays(c.flower_start,21),              type:"poda"     },
-      {label:"Inicio lavado",      date:addDays(c.estimated_harvest,-flushDays), type:"lavado"   },
-      {label:"Cosecha estimada",   date:c.estimated_harvest,                     type:"cosecha"  },
-    ];
+    return cycleRules(c.flower_start,c.estimated_harvest,flushDays).map(r=>({label:r.label,date:r.date,type:r.type}));
   };
 
   const load=useCallback(async()=>{
@@ -1565,6 +1609,12 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
       ]);
       const c=cycles[0]||null;
       setCycle(c);setTasks(allT);setWLog(wL);setNLog(nL);
+      if(c&&c.phase==="floración"&&c.flower_start&&c.estimated_harvest){
+        try{
+          const ya=await db.query("tasks",`cycle_id=eq.${c.id}&auto_generated=eq.true&limit=1`);
+          if(ya.length===0)await syncCycleDates({cycle:c,roomId,flowerStart:c.flower_start,estimatedHarvest:c.estimated_harvest,flushDays:rc?.flush_days||20});
+        }catch{/* si falla, el aviso global ya lo muestra */}
+      }
       db.query("room_equipment",`room_id=eq.${roomId}`).then(setEquipment).catch(()=>setEquipment([]));
       if(c){
         const cgData=await db.query("cycle_genetics",`cycle_id=eq.${c.id}`);
@@ -1648,7 +1698,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
 
   if(!cycle)return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {showPh&&<PhaseModal roomId={roomId} cycle={null} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Ciclo iniciado ✓",type:"success"});}}/>}
+    {showPh&&<PhaseModal roomId={roomId} cycle={null} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={m=>{setShowPh(false);load();setToast({msg:m?`Ciclo iniciado · ${m}`:"Ciclo iniciado ✓",type:"success"});}}/>}
     <div style={{textAlign:"center",padding:"40px 20px"}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green,marginBottom:14}}><Icon n="vege" size={46}/></div>
       <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>{roomName}</div>
@@ -1683,7 +1733,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
     {showW&&<WaterModal roomId={roomId} user={user} onClose={()=>setShowW(false)} onSaved={()=>{setShowW(false);load();setToast({msg:"Riego registrado ✓",type:"success"});}}/>}
     {showN&&<NutriModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowN(false)} onSaved={()=>{setShowN(false);load();setToast({msg:"Nutrición registrada ✓",type:"success"});}}/>}
-    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={()=>{setShowPh(false);load();setToast({msg:"Fase actualizada ✓",type:"success"});}}/>}
+    {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={m=>{setShowPh(false);load();setToast({msg:m?`Fechas actualizadas · ${m}`:"Fase actualizada ✓",type:"success"});}}/>}
     {showAG&&<AddGenModal cycleId={cycle.id} genetics={genetics} existing={cg} counts={potCounts} onClose={()=>setShowAG(false)} onSaved={()=>{setShowAG(false);load();setToast({msg:"Genéticas actualizadas ✓",type:"success"});}}/>}
     {showFoliar&&<FoliarModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowFoliar(false)} onSaved={()=>{setShowFoliar(false);load();setToast({msg:"Aplicación foliar registrada ✓",type:"success"});}}/>}
     {showClimate&&<ClimateModal roomId={roomId} user={user} onClose={()=>setShowClimate(false)} onSaved={()=>{setShowClimate(false);load();setToast({msg:"Medición registrada ✓",type:"success"});}}/>}
@@ -1736,18 +1786,20 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         {showCharts&&<ChartsBlock climate={climate} clRange={clRange} setClRange={setClRange} tg={tg} onManual={()=>setShowClimate(true)}/>}
       </Card>
 
-      {poolLeft>0&&<Card style={{padding:"14px 16px",border:`1.5px solid ${C.amber}66`}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
+      {poolLeft>0&&<Card style={{padding:0,overflow:"hidden",border:`1.5px solid ${C.amber}66`}}>
+        <div role="button" tabIndex={0} aria-expanded={poolOpen} onClick={()=>setPoolOpen(o=>!o)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setPoolOpen(o=>!o);}}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",cursor:"pointer",minHeight:62}}>
           <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.amberLight,color:C.amber,flexShrink:0}}><Icon n="pot" size={22}/></span>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:16,fontWeight:800,color:C.text}}>{poolLeft} planta{poolLeft===1?"":"s"} por ubicar</div>
-            <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Llegaron de VG. Tocá una mesa, Editar, y usalas como pincel.</div>
+            <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{pool.filter(p=>p.left>0).length} genética{pool.filter(p=>p.left>0).length===1?"":"s"} · {poolOpen?"tocá para cerrar":"tocá para ver cuáles"}</div>
           </div>
+          <span style={{color:C.textSoft,transform:poolOpen?"rotate(90deg)":"none",transition:"transform .2s"}}><Icon n="chev" size={18}/></span>
         </div>
-        <div style={{display:"flex",gap:"6px 12px",flexWrap:"wrap",marginTop:10}}>
-          {pool.filter(p=>p.left>0).map(p=>{const f=p.pheno_id?(phenoAll[p.pheno_id]?.code||"Feno"):p.pheno_label;return <span key={p.key} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:700,color:C.textMid}}><span style={{width:9,height:9,borderRadius:"50%",background:genMap[p.genetic_name]||C.green}}/>{p.genetic_name}{p.origin==="semilla"&&<span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,background:C.surfaceAlt,color:C.textMid,textTransform:"uppercase"}}>semilla</span>}{f&&<FenoChip txt={f}/>}<b style={{color:C.text,marginLeft:2}}>{p.left}</b></span>;})}
-        </div>
-        {isAdmin&&<button onClick={()=>setShowDescarte(true)} style={{marginTop:10,background:"transparent",border:"none",color:C.textSoft,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textDecoration:"underline"}}>Ya acomodé todo: dar por perdidas las que sobran</button>}
+        {poolOpen&&<div style={{padding:"0 16px 14px"}}>
+          <div style={{fontSize:13,color:C.textSoft,fontWeight:600,marginBottom:8}}>Llegaron de VG. Tocá una mesa, Editar, y usalas como pincel.</div>
+          {pool.filter(p=>p.left>0).map((p,i)=>{const f=p.pheno_id?(phenoAll[p.pheno_id]?.code||"Feno"):p.pheno_label;return <div key={p.key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderTop:i?`1px solid ${C.border}`:"none",fontSize:14,fontWeight:700,color:C.textMid}}><span style={{width:10,height:10,borderRadius:"50%",background:genMap[p.genetic_name]||C.green,flexShrink:0}}/><span style={{flex:1,minWidth:0}}>{p.genetic_name}{p.origin==="semilla"&&<span style={{fontSize:10.5,fontWeight:800,padding:"1px 6px",borderRadius:99,background:C.surfaceAlt,color:C.textMid,textTransform:"uppercase",marginLeft:6}}>semilla</span>}{f&&<span style={{marginLeft:6}}><FenoChip txt={f}/></span>}</span><b style={{color:C.text,fontVariantNumeric:"tabular-nums"}}>{p.left}</b></div>;})}
+          {isAdmin&&<button onClick={()=>setShowDescarte(true)} style={{marginTop:10,background:"transparent",border:"none",color:C.textSoft,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"4px 0",textDecoration:"underline"}}>Ya acomodé todo: dar por perdidas las que sobran</button>}
+        </div>}
       </Card>}
       <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",margin:"10px 2px 0"}}>
         <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesas</div>
@@ -1773,6 +1825,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
             <span style={{fontSize:14.5,fontWeight:800,color:C.textMid}}>{fmtDM(m.date)}</span>
           </button>;})}
         <div style={{fontSize:12,color:C.textSoft,marginTop:8}}>Tocá una fecha para marcarla como hecha.</div>
+        {isAdmin&&<button onClick={()=>setShowPh(true)} style={{marginTop:10,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px 12px",borderRadius:12,border:`1.5px solid ${C.borderStrong}`,background:"transparent",color:C.text,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}><Icon n="calendar" size={17}/>Cambiar fechas del ciclo</button>}
       </Fold>
       <BajasFold rows={cycleLosses} phenoMap={phenoAll} title="Bajas del ciclo" empty="No se murió ninguna planta en las mesas de este ciclo."/>
     </div>;
@@ -2373,6 +2426,77 @@ function ClimateModal({roomId,user,onClose,onSaved}){
     <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Registrar"/>
   </Sheet>;
 }
+// ── FECHAS ENCADENADAS ──────────────────────────────────────────────────────
+// Las tareas y las fechas clave de un ciclo salen de dos fechas: el flip y la cosecha estimada.
+// syncCycleDates las deja al día: si una fecha cambió, mueve lo pendiente; lo que falta lo crea;
+// lo ya hecho no se toca y nada queda duplicado.
+const cycleRules=(flowerStart,estimatedHarvest,flushDays)=>[
+  {label:"Inicio floración", date:flowerStart,                          type:"start",    hito:true},
+  {label:"Zoil Monkey 1",    date:flowerStart,                          type:"nutricion",task:"Zoil Monkey 1"},
+  {label:"Poda 1 — día 15",  date:addDays(flowerStart,15),              type:"poda",     hito:true,task:"Poda 1 — día 15",alta:true},
+  {label:"Zoil Monkey 2",    date:addDays(flowerStart,15),              type:"nutricion",task:"Zoil Monkey 2"},
+  {label:"Esquejes — día 20",date:addDays(flowerStart,20),              type:"revision", task:"Hacer esquejes para el próximo ciclo",alta:true},
+  {label:"Poda 2 — día 21",  date:addDays(flowerStart,21),              type:"poda",     hito:true,task:"Poda 2 — día 21",alta:true},
+  {label:"Inicio lavado",    date:addDays(estimatedHarvest,-flushDays), type:"lavado",   hito:true,task:"Inicio lavado de raíces"},
+  {label:"Cosecha estimada", date:estimatedHarvest,                     type:"cosecha",  hito:true,task:"Cosecha",alta:true},
+];
+async function syncCycleDates({cycle,roomId,flowerStart,estimatedHarvest,flushDays=20,assignee="Lucas"}){
+  const out={moved:0,created:0,dupes:0};
+  if(!cycle||!flowerStart||!estimatedHarvest)return out;
+  const cid=sid(cycle.id);
+  const rules=cycleRules(flowerStart,estimatedHarvest,flushDays);
+  // Tareas de este ciclo: las que ya tienen su cycle_id, o las viejas (sin cycle_id) creadas desde que existe el ciclo.
+  const all=await db.query("tasks",`room_id=eq.${roomId}&auto_generated=eq.true&order=created_at.asc`);
+  const desde=String(cycle.created_at||"").slice(0,10);
+  for(const r of rules.filter(x=>x.task)){
+    const title=`${r.task} ${roomId}`;
+    const mine=all.filter(t=>t.title===title&&(sid(t.cycle_id)===cid||(!t.cycle_id&&desde&&String(t.created_at||"").slice(0,10)>=desde)));
+    if(mine.length===0){
+      // Una regla que ya pasó hace más de 3 días no genera una tarea vencida de la nada.
+      if(r.date<addDays(todayISO,-3))continue;
+      await db.insert("tasks",{title,room_id:roomId,type:r.type,assignee,due_date:r.date,status:"pendiente",priority:r.alta?"alta":"normal",auto_generated:true,created_by:"sistema",cycle_id:cid});
+      out.created++;continue;
+    }
+    const keep=mine.find(t=>t.status==="completada")||mine[0];
+    for(const t of mine){
+      if(t!==keep&&t.status==="pendiente"){await db.delete("tasks",t.id);out.dupes++;continue;}   // copia repetida de la misma tarea
+      const patch={};
+      if(!t.cycle_id)patch.cycle_id=cid;
+      if(t.status==="pendiente"&&t.due_date!==r.date){patch.due_date=r.date;out.moved++;}
+      if(Object.keys(patch).length)await db.update("tasks",t.id,patch);
+    }
+  }
+  // Fechas clave (lo que se ve en la Agenda)
+  const ms=await db.query("cycle_milestones",`cycle_id=eq.${cid}`);
+  for(const r of rules.filter(x=>x.hito)){
+    const ex=ms.find(m=>m.label===r.label);
+    if(!ex)await db.insert("cycle_milestones",{cycle_id:cid,label:r.label,due_date:r.date,type:r.type,done:false,auto_generated:true});
+    else if(ex.due_date!==r.date&&(!ex.done||r.type==="start")){await db.update("cycle_milestones",ex.id,{due_date:r.date});out.moved++;}   // el inicio de flora siempre sigue al flip
+  }
+  if(out.dupes>0)await logA("sistema",`Quitó ${out.dupes} tarea(s) repetida(s) de ${roomId}`,"task");
+  return out;
+}
+const syncMsg=r=>{const p=[];if(r.moved)p.push(`${r.moved} fecha${r.moved===1?"":"s"} movida${r.moved===1?"":"s"}`);if(r.created)p.push(`${r.created} tarea${r.created===1?"":"s"} nueva${r.created===1?"":"s"}`);if(r.dupes)p.push(`${r.dupes} repetida${r.dupes===1?"":"s"} quitada${r.dupes===1?"":"s"}`);return p.join(" · ");};
+// ── TAREAS QUE SE CIERRAN SOLAS ─────────────────────────────────────────────
+// Cuando la app ya sabe que algo pasó (se cerró el ciclo, entró la tanda a la sala),
+// la tarea que lo pedía se marca hecha sin que nadie tenga que ir a tildarla.
+async function autoCompletar(roomId,match,motivo){
+  const pend=await db.query("tasks",`room_id=eq.${roomId}&status=eq.pendiente`);
+  const hit=pend.filter(match);
+  for(const t of hit)await db.update("tasks",t.id,{status:"completada",completed_at:new Date().toISOString(),notes:[t.notes,`Se cerró sola: ${motivo}`].filter(Boolean).join(" · ")});
+  if(hit.length)await logA("sistema",`Cerró ${hit.length} tarea(s) de ${roomId}: ${motivo}`,"task");
+  return hit.length;
+}
+// Cosechar una esquejera directo desde el aviso de Inicio, sin pasar por Vege.
+function CosecharInicio({cloner,slots,genetics,user,onClose,onDone}){
+  const [phenoMap,setPhenoMap]=useState(null);
+  useEffect(()=>{db.query("phenos","order=number.asc").then(ps=>{const m={};ps.forEach(p=>{m[sid(p.id)]=p;});setPhenoMap(m);}).catch(()=>setPhenoMap({}));},[]);
+  if(!phenoMap)return null;
+  const cells=Array(cloner.capacity).fill(null),slotPhenos=Array(cloner.capacity).fill(null);
+  slots.forEach(x=>{if(x.slot_index<cells.length){cells[x.slot_index]=x.genetic_name;slotPhenos[x.slot_index]=sid(x.pheno_id);}});
+  const genMap={};(genetics||[]).forEach(g=>{genMap[g.name]=g.color;});
+  return <CosecharTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMap={phenoMap} phenoMode={!!cloner.pheno_mode} genMap={genMap} progress={batchProgress(cloner,slots)} user={user} onClose={onClose} onDone={onDone}/>;
+}
 function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
   const fdays=rc?.flower_days||65;
   const vdays=rc?.veg_days||30;
@@ -2387,29 +2511,16 @@ function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
     setSaving(true);setErr(null);
     try{
       const vegData={veg_start:phase==="vegetativo"?vegStart:cycle?.veg_start||null,veg_end:phase==="vegetativo"?vegEnd:cycle?.veg_end||null};
+      let cyc=cycle;
       if(cycle){await db.update("cycles",cycle.id,{phase,flower_start:phase==="floración"?flowerStart:cycle.flower_start,estimated_harvest:phase==="floración"?estimatedHarvest:cycle.estimated_harvest,...vegData});}
-      else{await db.insert("cycles",{room_id:roomId,phase,flower_start:flowerStart,estimated_harvest:estimatedHarvest,irrigation_type:rc?.irrigation_type||(roomId==="S1"?"automático":"manual"),active:true,...vegData});}
-      if(phase==="floración"){
-        const hitos=[{l:"Zoil Monkey 1",t:"nutricion",o:0},{l:"Poda 1 — día 15",t:"poda",o:15},{l:"Zoil Monkey 2",t:"nutricion",o:15},{l:"Poda 2 — día 21",t:"poda",o:21}];
-        for(const h of hitos)await db.insert("tasks",{title:`${h.l} ${roomId}`,room_id:roomId,type:h.t,assignee:"Lucas",due_date:addDays(flowerStart,h.o),status:"pendiente",priority:h.t==="poda"?"alta":"normal",auto_generated:true,created_by:"sistema"});
-        // Crear hitos del ciclo para que se marquen en la Agenda
-        const cycleId=cycle?cycle.id:(await db.query("cycles",`room_id=eq.${roomId}&active=eq.true&order=created_at.desc&limit=1`))[0]?.id;
-        if(cycleId){
-          const flushDays=rc?.flush_days||20;
-          const mhitos=[
-            {label:"Inicio floración",date:flowerStart,type:"start"},
-            {label:"Poda 1 — día 15",date:addDays(flowerStart,15),type:"poda"},
-            {label:"Poda 2 — día 21",date:addDays(flowerStart,21),type:"poda"},
-            {label:"Inicio lavado",date:addDays(estimatedHarvest,-flushDays),type:"lavado"},
-            {label:"Cosecha estimada",date:estimatedHarvest,type:"cosecha"},
-          ];
-          const existing=await db.query("cycle_milestones",`cycle_id=eq.${cycleId}`);
-          const have=existing.map(e=>e.label);
-          for(const m of mhitos)if(!have.includes(m.label))await db.insert("cycle_milestones",{cycle_id:cycleId,label:m.label,due_date:m.date,type:m.type,done:false,auto_generated:true});
-        }
+      else{const ins=await db.insert("cycles",{room_id:roomId,phase,flower_start:flowerStart,estimated_harvest:estimatedHarvest,irrigation_type:rc?.irrigation_type||(roomId==="S1"?"automático":"manual"),active:true,...vegData});cyc=ins&&ins[0]||null;}
+      let sync=null;
+      if(phase==="floración"&&cyc){
+        // Tareas y fechas clave salen del flip: se crean, o se mueven si la fecha cambió. Nunca se duplican.
+        sync=await syncCycleDates({cycle:cyc,roomId,flowerStart,estimatedHarvest,flushDays:rc?.flush_days||20});
       }
       await logA(user.name,`Fase ${roomId} → ${phase}`,"cycle");
-      onSaved();
+      onSaved(sync?syncMsg(sync):"");
     }catch(e){setErr(errMsg(e));setSaving(false);}
   };
   const opts=[["vegetativo","Vegetativo","vege"],["floración","Floración","flower"],["cosechando","Cosechando","harvest"]];
@@ -2431,7 +2542,7 @@ function PhaseModal({roomId,cycle,rc,user,onClose,onSaved}){
         <div style={{flex:1}}><FI label="Inicio de flora" type="date" value={flowerStart} onChange={e=>{setFlowerStart(e.target.value);setEstimatedHarvest(addDays(e.target.value,fdays));}}/></div>
         <div style={{flex:1}}><FI label="Cosecha estimada" type="date" value={estimatedHarvest} onChange={e=>setEstimatedHarvest(e.target.value)}/></div>
       </div>
-      {cycle?.phase!=="floración"&&<div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45}}>Se crean solas las tareas de poda (día 15 y 21) y de Zoil Monkey · {fdays} días de flora.</div>}
+      <div style={{fontSize:13,color:C.textSoft,fontWeight:600,lineHeight:1.45}}>{cycle?.phase==="floración"?"Si cambiás estas fechas, las tareas y las fechas clave pendientes se mueven solas.":`Se arman solas las tareas del ciclo: Zoil Monkey, podas (día 15 y 21), esquejes (día 20), lavado y cosecha · ${fdays} días de flora.`}</div>
     </>}
     <SheetActions onSave={save} onCancel={onClose} saving={saving} label="Confirmar"/>
   </Sheet>;
@@ -2632,6 +2743,12 @@ function CloseCycleModal({cycle,roomId,rc,cg,potCounts,wLog,nLog,user,onClose,on
       }
       await db.update("cycles",cycle.id,{active:false,closed_at:new Date().toISOString(),summary,real_harvest:todayISO,harvest_status:"secando"});
       await logA(user.name,`Cerró ciclo de ${roomId} — en secado`,"cycle");
+      try{
+        // Lo que pedía este ciclo ya está: la cosecha y lo que haya quedado pendiente de sus fechas.
+        await autoCompletar(roomId,t=>t.type==="cosecha"||/^cosecha\b/i.test(t.title||"")||(t.auto_generated&&sid(t.cycle_id)===sid(cycle.id)),"se cerró el ciclo");
+        const ms=await db.query("cycle_milestones",`cycle_id=eq.${cycle.id}`);
+        for(const m of ms.filter(x=>!x.done&&x.type==="cosecha"))await db.update("cycle_milestones",m.id,{done:true,done_at:new Date().toISOString()});
+      }catch{/* el aviso global lo muestra */}
       try{
         const n=await generateResetTasks(roomId,todayISO,user.name,`cierre (${user.name})`);
         await db.updateWhere("room_config","room_id",roomId,{last_reset_at:new Date().toISOString()});
@@ -2969,8 +3086,8 @@ function PotMapV2({roomId,potMix,genMap,onSelect}){
   </div>;
 }
 
-// Madres: "para renovar" a los 120 días (o marcada a mano); "próxima" 15 días antes.
-const MADRE_RENOVAR=120, MADRE_AVISO=105;
+// Madres: "para renovar" a los 90 días (o marcada a mano); "próxima" 15 días antes.
+const MADRE_RENOVAR=90, MADRE_AVISO=75;
 const madreEstado=m=>{
   if(m.status==="inactiva")return "inactiva";
   const d=daysSince(m.entry_date);
@@ -3807,6 +3924,7 @@ async function enviarTandaASala({batch,lines,room,date,rc,user}){
   await db.update("vg_batches",batch.id,{status:"sala",dest_room:room,moved_date:date,cycle_id:sid(c.id)});
   const n=lines.reduce((a,l)=>a+(l.current_count||0),0);
   await logA(user,`Pasó la tanda de VG del ${fmtDM(batch.start_date)} a ${room} (${n} plantas por ubicar)`,"vg");
+  try{await autoCompletar(room,t=>/trasplante de esquejes/i.test(t.title||""),"entró la tanda de VG a la sala");}catch{/* el aviso global lo muestra */}
   return c;
 }
 // Lo que sobró sin lugar se descuenta de la tanda como pérdida de trasplante.
@@ -6866,9 +6984,69 @@ function ComprasPage(){
     texto="La lista de compras quedó sin uso y salió del menú. Si la querés de vuelta, se rehace en el formato nuevo."/>;
 }
 
+// Avisos globales en pantalla + recarga sola al cambiar el día.
+const GM_TABLAS={tasks:"tareas",cycles:"ciclos",cycle_genetics:"genéticas del ciclo",cycle_milestones:"hitos del ciclo",pots:"mesas",pot_cells:"plantas de las mesas",genetics:"genéticas",climate_logs:"clima",climate_targets:"rangos de clima",watering_logs:"riegos",nutrition_logs:"nutrición",room_config:"configuración de salas",room_equipment:"equipos",veg_stock:"madres",cloners:"esquejeras",cloner_slots:"esquejeras",cloner_batches:"tandas de esquejes",vg_batches:"tandas de VG",vg_lines:"tandas de VG",vg_losses:"bajas de VG",phenos:"fenos",pheno_hunts:"búsquedas de fenos",pheno_notes:"notas de fenos",plant_losses:"bajas",harvest_yields:"cosechas",bitacora:"bitácora",pest_logs:"plagas",users:"usuarios"};
+function GMWatch({user}){
+  const [fails,setFails]=useState([]);
+  const [offline,setOffline]=useState(()=>{try{return navigator.onLine===false;}catch(_){return false;}});
+  useEffect(()=>{
+    gmBus.fn=f=>setFails(a=>[...a.filter(x=>!(x.table===f.table&&!!x.write===!!f.write)),{...f,id:`${Date.now()}-${Math.random()}`,at:Date.now()}].slice(-3));
+    return ()=>{gmBus.fn=null;};
+  },[]);
+  useEffect(()=>{
+    const on=()=>setOffline(false),off=()=>setOffline(true);
+    window.addEventListener("online",on);window.addEventListener("offline",off);
+    return ()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+  // Una falla al cargar se cierra sola a los 8 s; una falla al guardar queda hasta que la cierren.
+  useEffect(()=>{
+    if(!fails.some(f=>!f.write))return;
+    const t=setInterval(()=>setFails(a=>a.filter(f=>f.write||Date.now()-f.at<8000)),1000);
+    return ()=>clearInterval(t);
+  },[fails]);
+  // La fecha de "hoy" se calcula al abrir la app. Si la tablet queda prendida de un día para
+  // el otro, se recarga sola (solo si nadie la tocó en los últimos 2 minutos).
+  useEffect(()=>{
+    let last=Date.now();
+    const touch=()=>{last=Date.now();};
+    const check=()=>{
+      const hoy=new Date(Date.now()-3*3600*1000).toISOString().split("T")[0];
+      if(hoy===todayISO||Date.now()-last<120000)return;
+      try{if(user)sessionStorage.setItem("gm_resume",JSON.stringify(user));}catch(_){}
+      window.location.reload();
+    };
+    const vis=()=>{if(document.visibilityState==="visible")check();};
+    window.addEventListener("pointerdown",touch,true);window.addEventListener("keydown",touch,true);
+    document.addEventListener("visibilitychange",vis);
+    const id=setInterval(check,60000);
+    return ()=>{window.removeEventListener("pointerdown",touch,true);window.removeEventListener("keydown",touch,true);document.removeEventListener("visibilitychange",vis);clearInterval(id);};
+  },[user]);
+  if(!offline&&fails.length===0)return null;
+  const box=(col,bg)=>({background:bg,color:col,border:`1.5px solid ${col}55`,borderRadius:14,padding:"11px 14px",fontSize:13,fontWeight:700,boxShadow:C.shadowUp,display:"flex",alignItems:"center",gap:12,pointerEvents:"auto"});
+  const texto=fail=>{
+    const t=GM_TABLAS[fail.table]||fail.table||"datos";
+    const titulo=fail.write?`No se guardó: ${t}`:`No pude cargar: ${t}`;
+    const raw=String(fail.msg||"");
+    let detalle;
+    if(fail.net)detalle=fail.slow?"La conexión tardó demasiado.":"No hay conexión con el servidor.";
+    else if(fail.status===404||/PGRST205|does not exist|Could not find the table/i.test(raw))detalle="Esa tabla no existe en Supabase: falta correr un SQL.";
+    else if(/PGRST204|Could not find the .* column/i.test(raw))detalle="Falta una columna en Supabase: falta correr un SQL.";
+    else detalle=errMsg(new Error(raw||`Error ${fail.status||""}`));
+    if(fail.write)detalle+=" Revisá y volvé a intentar.";
+    return {titulo,detalle};
+  };
+  return <div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:3000,width:"min(94vw,460px)",display:"flex",flexDirection:"column",gap:6,pointerEvents:"none"}}>
+    {offline&&<div style={box(C.amber,C.amberLight)}><span>⚠ Sin conexión. Lo que cargues ahora no se guarda.</span></div>}
+    {fails.map(f=>{const x=texto(f);return <div key={f.id} style={box(C.red,C.redLight)}>
+      <div style={{flex:1,minWidth:0}}><div style={{fontWeight:800}}>✕ {x.titulo}</div><div style={{fontSize:12,fontWeight:600,marginTop:2,wordBreak:"break-word"}}>{x.detalle}</div></div>
+      <button onClick={()=>setFails(a=>a.filter(y=>y.id!==f.id))} style={{background:C.red,color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>Cerrar</button>
+    </div>;})}
+  </div>;
+}
+
 // APP
 export default function App(){
-  const [user,setUser]=useState(null);
+  const [user,setUser]=useState(GM_RESUME);
   const [page,setPageState]=useState("dashboard");
   // Cada cambio de pantalla queda en el historial del navegador: así el gesto o botón
   // "atrás" del celu vuelve a la pantalla anterior en vez de salir de la app.
@@ -6933,7 +7111,7 @@ export default function App(){
       case "salas":        return <SalasTab rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
       default:
         if(page.startsWith("sala_"))return <SalasTab roomId={page.slice(5)} rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
-        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
+        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets} genetics={genetics}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
     }
   };
   const globalCSS=`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{-webkit-font-smoothing:antialiased;}.gm-rail::-webkit-scrollbar{display:none}::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}input,select,button,textarea{font-family:inherit;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.page{animation:fadeUp 0.2s ease;}@keyframes gmDraw{to{stroke-dashoffset:0}}.gm-draw{stroke-dasharray:24;stroke-dashoffset:24;animation:gmDraw .2s ease-out forwards}@keyframes gmFlashA{from{background:${C.greenLight}}to{background:transparent}}@keyframes gmFlashB{from{background:${C.greenLight}}to{background:transparent}}@media (prefers-reduced-motion:reduce){.gm-draw{animation:none;stroke-dashoffset:0}}`;
@@ -6943,6 +7121,7 @@ export default function App(){
   if(wide){
     return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,display:"flex",...zoomStyle}}>
       <style>{globalCSS}</style>
+      <GMWatch user={user}/>
       <AdminNav page={page} setPage={setPage} wide user={user}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
@@ -6952,6 +7131,7 @@ export default function App(){
   }
   return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
     <style>{globalCSS}</style>
+    <GMWatch user={user}/>
     <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
     <div className="page" style={{padding:"14px 16px 104px"}}>{render()}</div>
     <AdminNav page={page} setPage={setPage} user={user}/>
