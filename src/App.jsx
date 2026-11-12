@@ -2437,7 +2437,7 @@ const cycleRules=(flowerStart,estimatedHarvest,flushDays)=>[
   {label:"Zoil Monkey 2",    date:addDays(flowerStart,15),              type:"nutricion",task:"Zoil Monkey 2"},
   {label:"Esquejes — día 20",date:addDays(flowerStart,20),              type:"revision", task:"Hacer esquejes para el próximo ciclo",alta:true},
   {label:"Poda 2 — día 21",  date:addDays(flowerStart,21),              type:"poda",     hito:true,task:"Poda 2 — día 21",alta:true},
-  {label:"Inicio lavado",    date:addDays(estimatedHarvest,-flushDays), type:"lavado",   hito:true,task:"Inicio lavado de raíces"},
+  {label:"Inicio lavado",    date:addDays(estimatedHarvest,-flushDays), type:"lavado",   hito:true,task:"Inicio lavado de raíces",tType:"riego"},
   {label:"Cosecha estimada", date:estimatedHarvest,                     type:"cosecha",  hito:true,task:"Cosecha",alta:true},
 ];
 async function syncCycleDates({cycle,roomId,flowerStart,estimatedHarvest,flushDays=20,assignee="Lucas"}){
@@ -2454,7 +2454,7 @@ async function syncCycleDates({cycle,roomId,flowerStart,estimatedHarvest,flushDa
     if(mine.length===0){
       // Una regla que ya pasó hace más de 3 días no genera una tarea vencida de la nada.
       if(r.date<addDays(todayISO,-3))continue;
-      await db.insert("tasks",{title,room_id:roomId,type:r.type,assignee,due_date:r.date,status:"pendiente",priority:r.alta?"alta":"normal",auto_generated:true,created_by:"sistema",cycle_id:cid});
+      await db.insert("tasks",{title,room_id:roomId,type:r.tType||r.type,assignee,due_date:r.date,status:"pendiente",priority:r.alta?"alta":"normal",auto_generated:true,created_by:"sistema",cycle_id:cid});
       out.created++;continue;
     }
     const keep=mine.find(t=>t.status==="completada")||mine[0];
