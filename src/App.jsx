@@ -1423,6 +1423,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [msRows,setMsRows]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selPot,setSelPot]=useState(null);
+  const salaNotes=useNotes({room_id:roomId},user);   // notas de la sala y de sus mesas
   const [toast,setToast]=useState(null);
   const [showW,setShowW]=useState(false);
   const [showN,setShowN]=useState(false);
@@ -1566,6 +1567,8 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
       <div style={{fontSize:14,color:C.textSoft,marginBottom:24}}>Sin ciclo activo</div>
       {user.role==="admin"&&<Btn onClick={()=>setShowPh(true)} full>Iniciar ciclo</Btn>}
     </div>
+    <NotesFoldView title="Notas de la sala" data={salaNotes} user={user} hint="Nota para toda la sala…"
+      place={{place_type:"sala",place_ref:roomId,place_label:roomName,room_id:roomId,cycle_id:null}}/>
   </div>;
 
   // ── Cabecera clara, clima, mesas y lo demás plegado. Las acciones de
@@ -1667,9 +1670,13 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
         <div style={{fontSize:18,fontWeight:800,color:C.text}}>Mesas</div>
         <span style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{isAdmin?"Tocá una para editarla":"Tocá una para verla"}</span>
       </div>
-      <Card style={{padding:10}}><PotMapV2 roomId={roomId} potMix={potMix} genMap={genMap} onSelect={setSelPot}/></Card>
+      <Card style={{padding:10}}><PotMapV2 roomId={roomId} potMix={potMix} genMap={genMap} onSelect={setSelPot}
+        noteCounts={salaNotes.notes.reduce((a,n)=>{if(n.place_type==="mesa"){const l=String(n.place_ref).split(":")[1];a[l]=(a[l]||0)+1;}return a;},{})}/></Card>
 
       <div style={{height:2}}/>
+      <NotesFoldView title="Notas de la sala" data={salaNotes} user={user} hint="Nota para toda la sala…"
+        placeTxt={n=>n.place_type==="mesa"?`Mesa ${String(n.place_ref).split(":")[1]}`:null}
+        place={{place_type:"sala",place_ref:roomId,place_label:roomName,room_id:roomId,cycle_id:sid(cycle.id)}}/>
       <Fold icon="dna" title="Genéticas del ciclo" count={cg.length} right={isAdmin&&<button onClick={e=>{e.stopPropagation();setShowAG(true);}} style={{fontSize:13,fontWeight:800,color:C.green,background:C.greenLight,border:"none",borderRadius:10,padding:"7px 11px",cursor:"pointer",fontFamily:"inherit"}}>+ Agregar</button>}>
         {genRows.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"6px 0"}}>Sin genéticas. Tocá “+ Agregar”.</div>}
         {genRows.map(([g,n],i)=><div key={g} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
@@ -2016,6 +2023,10 @@ function PotEditor({roomId,potLabel,cycle,genetics,cycleGenetics,user,onClose,on
       {isAdmin&&!editing&&<button onClick={startEdit} style={{display:"flex",alignItems:"center",gap:6,background:C.green,color:C.onAccent,border:"none",borderRadius:12,padding:"10px 13px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}><Icon n="edit" size={17}/>Editar</button>}
       <button onClick={onClose} aria-label="Cerrar" style={{width:40,height:40,borderRadius:12,border:"none",background:"transparent",color:C.textSoft,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={20}/></button>
     </div>
+
+    {!editing&&<NotesInline title="Notas de la mesa" user={user} hint={`Nota para la mesa ${potLabel}…`}
+      filter={{place_type:"mesa",place_ref:`${roomId}:${potLabel}`}}
+      place={{place_type:"mesa",place_ref:`${roomId}:${potLabel}`,place_label:`${roomLabel(roomId)} · Mesa ${potLabel}`,room_id:roomId,cycle_id:cycle?sid(cycle.id):null}}/>}
 
     {/* Por ubicar: lo que llegó de VG a esta sala y todavía no tiene lugar */}
     {poolItems.length>0&&!phenoMode&&(editing||poolLeft>0)&&<div style={{background:C.amberLight,borderRadius:14,padding:"11px 12px",marginBottom:12}}>
@@ -2605,6 +2616,9 @@ function CloseCycleModal({cycle,roomId,rc,cg,potCounts,wLog,nLog,user,onClose,on
       }
       await db.update("cycles",cycle.id,{active:false,closed_at:new Date().toISOString(),summary,real_harvest:todayISO,harvest_status:"secando"});
       await logA(user.name,`Cerró ciclo de ${roomId} — en secado`,"cycle");
+      // Las notas de la sala y de sus mesas se guardan con el ciclo y la sala arranca limpia.
+      try{await notesApi({action:"archive",room_id:roomId,cycle_id:sid(cycle.id)},user);notesChanged();}
+      catch(_){gmFail({table:"place_notes",write:true});}
       try{
         // Lo que pedía este ciclo ya está: la cosecha y lo que haya quedado pendiente de sus fechas.
         await autoCompletar(roomId,t=>t.type==="cosecha"||/^cosecha\b/i.test(t.title||"")||(t.auto_generated&&sid(t.cycle_id)===sid(cycle.id)),"se cerró el ciclo");
@@ -2931,17 +2945,150 @@ const ChartsBlock=({climate,clRange,setClRange,tg,onManual})=>{
 };
 
 // Mapa de mesas con la forma real de la sala: cada mesa muestra su línea de genéticas y plantas.
-function PotMapV2({roomId,potMix,genMap,onSelect}){
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTAS — notas libres por lugar: mesa, sala, Vege, madres, esquejera o tanda de VG.
+// Pasan por la función grow-bot (la app no toca la tabla place_notes directo), así el
+// asistente lee y escribe las mismas notas que se ven acá.
+// ══════════════════════════════════════════════════════════════════════════════
+const NOTES_EVT="gm-notes";
+const notesChanged=()=>{try{window.dispatchEvent(new Event(NOTES_EVT));}catch(_){/* sin eventos: se ven al reabrir */}};
+const notesApi=async(payload,user)=>{
+  const ctrl=typeof AbortController!=="undefined"?new AbortController():null;
+  const timer=ctrl?setTimeout(()=>ctrl.abort(),20000):null;
+  let r;
+  try{
+    const opts={method:"POST",headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},
+      body:JSON.stringify({mode:"notes",user_name:user?.name||null,...payload})};
+    r=await fetch(`${SUPA_URL}/functions/v1/grow-bot`,ctrl?{...opts,signal:ctrl.signal}:opts);
+  }catch(e){throw new Error("No se pudo llegar a las notas. Revisá la conexión y probá de nuevo.");}
+  finally{if(timer)clearTimeout(timer);}
+  let j={};try{j=await r.json();}catch(_){/* respuesta sin cuerpo */}
+  if(!r.ok||j.error)throw new Error(j.error||`Las notas no respondieron (error ${r.status}).`);
+  return j;
+};
+const noteDay=ts=>{const d=new Date(ts);if(isNaN(d))return "";return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`;};
+// Trae las notas de un lugar y se vuelve a cargar sola cuando alguien (o el asistente) agrega o borra una.
+function useNotes(filter,user){
+  const key=JSON.stringify(filter||{});
+  const [notes,setNotes]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [err,setErr]=useState(null);
+  const uname=user?.name||null;
+  useEffect(()=>{
+    let alive=true;
+    const load=async()=>{
+      try{const j=await notesApi({action:"list",filter:JSON.parse(key)},{name:uname});if(alive){setNotes(j.notes||[]);setErr(null);}}
+      catch(e){if(alive)setErr(e.message);}
+      finally{if(alive)setLoading(false);}
+    };
+    load();
+    window.addEventListener(NOTES_EVT,load);
+    return()=>{alive=false;window.removeEventListener(NOTES_EVT,load);};
+  },[key,uname]);
+  return {notes,loading,err};
+}
+function NotesList({notes,user,placeTxt=null,readOnly=false,max=0}){
+  const isAdmin=user?.role==="admin";
+  const [del,setDel]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState(null);
+  const [all,setAll]=useState(false);
+  const shown=max&&!all?notes.slice(0,max):notes;
+  const borrar=async()=>{
+    setBusy(true);setErr(null);
+    try{await notesApi({action:"delete",id:del.id},user);setDel(null);notesChanged();}
+    catch(e){setErr(e.message);setDel(null);}
+    finally{setBusy(false);}
+  };
+  return <>
+    {del&&<ConfirmModal z={420} title="¿Borrar esta nota?" confirmLabel="Borrar nota" busy={busy} onConfirm={borrar} onClose={()=>setDel(null)}
+      text={`“${String(del.content).slice(0,160)}${String(del.content).length>160?"…":""}”. No se puede recuperar.`}/>}
+    <ErrBox err={err}/>
+    {shown.map((n,i)=>{
+      const can=!readOnly&&(isAdmin||n.author===user?.name);
+      const lugar=placeTxt?placeTxt(n):null;
+      return <div key={n.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>
+        <div style={{flex:1,minWidth:0}}>
+          {lugar&&<span style={{display:"inline-block",fontSize:11.5,fontWeight:800,color:C.amber,background:C.amberLight,borderRadius:99,padding:"2px 9px",marginBottom:4}}>{lugar}</span>}
+          <div style={{fontSize:14.5,color:C.text,lineHeight:1.45,whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{n.content}</div>
+          <div style={{fontSize:12,color:C.textSoft,fontWeight:700,marginTop:3}}>{[n.author,noteDay(n.created_at)].filter(Boolean).join(" · ")}</div>
+        </div>
+        {can&&<button onClick={()=>setDel(n)} aria-label="Borrar nota" style={{width:40,height:40,borderRadius:12,border:"none",background:"transparent",color:C.textSoft,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n="trash" size={18}/></button>}
+      </div>;
+    })}
+    {max>0&&notes.length>max&&<button onClick={()=>setAll(a=>!a)} style={{background:"transparent",border:"none",color:C.green,fontSize:13.5,fontWeight:800,cursor:"pointer",fontFamily:"inherit",padding:"8px 0"}}>{all?"Ver menos":`Ver las ${notes.length} notas`}</button>}
+  </>;
+}
+function NoteAdd({place,user,placeholder="Escribí una nota…"}){
+  const [txt,setTxt]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState(null);
+  const save=async()=>{
+    const t=txt.trim();if(!t||saving)return;
+    setSaving(true);setErr(null);
+    try{await notesApi({action:"add",note:{...place,content:t}},user);setTxt("");notesChanged();}
+    catch(e){setErr(e.message);}
+    finally{setSaving(false);}
+  };
+  return <div style={{marginTop:8}}>
+    <ErrBox err={err}/>
+    <textarea value={txt} onChange={e=>setTxt(e.target.value)} placeholder={placeholder} rows={2} aria-label="Nota nueva"
+      style={{width:"100%",padding:"11px 13px",borderRadius:12,border:`1.5px solid ${C.border}`,fontSize:15.5,color:C.text,background:C.surface,outline:"none",resize:"vertical",fontFamily:"inherit",lineHeight:1.45,boxSizing:"border-box"}}/>
+    {txt.trim()&&<Btn onClick={save} disabled={saving} full style={{minHeight:46,marginTop:8}}>{saving?"Guardando...":"Guardar nota"}</Btn>}
+  </div>;
+}
+const NotesEmpty=({data,txt="Todavía no hay notas."})=>(!data.loading&&!data.err&&data.notes.length===0)?<div style={{fontSize:13,color:C.textSoft,padding:"4px 0"}}>{txt}</div>:null;
+// Plegable de notas para las páginas. `data` viene de useNotes (así la página puede usar la misma carga para otra cosa).
+function NotesFoldView({title="Notas",data,place,user,placeTxt=null,readOnly=false,hint}){
+  return <Fold icon="notebook" title={title} count={data.loading?null:data.notes.length}>
+    <ErrBox err={data.err}/>
+    <NotesEmpty data={data}/>
+    <NotesList notes={data.notes} user={user} placeTxt={placeTxt} readOnly={readOnly}/>
+    {!readOnly&&<NoteAdd place={place} user={user} placeholder={hint}/>}
+  </Fold>;
+}
+function NotesFold({filter,hideEmpty=false,...rest}){
+  const data=useNotes(filter,rest.user);
+  if(hideEmpty&&data.notes.length===0)return null;
+  return <NotesFoldView data={data} {...rest}/>;
+}
+// Notas adentro de una hoja (mesa, esquejera): una fila arriba de todo. Si hay notas viene abierta;
+// si no, queda en un renglón "Agregar nota" para no empujar lo demás.
+function NotesInline({title="Notas",filter,place,user,hint}){
+  const data=useNotes(filter,user);
+  const [open,setOpen]=useState(null);
+  const n=data.notes.length;
+  const isOpen=open===null?n>0:open;
+  return <div style={{marginBottom:12,borderRadius:14,background:C.surfaceAlt,border:`1px solid ${n>0?C.amber+"55":C.border}`}}>
+    <button onClick={()=>setOpen(!isOpen)} aria-expanded={isOpen} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 12px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",color:C.text}}>
+      <span style={{width:34,height:34,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:n>0?C.amberLight:C.surface,color:n>0?C.amber:C.textMid}}><Icon n="notebook" size={18}/></span>
+      <span style={{flex:1,minWidth:0}}>
+        <span style={{display:"block",fontSize:14,fontWeight:800}}>{title}{n>0&&<span style={{color:C.textSoft,fontWeight:700}}> ({n})</span>}</span>
+        {n===0&&<span style={{display:"block",fontSize:12,color:C.textSoft,fontWeight:600}}>{data.loading?"Cargando…":"Tocá para dejar una nota"}</span>}
+      </span>
+      <span style={{color:C.textSoft,transform:isOpen?"rotate(90deg)":"none",transition:"transform .2s"}}><Icon n="chev" size={18}/></span>
+    </button>
+    {isOpen&&<div style={{padding:"0 12px 12px"}}>
+      <ErrBox err={data.err}/>
+      <NotesList notes={data.notes} user={user} max={3}/>
+      <NoteAdd place={place} user={user} placeholder={hint}/>
+    </div>}
+    {!isOpen&&data.err&&<div style={{padding:"0 12px 10px"}}><ErrBox err={data.err}/></div>}
+  </div>;
+}
+
+function PotMapV2({roomId,potMix,genMap,onSelect,noteCounts={}}){
   const plan=ROOM_PLANS[roomId];
   const pots=plan?plan.pots:(ROOM_POTS[roomId]||[]).map((p,i)=>({...p,x:4+(i%2)*48,y:4+Math.floor(i/2)*31,w:44,h:27}));
   const ratio=plan?plan.ratio:"3 / 4";
   return <div style={{position:"relative",width:"100%",aspectRatio:ratio,background:C.surfaceAlt,borderRadius:14,border:`1px solid ${C.border}`}}>
     {pots.map(p=>{
-      const mix=sortPairs(potMix[p.label]||{});const n=mix.reduce((a,[,c])=>a+c,0);
-      return <button key={p.label} onClick={()=>onSelect(p.label)} aria-label={`Mesa ${p.label}, ${n} plantas`}
+      const mix=sortPairs(potMix[p.label]||{});const n=mix.reduce((a,[,c])=>a+c,0);const nn=noteCounts[p.label]||0;
+      return <button key={p.label} onClick={()=>onSelect(p.label)} aria-label={`Mesa ${p.label}, ${n} plantas${nn?`, ${nn} nota${nn===1?"":"s"}`:""}`}
         style={{position:"absolute",left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`,borderRadius:p.circular?"50%":12,background:C.surface,border:`1px solid ${C.border}`,boxShadow:C.shadow,
           padding:p.circular?"16% 14%":"8px 9px",display:"flex",flexDirection:"column",justifyContent:"space-between",alignItems:p.circular?"center":"stretch",cursor:"pointer",fontFamily:"inherit",color:C.text,overflow:"hidden",textAlign:p.circular?"center":"left"}}>
         <span style={{fontSize:20,fontWeight:800,lineHeight:1}}>{p.label}</span>
+        {nn>0&&<span style={{position:"absolute",top:p.circular?"13%":6,right:p.circular?"13%":6,display:"flex",alignItems:"center",gap:3,background:C.amberLight,color:C.amber,borderRadius:99,padding:"2px 7px",fontSize:11.5,fontWeight:800,lineHeight:1.3}}><Icon n="notebook" size={12} sw={2.2}/>{nn}</span>}
         <Stripe mix={mix} genMap={genMap}/>
         <span style={{fontSize:12,fontWeight:700,color:C.textSoft,whiteSpace:"nowrap"}}>{n>0?`${n} plantas`:"Vacía"}</span>
       </button>;
@@ -3088,6 +3235,9 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
         })}
       </div>
     </Card>
+    <NotesFold title="Notas de Vege" user={user} hint="Nota para Vege…" filter={{room_id:"Vegetativo"}}
+      placeTxt={n=>n.place_type==="tanda"?n.place_label:null}
+      place={{place_type:"vege",place_ref:"Vegetativo",place_label:"Vege",room_id:"Vegetativo"}}/>
   </div>;
 }
 
@@ -3224,6 +3374,8 @@ function MadresPage({genetics,user}){
       <div style={{fontSize:15,fontWeight:800,color:C.text,margin:"6px 0 4px"}}>Sin madres cargadas</div>
       <div style={{fontSize:13,color:C.textSoft}}>{isAdmin?"Tocá “Agregar” para cargar la primera.":"Un administrador tiene que cargarlas."}</div>
     </Card>}
+    <NotesFold title="Notas de madres" user={user} hint="Nota general de las madres…" filter={{place_type:"madres"}}
+      place={{place_type:"madres",place_ref:"madres",place_label:"Madres"}}/>
     <BajasFold rows={bajas} phenoMap={phenoMap} title="Bajas de madres" empty="Todavía no se murió ninguna madre."/>
     {inactivas.length>0&&<Fold icon="tree" title="Inactivas" count={inactivas.length}>{inactivas.map((m,i)=>{
       const f=fenoTxt(m,phenoMap);
@@ -3290,6 +3442,7 @@ function EsquejerasPage({genetics,user}){
   const [loading,setLoading]=useState(true);
   const [toast,setToast]=useState(null);
   const [showEsp,setShowEsp]=useState(null);
+  const esqNotes=useNotes({place_type:"esquejera"},user);
   const [showNew,setShowNew]=useState(false);
   const isAdmin=user?.role==="admin";
   const load=useCallback(()=>{
@@ -3319,7 +3472,7 @@ function EsquejerasPage({genetics,user}){
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.greenLight,color:C.green,flexShrink:0}}><Icon n={clonerKind(cl)==="huevera"?"seed":"scissors"} size={22}/></span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:16,fontWeight:800,color:C.text}}>{cl.label}</div>
+          <div style={{fontSize:16,fontWeight:800,color:C.text,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>{cl.label}{(()=>{const nn=esqNotes.notes.filter(n=>n.place_ref===sid(cl.id)).length;return nn>0?<span style={{display:"inline-flex",alignItems:"center",gap:3,background:C.amberLight,color:C.amber,borderRadius:99,padding:"2px 7px",fontSize:11.5,fontWeight:800}}><Icon n="notebook" size={12} sw={2.2}/>{nn}</span>:null;})()}</div>
           <div style={{fontSize:13,fontWeight:700,color:prog?prog.color:C.textSoft}}>{prog?prog.label.replace(" · ",", "):`Vacía · ${clonerRows(cl.capacity,cols)} × ${cols}, ${batchReadyDays(cl)} días`}</div>
         </div>
         <span style={{textAlign:"right"}}><span style={{display:"block",fontSize:22,fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{used.length}</span><span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>de {cl.capacity}</span></span>
@@ -4050,6 +4203,8 @@ function VGPage({genetics,user,roomConfig=[]}){
       })()}
       {ls.length===0&&<Card style={{textAlign:"center",color:C.textSoft,fontSize:13.5,padding:"18px 0"}}>Esta tanda no tiene plantas cargadas.</Card>}
 
+      <NotesFold title="Notas de la tanda" user={user} hint="Nota para esta tanda…" filter={{place_type:"tanda",place_ref:sid(sel.id)}}
+        place={{place_type:"tanda",place_ref:sid(sel.id),place_label:`Tanda del ${fmtDM(sel.start_date)}`,room_id:"Vegetativo"}}/>
       <Fold icon="history" title="Registro de pérdidas" count={perdidasB.length}>
         {perdidasB.length===0&&<div style={{fontSize:13,color:C.textSoft,padding:"4px 0"}}>Sin pérdidas registradas.</div>}
         {perdidasB.map((x,idx)=><div key={x.id} style={{display:"flex",gap:10,alignItems:"baseline",fontSize:13.5,padding:"8px 0",borderTop:idx?`1px solid ${C.border}`:"none"}}>
@@ -4419,6 +4574,9 @@ function EsquejeraModal({cloner,slots,genetics,user,onClose,onSaved}){
     {showCosechar&&<CosecharTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMap={phenoMap} phenoMode={phenoMode} genMap={genMap} progress={prog} user={user} onClose={()=>setShowCosechar(false)} onDone={(n)=>{setShowCosechar(false);onSaved(`Cosechada: ${n} esqueje${n===1?"":"s"} pasaron a VG ✓`);}}/>}
     {showEliminar&&<EliminarTandaModal cloner={cloner} cells={cells} slotPhenos={slotPhenos} phenoMode={phenoMode} progress={prog} user={user} onClose={()=>setShowEliminar(false)} onDone={()=>{setShowEliminar(false);onSaved();}}/>}
     <div style={{margin:"2px 0 12px"}}><Bar value={used} max={cloner.capacity} h={8}/></div>
+    <NotesInline title="Notas" user={user} hint={`Nota para ${cloner.label}…`}
+      filter={{place_type:"esquejera",place_ref:sid(cloner.id)}}
+      place={{place_type:"esquejera",place_ref:sid(cloner.id),place_label:cloner.label}}/>
 
     {/* Búsqueda de fenos: numera cada esqueje para poder seguirlo hasta la cata */}
     {isAdmin&&<button onClick={togglePheno} style={{display:"flex",alignItems:"center",gap:12,width:"100%",marginBottom:12,padding:"10px 12px",borderRadius:14,cursor:"pointer",fontFamily:"inherit",textAlign:"left",background:phenoMode?C.purpleLight:C.surfaceAlt,border:`1px solid ${phenoMode?C.purple+"55":C.border}`}}>
@@ -5254,6 +5412,8 @@ function HistorialPage({roomConfig,user,genetics,rooms}){
         })}
       </>}
       {rows.length===0&&<div style={{fontSize:13,color:C.textSoft,marginTop:14,lineHeight:1.5}}>Este ciclo no tiene detalle por mesa. Podés cargarlo con “{esSec?"Cargar":"Editar"} cosecha”.</div>}
+      <NotesFold hideEmpty readOnly title="Notas del ciclo" user={user} filter={{archived:true,cycle_id:sid(c.id)}}
+        placeTxt={n=>n.place_type==="mesa"?`Mesa ${String(n.place_ref).split(":")[1]}`:"Sala"}/>
       {c.summary&&<Fold icon="notebook" title="Informe del ciclo"><pre style={{background:C.surfaceAlt,borderRadius:12,padding:12,fontSize:11.5,color:C.textMid,whiteSpace:"pre-wrap",fontFamily:"monospace",maxHeight:240,overflowY:"auto",lineHeight:1.55,margin:0}}>{c.summary}</pre></Fold>}
       <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:16}}>
         {isAdmin&&<Btn full onClick={()=>{setHarvestFor(c);setSel(null);}} style={{minHeight:50}}>{esSec?"Cargar cosecha":"Editar cosecha"}</Btn>}
@@ -6125,7 +6285,7 @@ function PlagasPage({user,rooms}){
   </div>;
 }
 function BotChat({user,currentPage,compact=false}){
-  const [msgs,setMsgs]=useState([{role:"assistant",content:`¡Hola ${user.name}! Soy el asistente de GrowManager. Puedo registrar riegos, nutrición y clima, completar tareas, anotar madres y crear tareas o compras. Para crear/editar genéticas o cambiar de fase te voy a pedir confirmación. Probá: "regué 15 min en S1" o "¿qué tareas hay hoy?".`}]);
+  const [msgs,setMsgs]=useState([{role:"assistant",content:`¡Hola ${user.name}! Soy el asistente de GrowManager. Puedo registrar riegos, nutrición y clima, completar tareas, anotar madres, dejar y leer notas (mesas, salas, Vege, esquejeras) y crear tareas o compras. Para crear/editar genéticas o cambiar de fase te voy a pedir confirmación. Probá: "regué 15 min en S1", "agregá una nota en la mesa E de la sala 1: ..." o "¿qué tareas hay hoy?".`}]);
   const [input,setInput]=useState("");
   const [loading,setLoading]=useState(false);
   const [pending,setPending]=useState(null); // {tool,args} a confirmar
@@ -6155,6 +6315,7 @@ function BotChat({user,currentPage,compact=false}){
       else{
         setMsgs(m=>[...m,{role:"assistant",content:data.reply||"Listo.",pending:data.pendingAction||null}]);
         if(data.pendingAction)setPending(data.pendingAction);
+        notesChanged();   // si dejó una nota, las pantallas abiertas la muestran al toque
       }
     }catch(e){
       setMsgs(m=>[...m,{role:"assistant",content:"⚠ No me pude conectar. Revisá que la función esté desplegada.",err:true}]);
@@ -6864,7 +7025,7 @@ function ComprasPage(){
 }
 
 // Avisos globales en pantalla + recarga sola al cambiar el día.
-const GM_TABLAS={tasks:"tareas",cycles:"ciclos",cycle_genetics:"genéticas del ciclo",cycle_milestones:"hitos del ciclo",pots:"mesas",pot_cells:"plantas de las mesas",genetics:"genéticas",climate_logs:"clima",climate_targets:"rangos de clima",watering_logs:"riegos",nutrition_logs:"nutrición",room_config:"configuración de salas",room_equipment:"equipos",veg_stock:"madres",cloners:"esquejeras",cloner_slots:"esquejeras",cloner_batches:"tandas de esquejes",vg_batches:"tandas de VG",vg_lines:"tandas de VG",vg_losses:"bajas de VG",phenos:"fenos",pheno_hunts:"búsquedas de fenos",pheno_notes:"notas de fenos",plant_losses:"bajas",harvest_yields:"cosechas",bitacora:"bitácora",pest_logs:"plagas",users:"usuarios"};
+const GM_TABLAS={place_notes:"notas",tasks:"tareas",cycles:"ciclos",cycle_genetics:"genéticas del ciclo",cycle_milestones:"hitos del ciclo",pots:"mesas",pot_cells:"plantas de las mesas",genetics:"genéticas",climate_logs:"clima",climate_targets:"rangos de clima",watering_logs:"riegos",nutrition_logs:"nutrición",room_config:"configuración de salas",room_equipment:"equipos",veg_stock:"madres",cloners:"esquejeras",cloner_slots:"esquejeras",cloner_batches:"tandas de esquejes",vg_batches:"tandas de VG",vg_lines:"tandas de VG",vg_losses:"bajas de VG",phenos:"fenos",pheno_hunts:"búsquedas de fenos",pheno_notes:"notas de fenos",plant_losses:"bajas",harvest_yields:"cosechas",bitacora:"bitácora",pest_logs:"plagas",users:"usuarios"};
 function GMWatch({user}){
   const [fails,setFails]=useState([]);
   const [offline,setOffline]=useState(()=>{try{return navigator.onLine===false;}catch(_){return false;}});
