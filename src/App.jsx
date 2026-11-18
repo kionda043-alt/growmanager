@@ -622,8 +622,28 @@ function Toast({msg,type="success",onClose,onUndo}){
   </div>;
 }
 
+// ── BOTÓN ATRÁS ─────────────────────────────────────────────────────────────
+// Regla: "atrás" primero cierra la ventana que esté abierta, después vuelve a la pantalla
+// anterior, y en Inicio no hace nada (no saca de la app).
+const gmNav={overlays:[],deadTop:0,rooted:false};
+function useBackClose(onClose){
+  const ref=useRef(onClose);ref.current=onClose;
+  useEffect(()=>{
+    const o={close:()=>{if(ref.current)ref.current();},popped:false};
+    let pushed=false;
+    try{window.history.pushState({...(window.history.state||{}),ov:Date.now()},"");pushed=true;gmNav.overlays.push(o);}catch{/* sin historial: se cierra con la X */}
+    return ()=>{
+      if(!pushed)return;
+      const i=gmNav.overlays.indexOf(o);
+      if(i>=0)gmNav.overlays.splice(i,1);
+      // Se cerró con un botón de la pantalla: su entrada queda en el historial y se saltea al volver.
+      if(!o.popped)gmNav.deadTop++;
+    };
+  },[]);
+}
 function Modal({title,children,onClose,z}){
   const wide=useIsWide(760);
+  useBackClose(onClose);
   return <div style={{position:"fixed",inset:0,zIndex:z||200,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:wide?"center":"flex-end",justifyContent:"center",padding:wide?20:0}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div style={{background:C.surface,borderRadius:wide?"18px":"20px 20px 0 0",width:"100%",maxWidth:wide?560:480,maxHeight:wide?"90vh":"88vh",overflowY:"auto",padding:24}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -1144,13 +1164,14 @@ function AdminNav({page,setPage,wide,user}){
 
 // Flecha "Volver" en todas las pantallas menos Inicio. Vuelve a la pantalla anterior;
 // si se entró directo, va a la sección que corresponde.
-function AdminTopBar({page,onBack,home="dashboard"}){
+function AdminTopBar({page,onBack,onHome,home="dashboard"}){
   if(page===home)return null;
   const fallback=page.startsWith("veg_")?"vegetativo":(MAIN_PAGES.includes(page)||page.startsWith("sala_"))?home:"__more__";
-  return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",height:50,padding:"0 8px"}}>
-    <button onClick={()=>onBack(fallback)} style={{display:"flex",alignItems:"center",gap:2,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
+  return <header style={{position:"sticky",top:0,zIndex:80,background:C.bg,display:"flex",alignItems:"center",justifyContent:"space-between",height:56,padding:"0 12px 0 8px"}}>
+    <button onClick={()=>onBack(fallback)} style={{display:"flex",alignItems:"center",gap:2,minHeight:44,background:"transparent",border:"none",cursor:"pointer",color:C.green,fontWeight:800,fontSize:16,padding:"8px 10px 8px 4px",fontFamily:"inherit"}}>
       <Icon n="back" size={22}/>Volver
     </button>
+    {onHome&&<button onClick={onHome} aria-label="Ir a Inicio" style={{width:44,height:44,borderRadius:14,border:`1px solid ${C.border}`,background:C.surface,color:C.green,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="home" size={21}/></button>}
   </header>;
 }
 
@@ -1173,7 +1194,6 @@ function MorePageAdmin({user,setPage,textScale,setTextScale,theme,setTheme,onLog
   const groups=[
     {t:"Cultivo",c:C.green,items:[["geneticas","dna","Genéticas","Colores, días de flora y notas"],["fenos","flask","Fenos","Búsquedas, cata y ranking"],["plagas","bug","Plagas","Registro de intervenciones"],["guia","book","Guía","Protocolos del cultivo"]]},
     {t:"Registro",c:C.blue,items:[["bitacora","notebook","Bitácora","Notas del día"],["calendario","calendar","Agenda","Calendario de tareas y ciclos"],["historial","history","Historial","Ciclos cerrados y cosechas"],["estadisticas","chart","Estadísticas","Rendimiento y clima"]]},
-    {t:"Club",c:C.amber,items:[["bot","chat","Asistente","Consultas y carga rápida de tareas"]]},
   ];
   const gTitle=t=><div style={{fontSize:14,fontWeight:800,color:C.textSoft,margin:"22px 4px 8px"}}>{t}</div>;
   const iconBox=(n,c)=><span style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:c,background:`${c}1F`}}><Icon n={n} size={20}/></span>;
@@ -1310,246 +1330,86 @@ function QuickTaskSheet({user,rooms,onClose,onCreated,task}){
 }
 
 // ── INICIO (admin) ───────────────────────────────────────────────────────────
-function Dashboard({setPage,user,roomConfig,rooms,wide,targets,genetics=[]}){
+// Inicio: un tablero de botones. Arriba solo lo grave (clima muy fuera de rango);
+// todo lo demás se ve al entrar a cada sección.
+const HOME_BTNS=[["salas","salas","Salas"],["vegetativo","vege","Vege"],["veg_esquejeras","scissors","Esquejeras"],["calendario","calendar","Agenda"],["tareas","tareas","Tareas"],["__more__","mas","Más"]];
+function Dashboard({setPage,user,roomConfig,rooms,wide,targets}){
   const [cycles,setCycles]=useState([]);
-  const [tasks,setTasks]=useState([]);
-  const [overdue,setOverdue]=useState([]);
-  const [vegStock,setVegStock]=useState([]);
   const [climate,setClimate]=useState([]);
-  const [cloners,setCloners]=useState([]);
-  const [clSlots,setClSlots]=useState([]);
-  const [drying,setDrying]=useState([]);   // ciclos cosechados que esperan el peso del secado
-  const [vgTandas,setVgTandas]=useState([]);   // tandas abiertas de VG: fecha y plantas vivas
-  const [vgErr,setVgErr]=useState(false);
   const [loading,setLoading]=useState(true);
-  const [who,setWho]=useState("mias");
-  const [railIdx,setRailIdx]=useState(0);
-  const [showQuick,setShowQuick]=useState(false);
-  const [toast,setToast]=useState(null);
-  const [cosechar,setCosechar]=useState(null);     // esquejera que se cosecha desde el aviso
-  const [harvestFor,setHarvestFor]=useState(null); // ciclo en secado al que se le carga el peso
-  const [tick,setTick]=useState(0);                // vuelve a traer todo después de resolver un aviso
-  const railRef=useRef(null);
-
-  const loadTasks=useCallback(()=>Promise.all([
-    db.query("tasks",`due_date=eq.${todayISO}&order=priority.desc,created_at.asc`),
-    db.query("tasks",`status=eq.pendiente&due_date=lt.${todayISO}&order=due_date.desc&limit=30`).catch(()=>[]),
-  ]).then(([t,o])=>{setTasks(t);setOverdue(o);}).catch(()=>{}),[]);
   useEffect(()=>{
+    let alive=true;
+    const loadC=()=>db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).then(r=>{if(alive)setClimate(r);}).catch(()=>{});
     Promise.all([
-      loadTasks(),
       db.query("cycles","active=eq.true").catch(()=>[]),
-      db.get("veg_stock").catch(()=>[]),
-      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).catch(()=>[]),
-      db.get("cloners").catch(()=>[]),
-      db.get("cloner_slots").catch(()=>[]),
+      loadC(),
       db.query("cycles","active=eq.false&harvest_status=eq.secando&order=closed_at.desc").catch(()=>[]),
-      Promise.all([
-        db.query("vg_batches","status=eq.vg&select=id,start_date&order=start_date.asc"),
-        db.query("vg_lines","select=batch_id,current_count"),
-      ]).catch(()=>null),
-    ]).then(([,c,v,cl,co,cs,dry,vg])=>{
-      setCycles(c);setVegStock(v);setClimate(cl);setCloners(co);setClSlots(cs);setDrying(dry||[]);
+    ]).then(([c,,dry])=>{
+      if(!alive)return;
+      setCycles(c);
+      // Una "Cosecha" pendiente de un ciclo que ya se cortó se cierra sola.
       (dry||[]).forEach(dc=>{const lim=String(dc.real_harvest||dc.closed_at||"").slice(0,10);if(!lim)return;
-        autoCompletar(dc.room_id,t=>(t.type==="cosecha"||/^cosecha\b/i.test(t.title||""))&&t.due_date<=lim,"el ciclo ya se cosechó").then(n=>{if(n>0)loadTasks();}).catch(()=>{});});
-      if(!vg){setVgErr(true);return;}
-      const [vb,vl]=vg;
-      setVgTandas(vb.map(b=>({id:sid(b.id),start_date:b.start_date,plantas:vl.filter(l=>sid(l.batch_id)===sid(b.id)).reduce((a,l)=>a+(l.current_count||0),0)})));
-    }).finally(()=>setLoading(false));
-  },[loadTasks,tick]);
-  useEffect(()=>{
-    const id=setInterval(()=>{
-      db.query("climate_logs",`recorded_at=gte.${addDays(todayISO,-1)}&order=recorded_at.desc`).then(setClimate).catch(()=>{});
-    },120000); // refresca el clima solo cada 2 min
-    return ()=>clearInterval(id);
+        autoCompletar(dc.room_id,t=>(t.type==="cosecha"||/^cosecha\b/i.test(t.title||""))&&t.due_date<=lim,"el ciclo ya se cosechó").catch(()=>{});});
+    }).finally(()=>{if(alive)setLoading(false);});
+    const id=setInterval(loadC,120000);
+    return ()=>{alive=false;clearInterval(id);};
   },[]);
   if(loading)return <Spin/>;
 
   const lastClimate=rid=>climate.find(c=>c.room_id===rid)||null;
-  const renewM=vegStock.filter(v=>v.type==="madre"&&v.status==="renovar").length;
-  const madres=vegStock.filter(v=>v.type==="madre"&&v.status==="activa").reduce((a,v)=>a+(v.count||0),0);
-
-  const toggleTask=async t=>{
-    const ns=t.status==="completada"?"pendiente":"completada";
-    const upd=list=>list.map(x=>x.id===t.id?{...x,status:ns}:x);
-    setTasks(upd);setOverdue(upd);
-    try{
-      await db.update("tasks",t.id,{status:ns,completed_at:ns==="completada"?new Date().toISOString():null});
-      if(ns==="completada")await pestTaskDone(t,user.name);
-      if(ns==="completada"&&t.recurrent&&t.recurrent_days){
-        await db.insert("tasks",{title:t.title,room_id:t.room_id,type:t.type,assignee:t.assignee,due_date:addDays(t.due_date,t.recurrent_days),status:"pendiente",priority:t.priority,recurrent:true,recurrent_days:t.recurrent_days,created_by:"sistema"});
-      }
-      await logA(user.name,`${ns==="completada"?"Completó":"Reabrió"}: ${t.title}`,"task");
-      setToast({msg:ns==="completada"?`${t.title}: hecha`:`${t.title}: reabierta`,type:"success",undo:async()=>{
-        const back=list=>list.map(x=>x.id===t.id?{...x,status:t.status}:x);setTasks(back);setOverdue(back);
-        try{await db.update("tasks",t.id,{status:t.status,completed_at:t.status==="completada"?t.completed_at:null});}catch{}
-      }});
-    }catch(e){setToast({msg:errMsg(e),type:"error"});loadTasks();}
-  };
-
-  // ── Alertas (lo más urgente primero) ──
-  const alerts=[];
-  const climAlert=(label,cl,tg,go)=>{
+  const graves=[];
+  const mirar=(label,cl,tg,go)=>{
     if(!cl)return;
     const lt=climLevel(cl.temperature,tg.temp,CLIM_TOL.temp);
     const lh=climLevel(cl.humidity,tg.hum,CLIM_TOL.hum);
-    if(lt&&lt.k!=="ok")alerts.push({k:lt.k==="far"?"red":"amber",ic:"thermo",go,t:`${label}: temperatura ${fmtNum(cl.temperature)}°C`,s:`${fmtNum(Math.abs(lt.off))}° ${lt.off>0?"arriba":"abajo"} del óptimo (${fmtNum(tg.temp.min)} a ${fmtNum(tg.temp.max)}°C)`});
-    if(lh&&lh.k!=="ok")alerts.push({k:lh.k==="far"?"red":"amber",ic:"drop",go,t:`${label}: humedad ${fmtNum(cl.humidity,0)}%`,s:`${fmtNum(Math.abs(lh.off),0)}% ${lh.off>0?"arriba":"abajo"} del óptimo (${fmtNum(tg.hum.min,0)} a ${fmtNum(tg.hum.max,0)}%)`});
+    if(lt&&lt.k==="far")graves.push({ic:"thermo",go,t:`${label} · ${fmtNum(cl.temperature)}°`,s:`${fmtNum(Math.abs(lt.off))}° ${lt.off>0?"arriba":"abajo"} del rango (${fmtNum(tg.temp.min)} a ${fmtNum(tg.temp.max)}°)`});
+    if(lh&&lh.k==="far")graves.push({ic:"drop",go,t:`${label} · humedad ${fmtNum(cl.humidity,0)}%`,s:`${fmtNum(Math.abs(lh.off),0)}% ${lh.off>0?"arriba":"abajo"} del rango (${fmtNum(tg.hum.min,0)} a ${fmtNum(tg.hum.max,0)}%)`});
   };
-  rooms.forEach(rid=>{const rc=getRC(roomConfig,rid);const cyc=cycles.find(c=>c.room_id===rid);climAlert(rc.display_name,lastClimate(rid),getTargets(targets,rid,cyc,rc),`sala_${rid}`);});
-  climAlert("Vege",lastClimate("Vegetativo"),getTargets(targets,"Vegetativo",null,null),"vegetativo");
-  cycles.forEach(c=>{const dL=daysTo(c.estimated_harvest);if(c.phase==="floración"&&dL>=0&&dL<=7)alerts.push({k:"amber",ic:"harvest",go:`sala_${c.room_id}`,t:`Cosecha próxima en ${getRC(roomConfig,c.room_id).display_name}`,s:`Estimada en ${dL} día${dL===1?"":"s"}`});});
-  if(renewM>0)alerts.push({k:"amber",ic:"tree",go:"veg_madres",t:`${renewM} madre${renewM>1?"s":""} para renovar`,s:"Revisalas en Madres"});
-  drying.forEach(c=>{const d=-daysTo(c.real_harvest||c.closed_at);alerts.push({k:"amber",ic:"harvest",go:"historial",t:`${getRC(roomConfig,c.room_id).display_name}: falta cargar la cosecha`,s:`Cortado hace ${d} día${d===1?"":"s"}. Cargá los gramos acá mismo.`,act:{l:"Cargar cosecha",fn:()=>setHarvestFor(c)}});});
-  vgTandas.forEach(b=>{const d=daysFrom(b.start_date);if(d>=7&&d<=10&&b.plantas>0)alerts.push({k:"amber",ic:"pot",go:"veg_vg",t:`Tanda del ${fmtDM(b.start_date)}: trasplantar a 1,5 L`,s:`Día ${d} en VG (${b.plantas} plantas). Va entre el día 7 y el 10.`});});
-  cloners.forEach(cl=>{
-    const slots=clSlots.filter(s=>sid(s.cloner_id)===sid(cl.id)&&s.genetic_name);
-    if(slots.length===0)return;
-    const prog=batchProgress(cl,slots);if(!prog)return;
-    const d=prog.day;
-    if(d===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: prender timer`,s:`Día 1 desde el corte (${slots.length} esquejes)`});
-    else if(d===2)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: dejar semi tapadas`,s:"Día 2 desde el corte"});
-    else if(prog.left===1)alerts.push({k:"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: falta 1 día`,s:`${prog.label}. Preparate para cosechar.`});
-    else if(prog.ready)alerts.push({k:prog.left<-2?"red":"amber",ic:"scissors",go:"veg_esquejeras",t:`${cl.label}: lista para cosechar`,s:`${prog.label}. Lo que prendió pasa a VG.`,act:{l:"Cosechar ahora",fn:()=>setCosechar(cl)}});
-  });
-  const GO_LABEL={vegetativo:"Ver Vege",veg_madres:"Ver madres",veg_esquejeras:"Ver bandejas",veg_vg:"Ver tanda",historial:"Ver historial"};
-  const aRank=a=>(a.act?0:2)+(a.k==="red"?0:1);
-  alerts.sort((a,b)=>aRank(a)-aRank(b));
+  rooms.forEach(rid=>{const rc=getRC(roomConfig,rid);const cyc=cycles.find(c=>c.room_id===rid);mirar(rc.display_name||rid,lastClimate(rid),getTargets(targets,rid,cyc,rc),`sala_${rid}`);});
+  mirar("Vege",lastClimate("Vegetativo"),getTargets(targets,"Vegetativo",null,null),"vegetativo");
+  const fecha=(()=>{const x=fmtFull(TODAY);return x.charAt(0).toUpperCase()+x.slice(1);})();
 
-  // ── Tareas de hoy ──
-  const mine=t=>who==="mias"?t.assignee===user.name:true;
-  const pendHoy=[...overdue.filter(t=>mine(t)&&t.status==="pendiente"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"&&t.priority==="alta"),...tasks.filter(t=>mine(t)&&t.status==="pendiente"&&t.priority!=="alta")];
-  const hechasHoy=tasks.filter(t=>mine(t)&&t.status==="completada").length;
-  const hoy=pendHoy.slice(0,3);
-  const myPending=[...overdue,...tasks].filter(t=>t.assignee===user.name&&t.status==="pendiente").length;
-  const resumen=`${myPending>0?`Tenés ${myPending} tarea${myPending===1?"":"s"} para hoy`:"Tus tareas de hoy están hechas"}, ${alerts.length>0?`${alerts.length} alerta${alerts.length===1?"":"s"} para revisar`:"todo en rango"}`;
-  const fecha=(()=>{const s=fmtFull(TODAY);return s.charAt(0).toUpperCase()+s.slice(1);})();
-
-  const roomTone=r=>r==="S1"?C.amber:r==="S2"?C.blue:r==="Vegetativo"?C.green:C.textSoft;
-  const roomShort=r=>r==="Vegetativo"?"Vege":(r||"General");
-  const taskRow=(t,i)=>{
-    const done=t.status==="completada";const late=!done&&t.due_date<todayISO;const tone=roomTone(t.room_id);
-    const meta=[late&&<span key="l" style={{color:C.red}}>Vencida {fmtDM(t.due_date)}</span>,who==="equipo"&&t.assignee&&<span key="a">{t.assignee}</span>,t.priority==="alta"&&!done&&!late&&<span key="p" style={{color:C.amber}}>Prioridad alta</span>].filter(Boolean);
-    return <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",minHeight:62,borderTop:i?`1px solid ${C.border}`:"none"}}>
-      <button onClick={()=>toggleTask(t)} aria-label={done?"Marcar pendiente":"Marcar hecha"} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:done?C.green:"transparent",boxShadow:done?"none":`inset 0 0 0 2px ${C.borderStrong}`,color:done?C.onAccent:"transparent",transition:"background .15s"}}><Icon n="check" size={18} sw={2.4}/></button>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:15,fontWeight:700,color:done?C.textSoft:C.text,textDecoration:done?"line-through":"none"}}>{t.title}</div>
-        {meta.length>0&&<div style={{fontSize:12.5,color:C.textSoft,fontWeight:600,marginTop:1,display:"flex",gap:8,flexWrap:"wrap"}}>{meta}</div>}
-      </div>
-      <span style={{fontSize:11.5,fontWeight:800,padding:"3px 9px",borderRadius:99,color:tone,background:`${tone}1F`,flexShrink:0}}>{roomShort(t.room_id)}</span>
-    </div>;
-  };
-
-  // ── Espacios ──
-  const climMini=(cl,tg)=>{
-    if(!cl)return <span style={{fontSize:12,color:C.textSoft,fontWeight:600}}>Sin sensor</span>;
-    const vR={min:tg.vpd?.min??0.8,max:tg.vpd?.max??1.4};
-    return <span style={{display:"flex",flexDirection:"column",gap:3}}>
-      {[["thermo",cl.temperature,tg.temp,CLIM_TOL.temp,"°",1],["drop",cl.humidity,tg.hum,CLIM_TOL.hum,"%",0],["leaf",cl.vpd,vR,CLIM_TOL.vpd,"",2]].filter(x=>x[1]!=null).map(([n,v,r,tol,u,d])=>{
-        const lv=climLevel(v,r,tol);return <span key={n} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:800,color:levelColor(lv?.k),fontVariantNumeric:"tabular-nums"}}><Icon n={n} size={14} sw={2}/>{fmtNum(v,d)}{u}</span>;})}
-    </span>;
-  };
-  const track=(pct,marks,tone)=><span style={{position:"relative",display:"block",height:14,margin:"8px 0 2px"}}>
-    <span style={{position:"absolute",left:0,right:0,top:6,height:2,borderRadius:2,background:C.borderStrong}}/>
-    <span style={{position:"absolute",left:0,top:6,height:2,borderRadius:2,width:`${pct}%`,background:tone}}/>
-    {marks.map(m=><span key={m} style={{position:"absolute",top:4,left:`${m}%`,width:2,height:6,borderRadius:1,background:C.textSoft,opacity:0.6}}/>)}
-    <span style={{position:"absolute",top:2,left:`${pct}%`,width:10,height:10,marginLeft:-5,borderRadius:"50%",background:tone,boxShadow:`0 0 0 3px ${C.surface}`}}/>
-  </span>;
-  const spaceCol=(key,{name,tone,big,sub,trackEl,cl,tg,go},i)=><button key={key} onClick={()=>setPage(go)}
-    style={{display:"flex",flexDirection:"column",alignItems:"stretch",textAlign:"left",gap:2,padding:"14px 12px 13px",minWidth:0,background:"transparent",border:"none",borderLeft:i?`1px solid ${C.border}`:"none",cursor:"pointer",fontFamily:"inherit",color:C.text}}>
-    <span style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,color:C.textMid}}><span style={{width:8,height:8,borderRadius:"50%",background:tone}}/>{name}</span>
-    <span style={{fontSize:25,fontWeight:800,letterSpacing:"-0.02em",lineHeight:1.05,marginTop:6,fontVariantNumeric:"tabular-nums"}}>{big}</span>
-    <span style={{fontSize:12.5,color:C.textSoft,fontWeight:600,lineHeight:1.3,minHeight:33}}>{sub}</span>
-    {trackEl||<span style={{display:"block",height:14,margin:"8px 0 2px"}}/>}
-    <span style={{marginTop:6}}>{climMini(cl,tg)}</span>
-  </button>;
-  const cols=rooms.map(rid=>{
-    const rc=getRC(roomConfig,rid);const cyc=cycles.find(c=>c.room_id===rid);const tg=getTargets(targets,rid,cyc,rc);
-    const tone=roomTone(rid);const base={name:rc.display_name||rid,tone,cl:lastClimate(rid),tg,go:`sala_${rid}`};
-    if(!cyc)return {...base,big:"—",sub:"Sin ciclo activo"};
-    if(cyc.phase==="vegetativo"&&cyc.veg_start){
-      const day=Math.max(0,daysFrom(cyc.veg_start));const tot=cyc.veg_end?Math.max(1,Math.round((new Date(cyc.veg_end)-new Date(cyc.veg_start))/86400000)):null;
-      const left=tot!=null?tot-day:null;
-      return {...base,big:`Día ${day}`,sub:left==null?"Vege":left>0?`Vege, a flora en ${left} día${left===1?"":"s"}`:"Vege, toca pasar a flora",trackEl:tot?track(Math.min(100,day/tot*100),[],tone):null};
-    }
-    const fdays=rc?.flower_days||65;const day=Math.max(0,daysFrom(cyc.flower_start));const left=daysTo(cyc.estimated_harvest);
-    return {...base,big:`Día ${day}`,sub:left>0?`Flora, faltan ${left} días`:left===0?"Flora, cosecha hoy":"Flora, cosecha pasada",trackEl:track(Math.min(100,day/fdays*100),[15,21].filter(m=>m<fdays).map(m=>m/fdays*100),tone)};
-  });
-  const vgPlantas=vgTandas.reduce((a,t)=>a+t.plantas,0);
-  const tandasEl=vgTandas.length>0&&<span style={{display:"flex",flexDirection:"column",gap:2,margin:"6px 0 2px"}}>
-    {vgTandas.slice(0,3).map(t=>{const d=daysSince(t.start_date);return <span key={t.id} style={{fontSize:12,fontWeight:700,color:C.textMid,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
-      <span style={{color:C.green}}>{d<=0?"Entró hoy":`Día ${d}`}</span> · {t.plantas} pl</span>;})}
-    {vgTandas.length>3&&<span style={{fontSize:11.5,color:C.textSoft,fontWeight:600}}>y {vgTandas.length-3} más</span>}
-  </span>;
-  cols.push({name:"Vege",tone:C.green,big:vgErr?"—":vgPlantas,sub:vgErr?"No pude leer VG":`en VG y ${madres} madre${madres===1?"":"s"}`,trackEl:tandasEl,cl:lastClimate("Vegetativo"),tg:getTargets(targets,"Vegetativo",null,null),go:"vegetativo"});
-
-  const onRail=e=>{const el=e.currentTarget;const first=el.firstElementChild;if(!first)return;const w=first.offsetWidth+10;setRailIdx(Math.min(alerts.length-1,Math.max(0,Math.round(el.scrollLeft/w))));};
-  const alertTone=k=>k==="red"?{c:C.red,bg:C.redLight}:{c:C.amber,bg:C.amberLight};
-
-  const secHead=(t,right)=><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"24px 2px 10px"}}><div style={{fontSize:18,fontWeight:800,color:C.text,letterSpacing:"-0.01em"}}>{t}</div>{right}</div>;
-  const whoSeg=<div style={{display:"inline-flex",background:C.surfaceAlt,borderRadius:99,padding:3,border:`1px solid ${C.border}`}}>
-    {[["mias","Mías"],["equipo","Equipo"]].map(([k,l])=>{const on=who===k;return <button key={k} onClick={()=>setWho(k)} style={{padding:"6px 13px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
-  </div>;
-
-  const alertsBlock=<div>
-    {alerts.length===0
-      ?<div style={{display:"flex",alignItems:"center",gap:12,padding:"15px 16px",borderRadius:20,background:C.greenLight,color:C.green}}>
-        <span style={{width:36,height:36,borderRadius:12,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="ok" size={20}/></span>
-        <span><span style={{display:"block",fontWeight:800,fontSize:15.5}}>Todo en orden</span><span style={{display:"block",fontSize:13.5,color:C.textMid}}>Clima en rango y nada vencido en vege.</span></span>
-      </div>
-      :<>
-        <div ref={railRef} className="gm-rail" onScroll={onRail} style={{display:"flex",gap:10,overflowX:"auto",scrollSnapType:"x mandatory",margin:wide?0:"0 -16px",padding:wide?"2px 0 4px":"2px 16px 4px",scrollbarWidth:"none"}}>
-          {alerts.map((a,i)=>{const tn=alertTone(a.k);return <div key={i} role="button" tabIndex={0} onClick={()=>setPage(a.go)} onKeyDown={e=>{if(e.key==="Enter")setPage(a.go);}} style={{scrollSnapAlign:"start",flex:`0 0 ${alerts.length===1?"100%":"86%"}`,borderRadius:20,padding:"15px 16px",display:"flex",gap:12,alignItems:"flex-start",minHeight:92,background:tn.bg,color:tn.c,border:"none",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
-            <span style={{width:36,height:36,borderRadius:12,background:C.surface,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={a.ic} size={20}/></span>
-            <span style={{minWidth:0}}><span style={{display:"block",fontWeight:800,fontSize:15.5,lineHeight:1.25}}>{a.t}</span><span style={{display:"block",fontSize:13.5,marginTop:3,color:C.textMid}}>{a.s}</span>
-              {(()=>{const act=a.act||{l:GO_LABEL[a.go]||(String(a.go).startsWith("sala_")?"Ver sala":"Ver"),fn:()=>setPage(a.go),soft:true};
-                return <button onClick={e=>{e.stopPropagation();act.fn();}} style={{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,padding:"8px 13px",minHeight:38,borderRadius:11,border:"none",background:act.soft?C.surface:tn.c,color:act.soft?tn.c:C.bg,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{act.l}<Icon n="chev" size={15} sw={2.4}/></button>;})()}
-            </span>
-          </div>;})}
-        </div>
-        {alerts.length>1&&<div style={{display:"flex",gap:6,justifyContent:"center",marginTop:10}}>{alerts.map((_,i)=><span key={i} style={{width:i===railIdx?18:6,height:6,borderRadius:99,background:i===railIdx?C.textMid:C.borderStrong,transition:"width .2s"}}/>)}</div>}
-      </>}
-  </div>;
-
-  const spacesBlock=<div>
-    {secHead("Espacios")}
-    <Card style={{padding:0,overflow:"hidden",display:"grid",gridTemplateColumns:`repeat(${cols.length},1fr)`}}>{cols.map((c,i)=>spaceCol(c.name+i,c,i))}</Card>
-  </div>;
-
-  const tasksBlock=<div>
-    {secHead("Hoy",whoSeg)}
-    <Card style={{padding:0,overflow:"hidden"}}>
-      {hoy.length===0&&<div style={{padding:"20px 16px",textAlign:"center",color:C.textSoft,fontSize:14}}>{hechasHoy>0?"Todo hecho por hoy.":who==="mias"?"No tenés tareas para hoy.":"No hay tareas para hoy."}</div>}
-      {hoy.map((t,i)=>taskRow(t,i))}
-      <button onClick={()=>setPage("tareas")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"13px 14px",width:"100%",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",color:C.textMid,fontWeight:800,fontSize:14.5,fontFamily:"inherit"}}>
-        <span>Ver todas{pendHoy.length>3?` (${pendHoy.length})`:""}</span><span style={{color:C.textSoft}}><Icon n="chev" size={18}/></span>
-      </button>
-      <button onClick={()=>setShowQuick(true)} style={{display:"flex",alignItems:"center",gap:12,padding:14,width:"100%",background:"transparent",border:"none",borderTop:`1px solid ${C.border}`,cursor:"pointer",color:C.green,fontWeight:800,fontSize:15,fontFamily:"inherit"}}>
-        <span style={{width:32,height:32,borderRadius:"50%",background:C.greenLight,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="plus" size={18} sw={2.2}/></span>Agregar tarea
-      </button>
-    </Card>
-  </div>;
-
-  return <div style={{paddingBottom:24}}>
-    {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
-    {cosechar&&<CosecharInicio cloner={cosechar} slots={clSlots.filter(x=>sid(x.cloner_id)===sid(cosechar.id))} genetics={genetics} user={user} onClose={()=>setCosechar(null)} onDone={n=>{const lbl=cosechar.label;setCosechar(null);setTick(t=>t+1);setToast({msg:typeof n==="number"?`${lbl}: ${n} pasaron a VG ✓`:`${lbl} cosechada ✓`,type:"success"});}}/>}
-    {harvestFor&&<HarvestModal cycle={harvestFor} rc={getRC(roomConfig,harvestFor.room_id)} user={user} onClose={()=>setHarvestFor(null)} onSaved={()=>{setHarvestFor(null);setTick(t=>t+1);setToast({msg:"Cosecha guardada ✓",type:"success"});}}/>}
-    {showQuick&&<QuickTaskSheet user={user} rooms={rooms} onClose={()=>setShowQuick(false)} onCreated={t=>{setShowQuick(false);loadTasks();setToast({msg:`Tarea creada para ${t.assignee===user.name?"vos":t.assignee}, ${t.due_date===todayISO?"hoy":fmtDM(t.due_date)}`,type:"success"});}}/>}
-    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0 18px"}}>
+  return <div style={{display:"flex",flexDirection:"column",gap:18,paddingBottom:24}}>
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,paddingTop:10}}>
       <div>
         <div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>{fecha}</div>
-        <div style={{fontSize:30,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",lineHeight:1.1,marginTop:2}}>Hola, {user.name}</div>
-        <div style={{fontSize:14.5,color:C.textMid,marginTop:6}}>{resumen}</div>
+        <div style={{fontSize:28,fontWeight:800,color:C.text,fontFamily:H,letterSpacing:"-0.02em",lineHeight:1.1,marginTop:2}}>Hola, {user.name}</div>
       </div>
-      <button onClick={()=>setPage("__more__")} aria-label="Tu usuario" style={{width:42,height:42,borderRadius:"50%",background:C.green,color:C.onAccent,border:"none",cursor:"pointer",fontWeight:800,fontSize:16,flexShrink:0,fontFamily:"inherit"}}>{user.initial||user.name?.[0]}</button>
+      <button onClick={()=>setPage("__more__")} aria-label="Tu usuario" style={{width:44,height:44,borderRadius:"50%",background:C.green,color:C.onAccent,border:"none",cursor:"pointer",fontWeight:800,fontSize:16,flexShrink:0,fontFamily:"inherit"}}>{user.initial||user.name?.[0]}</button>
     </div>
-    {wide
-      ?<div style={{display:"grid",gridTemplateColumns:"1.15fr 1fr",gap:"0 28px",alignItems:"start"}}>
-        <div>{alertsBlock}{spacesBlock}</div>
-        <div style={{marginTop:-24}}>{tasksBlock}</div>
-      </div>
-      :<>{alertsBlock}{spacesBlock}{tasksBlock}</>}
+    {graves.length>0&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {graves.map((a,i)=><button key={i} onClick={()=>setPage(a.go)} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"10px 14px",minHeight:60,borderRadius:18,border:`1.5px solid ${C.red}55`,background:C.redLight,cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+        <span style={{width:38,height:38,borderRadius:12,background:C.surface,color:C.red,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon n={a.ic} size={20}/></span>
+        <span style={{flex:1,minWidth:0}}><span style={{display:"block",fontSize:15,fontWeight:800,color:C.red}}>{a.t}</span><span style={{display:"block",fontSize:12.5,fontWeight:600,color:C.textMid,marginTop:1}}>{a.s}</span></span>
+        <span style={{color:C.textMid,display:"flex"}}><Icon n="chev" size={18}/></span>
+      </button>)}
+    </div>}
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${wide?3:2},minmax(0,1fr))`,gap:12}}>
+      {HOME_BTNS.map(([go,ic,l])=><button key={go} onClick={()=>setPage(go)} style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,height:140,borderRadius:24,border:`1px solid ${C.border}`,background:C.surface,boxShadow:C.shadow,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+        <span style={{width:62,height:62,borderRadius:20,background:C.greenLight,color:C.green,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n={ic} size={30}/></span>
+        <span style={{fontSize:18,fontWeight:800,color:C.text}}>{l}</span>
+      </button>)}
+    </div>
   </div>;
+}
+
+// La cosecha de una sala que quedó en secado se carga desde la misma sala.
+function CosechaPendiente({roomId,rc,user}){
+  const [rows,setRows]=useState([]);
+  const [cyc,setCyc]=useState(null);
+  const [msg,setMsg]=useState(null);
+  const load=useCallback(()=>{db.query("cycles",`room_id=eq.${roomId}&active=eq.false&harvest_status=eq.secando&order=closed_at.desc`).then(setRows).catch(()=>setRows([]));},[roomId]);
+  useEffect(()=>{load();},[load]);
+  if(rows.length===0&&!msg)return null;
+  return <>
+    {msg&&<Toast msg={msg} type="success" onClose={()=>setMsg(null)}/>}
+    {cyc&&<HarvestModal cycle={cyc} rc={rc} user={user} onClose={()=>setCyc(null)} onSaved={()=>{setCyc(null);setMsg("Cosecha guardada ✓");load();}}/>}
+    {rows.map(c=>{const d=-daysTo(c.real_harvest||c.closed_at);return <Card key={c.id} style={{padding:"14px 16px",border:`1.5px solid ${C.amber}66`,display:"flex",alignItems:"center",gap:12}}>
+      <span style={{width:42,height:42,borderRadius:13,display:"flex",alignItems:"center",justifyContent:"center",background:C.amberLight,color:C.amber,flexShrink:0}}><Icon n="harvest" size={22}/></span>
+      <div style={{flex:1,minWidth:0}}><div style={{fontSize:15.5,fontWeight:800,color:C.text}}>Falta cargar la cosecha</div><div style={{fontSize:13,color:C.textSoft,fontWeight:600}}>Cortado hace {d} día{d===1?"":"s"}</div></div>
+      <button onClick={()=>setCyc(c)} style={{padding:"10px 14px",minHeight:44,borderRadius:12,border:"none",background:C.amber,color:C.bg,fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Cargar</button>
+    </Card>;})}
+  </>;
 }
 
 // SALA PAGE
@@ -1579,7 +1439,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   const [showTargets,setShowTargets]=useState(false);
   const [infoTask,setInfoTask]=useState(null);
   const [showMenu,setShowMenu]=useState(false);
-  const [showCharts,setShowCharts]=useState(false);
+  const [showCharts,setShowCharts]=useState(true);   // los gráficos se ven al entrar
   const [potMix,setPotMix]=useState({});   // mesa → {genética: plantas}
   const [poolLines,setPoolLines]=useState([]);   // líneas de las tandas de VG que entraron a este ciclo
   const [cycleCells,setCycleCells]=useState([]); // todas las celdas del ciclo, para saber qué falta ubicar
@@ -1699,6 +1559,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
   if(!cycle)return <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {showPh&&<PhaseModal roomId={roomId} cycle={null} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={m=>{setShowPh(false);load();setToast({msg:m?`Ciclo iniciado · ${m}`:"Ciclo iniciado ✓",type:"success"});}}/>}
+    <CosechaPendiente roomId={roomId} rc={rc} user={user}/>
     <div style={{textAlign:"center",padding:"40px 20px"}}>
       <div style={{display:"flex",justifyContent:"center",color:C.green,marginBottom:14}}><Icon n="vege" size={46}/></div>
       <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>{roomName}</div>
@@ -1731,6 +1592,7 @@ function SalaPage({roomId,setPage,user,genetics,rc,targets,onTargetsChanged}){
     return <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:32}}>
     {toast&&<Toast msg={toast.msg} type={toast.type} onUndo={toast.undo} onClose={()=>setToast(null)}/>}
     {infoTask&&<TaskDetailModal task={infoTask} onClose={()=>setInfoTask(null)}/>}
+    <CosechaPendiente roomId={roomId} rc={rc} user={user}/>
     {showW&&<WaterModal roomId={roomId} user={user} onClose={()=>setShowW(false)} onSaved={()=>{setShowW(false);load();setToast({msg:"Riego registrado ✓",type:"success"});}}/>}
     {showN&&<NutriModal roomId={roomId} cycleId={cycle.id} user={user} onClose={()=>setShowN(false)} onSaved={()=>{setShowN(false);load();setToast({msg:"Nutrición registrada ✓",type:"success"});}}/>}
     {showPh&&<PhaseModal roomId={roomId} cycle={cycle} rc={rc} user={user} onClose={()=>setShowPh(false)} onSaved={m=>{setShowPh(false);load();setToast({msg:m?`Fechas actualizadas · ${m}`:"Fase actualizada ✓",type:"success"});}}/>}
@@ -2960,6 +2822,7 @@ function ConfirmModal({title,text,confirmLabel="Eliminar",busyLabel="Borrando...
 // FORMATO NUEVO — piezas comunes: hoja inferior, filas de menú, plegables
 // ══════════════════════════════════════════════════════════════════════════════
 function Sheet({title,sub,onClose,children,z=240}){
+  useBackClose(onClose);
   useEffect(()=>{
     const prev=document.body.style.overflow;document.body.style.overflow="hidden";
     const onKey=e=>{if(e.key==="Escape")onClose();};
@@ -3112,7 +2975,7 @@ function VegetativoPage({genetics,user,targets,onTargetsChanged,setPage}){
   const [clSeries,setClSeries]=useState([]);      // serie del rango elegido (gráficos)
   const [clRange,setClRange]=useState("24h");
   const [showClimate,setShowClimate]=useState(false);
-  const [showCharts,setShowCharts]=useState(false);
+  const [showCharts,setShowCharts]=useState(true);   // los gráficos se ven al entrar
   const [clTick,setClTick]=useState(0);
 
   useEffect(()=>{
@@ -3617,7 +3480,7 @@ function TareasPageV2({user,rooms}){
         {[["todas","Todas"],["mias","Mías"]].map(([k,l])=>{const on=who===k;return <button key={k} onClick={()=>setWho(k)} style={{padding:"6px 13px",borderRadius:99,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",background:on?C.surface:"transparent",color:on?C.text:C.textSoft,boxShadow:on?C.shadow:"none"}}>{l}</button>;})}
       </div>
     </div>
-    <div style={{display:"flex",gap:7,overflowX:"auto",margin:"12px 0 0",paddingBottom:2,scrollbarWidth:"none"}} className="gm-rail">
+    <div style={{display:"flex",gap:7,flexWrap:"wrap",margin:"12px 0 0",paddingBottom:2}}>
       {places.map(p=>{const on=place===p;return <button key={p} onClick={()=>setPlace(p)} style={{flexShrink:0,padding:"8px 13px",borderRadius:99,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",border:on?"none":`1px solid ${C.border}`,background:on?C.text:C.surface,color:on?C.bg:C.textMid}}>{p==="Vegetativo"?"Vege":p}</button>;})}
     </div>
 
@@ -4863,7 +4726,7 @@ function FenosPage({user,genetics}){
         </Card>
       : <>
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
-          <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",flex:1,scrollbarWidth:"none"}}>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",flex:1}}>
             {chips.map(c=>{const on=estado===c.v;return <button key={c.v} onClick={()=>setEstado(c.v)} style={{padding:"8px 14px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.green:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{c.l}</button>;})}
           </div>
           <button onClick={()=>setShowFiltro(true)} aria-label="Filtrar" style={{width:40,height:38,borderRadius:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:gen!=="__todas__"?C.greenLight:C.surface,color:gen!=="__todas__"?C.green:C.textMid,border:`1px solid ${gen!=="__todas__"?C.green:C.border}`}}><Icon n="filter" size={19}/></button>
@@ -5738,7 +5601,7 @@ function EstadisticasPage({rooms,roomConfig,targets,genetics=[]}){
     </Card>
 
     <Fold icon="chart" title="Resumen general" right={<span style={{fontSize:12.5,color:C.textSoft,fontWeight:700}}>{periodoTxt}</span>}>
-      <div className="gm-rail" style={{display:"flex",gap:7,overflowX:"auto",scrollbarWidth:"none",marginBottom:12}}>
+      <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
         {ST_PERIODS.map(([m,l])=>{const on=meses===m;return <button key={m} onClick={()=>setMeses(m)} style={{padding:"8px 14px",borderRadius:99,cursor:"pointer",fontFamily:"inherit",fontSize:13.5,fontWeight:800,whiteSpace:"nowrap",background:on?C.green:C.surface,color:on?C.onAccent:C.textMid,border:`1px solid ${on?C.green:C.border}`}}>{l}</button>;})}
       </div>
       <div style={{display:"flex",gap:8}}>
@@ -6315,7 +6178,7 @@ function BotChat({user,currentPage,compact=false}){
   return <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
     <div ref={scrollRef} style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,padding:"4px 2px 10px"}}>
       {msgs.map((m,i)=><div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"88%"}}>
-        <div style={{background:m.role==="user"?C.green:m.err?C.redLight:C.surface,color:m.role==="user"?"#fff":m.err?C.red:C.text,border:m.role==="user"?"none":`1px solid ${C.border}`,borderRadius:16,padding:"11px 15px",fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",boxShadow:C.shadow}}>{m.content}</div>
+        <div style={{background:m.role==="user"?C.green:m.err?C.redLight:C.surface,color:m.role==="user"?"#fff":m.err?C.red:C.text,border:m.role==="user"?"none":`1px solid ${C.border}`,borderRadius:16,padding:"11px 15px",fontSize:14.5,lineHeight:1.5,whiteSpace:m.role==="user"?"pre-wrap":"normal",overflowWrap:"anywhere",boxShadow:C.shadow}}>{m.role==="user"?m.content:botText(m.content)}</div>
         {m.pending&&pending===m.pending&&<div style={{display:"flex",gap:8,marginTop:8}}>
           <button onClick={confirm} disabled={loading} style={{background:C.green,color:"#fff",border:"none",borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>✓ Confirmar</button>
           <button onClick={cancel} disabled={loading} style={{background:C.bg,color:C.textMid,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Cancelar</button>
@@ -6324,7 +6187,7 @@ function BotChat({user,currentPage,compact=false}){
       {loading&&<div style={{alignSelf:"flex-start",background:C.surface,border:`1px solid ${C.border}`,borderRadius:16,padding:"11px 15px",fontSize:14,color:C.textSoft}}>pensando…</div>}
     </div>
     {msgs.length<=1&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-      {quick.map(q=><button key={q} onClick={()=>setInput(q)} style={{background:C.greenLight,color:C.green,border:"none",borderRadius:999,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{q}</button>)}
+      {quick.map(q=><button key={q} onClick={()=>setInput(q)} style={{background:C.greenLight,color:C.green,border:"none",borderRadius:999,padding:"9px 14px",minHeight:40,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{q}</button>)}
     </div>}
     <div style={{display:"flex",gap:8,paddingBottom:compact?0:8}}>
       <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send();}} placeholder="Escribí tu mensaje..." style={{flex:1,padding:"13px 16px",borderRadius:14,border:`1.5px solid ${C.border}`,fontSize:15,color:C.text,background:C.surface,outline:"none"}}/>
@@ -6341,19 +6204,35 @@ function BotPage({user}){
 }
 
 // Botón flotante + panel lateral del bot, disponible en todas las páginas/roles.
-function FloatingBot({user,currentPage,wide}){
+// Texto del asistente con formato simple: **negrita**, títulos y listas con guion.
+function botText(txt){
+  const bold=(line,k)=>String(line).split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((p,i)=>/^\*\*[^*]+\*\*$/.test(p)?<b key={k+"-"+i} style={{fontWeight:800}}>{p.slice(2,-2)}</b>:p);
+  return String(txt||"").split("\n").map((raw,i)=>{
+    const line=raw.replace(/^#{1,4}\s*/,"");
+    if(!line.trim())return <div key={i} style={{height:6}}/>;
+    const m=line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if(m)return <div key={i} style={{display:"flex",gap:8}}><span style={{flexShrink:0}}>•</span><span style={{minWidth:0}}>{bold(m[1],i)}</span></div>;
+    return <div key={i}>{bold(line,i)}</div>;
+  });
+}
+function BotPanel({user,currentPage,wide,onClose}){
+  useBackClose(onClose);
+  return <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(10,18,14,0.42)",display:"flex",alignItems:wide?"stretch":"flex-end",justifyContent:wide?"flex-end":"center"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div role="dialog" aria-modal="true" aria-label="Asistente" style={{background:C.surface,width:"100%",maxWidth:wide?420:480,height:wide?"100%":"78%",minHeight:wide?0:420,borderRadius:wide?0:"26px 26px 0 0",display:"flex",flexDirection:"column",boxShadow:C.shadowUp,padding:"8px 16px calc(14px + env(safe-area-inset-bottom))"}}>
+      {!wide&&<div style={{width:40,height:5,borderRadius:99,background:C.borderStrong,margin:"0 auto 10px"}}/>}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,fontSize:18,fontWeight:800,color:C.text}}><span style={{width:36,height:36,borderRadius:"50%",background:C.green,color:C.onAccent,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="chat" size={19}/></span>Asistente</div>
+        <button onClick={onClose} aria-label="Cerrar el asistente" style={{width:44,height:44,borderRadius:14,background:C.surfaceAlt,border:"none",cursor:"pointer",color:C.textMid,fontSize:24,lineHeight:1,fontFamily:"inherit"}}>×</button>
+      </div>
+      <div style={{flex:1,minHeight:0}}><BotChat user={user} currentPage={currentPage} compact/></div>
+    </div>
+  </div>;
+}
+function FloatingBot({user,currentPage,wide,lift=false}){
   const [open,setOpen]=useState(false);
   return <>
-    {!open&&<button onClick={()=>setOpen(true)} title="Asistente" style={{position:"fixed",right:wide?24:16,bottom:wide?24:84,zIndex:150,width:58,height:58,borderRadius:"50%",background:C.green,color:"#fff",border:"none",boxShadow:C.shadowUp,fontSize:26,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>🤖</button>}
-    {open&&<div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:wide?"stretch":"flex-end",justifyContent:wide?"flex-end":"center"}} onClick={e=>{if(e.target===e.currentTarget)setOpen(false);}}>
-      <div style={{background:C.bg,width:"100%",maxWidth:wide?420:480,height:wide?"100vh":"82vh",borderRadius:wide?0:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:C.shadowUp,padding:"14px 16px"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,fontSize:17,fontWeight:900,color:C.text}}><span>🤖</span> Asistente</div>
-          <button onClick={()=>setOpen(false)} style={{background:"transparent",border:"none",fontSize:26,cursor:"pointer",color:C.textSoft,lineHeight:1}}>×</button>
-        </div>
-        <div style={{flex:1,minHeight:0}}><BotChat user={user} currentPage={currentPage} compact/></div>
-      </div>
-    </div>}
+    {!open&&<button onClick={()=>setOpen(true)} aria-label="Abrir el asistente" style={{position:"fixed",right:wide?24:16,bottom:wide?24:(lift?88:20),zIndex:150,width:60,height:60,borderRadius:"50%",background:C.green,color:C.onAccent,border:"none",boxShadow:C.shadowUp,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="chat" size={26}/></button>}
+    {open&&<BotPanel user={user} currentPage={currentPage} wide={wide} onClose={()=>setOpen(false)}/>}
   </>;
 }
 
@@ -6684,7 +6563,7 @@ function GuiaPage({user,roomConfig,rooms}){
       </div>
       <div style={{fontSize:20,fontWeight:800,color:C.text,margin:"10px 0 6px",lineHeight:1.25}}>{g.title}</div>
       <div style={{fontSize:14.5,color:C.textMid,lineHeight:1.55}}>{g.tip}</div>
-      <div className="gm-rail" style={{display:"flex",gap:6,overflowX:"auto",marginTop:12,scrollbarWidth:"none",paddingBottom:2}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:12,paddingBottom:2}}>
         {STAGE_ALL.map(sk=><button key={sk} onClick={()=>setManualStage(sk)} style={pillS(stage===sk)}>{STAGE_SHORT[sk]}</button>)}
       </div>
     </Card>
@@ -7022,7 +6901,7 @@ function GMWatch({user}){
     return ()=>{window.removeEventListener("pointerdown",touch,true);window.removeEventListener("keydown",touch,true);document.removeEventListener("visibilitychange",vis);clearInterval(id);};
   },[user]);
   if(!offline&&fails.length===0)return null;
-  const box=(col,bg)=>({background:bg,color:col,border:`1.5px solid ${col}55`,borderRadius:14,padding:"11px 14px",fontSize:13,fontWeight:700,boxShadow:C.shadowUp,display:"flex",alignItems:"center",gap:12,pointerEvents:"auto"});
+  const box=(col,bg)=>({background:`linear-gradient(${bg},${bg}),${C.surface}`,color:col,border:`1.5px solid ${col}55`,borderRadius:14,padding:"11px 14px",fontSize:13,fontWeight:700,boxShadow:C.shadowUp,display:"flex",alignItems:"center",gap:12,pointerEvents:"auto"});
   const texto=fail=>{
     const t=GM_TABLAS[fail.table]||fail.table||"datos";
     const titulo=fail.write?`No se guardó: ${t}`:`No pude cargar: ${t}`;
@@ -7064,8 +6943,22 @@ export default function App(){
   const loadConfig=useCallback(()=>{db.get("room_config").then(setRoomConfig).catch(()=>setRoomConfig([]));},[]);
   const loadTargets=useCallback(()=>{db.query("climate_targets","select=*").then(setTargets).catch(()=>setTargets([]));},[]);
   const wide=useIsWide(820);
+  const pageRef=useRef(page);pageRef.current=page;
+  const homeRef=useRef("dashboard");homeRef.current=homeFor(user);
   useEffect(()=>{
-    const onPop=e=>{const p=e.state&&e.state.gm;if(!p)return;navFromPop.current=true;navDepth.current=Math.max(0,navDepth.current-1);setPageState(p);};
+    const go=p=>{if(p!==pageRef.current){navFromPop.current=true;setPageState(p);}};
+    const onPop=e=>{
+      const st=e.state||{};
+      // 1) Hay una ventana abierta: atrás la cierra y la pantalla no cambia.
+      if(gmNav.overlays.length){const o=gmNav.overlays.pop();o.popped=true;o.close();return;}
+      // 2) Entrada vieja de una ventana que ya se cerró: se saltea.
+      if(st.ov){gmNav.deadTop=Math.max(0,gmNav.deadTop-1);try{window.history.back();}catch{}return;}
+      if(gmNav.deadTop>0){gmNav.deadTop=0;try{window.history.back();}catch{}return;}
+      // 3) Fondo del historial: en vez de salir de la app, queda en Inicio.
+      if(st.root){try{window.history.pushState({gm:homeRef.current},"");}catch{}navDepth.current=0;go(homeRef.current);return;}
+      const p=st.gm;if(!p)return;
+      navDepth.current=Math.max(0,navDepth.current-1);go(p);
+    };
     window.addEventListener("popstate",onPop);
     return ()=>window.removeEventListener("popstate",onPop);
   },[]);
@@ -7073,9 +6966,13 @@ export default function App(){
     if(!user)return;
     try{
       if(navFromPop.current){navFromPop.current=false;return;}
+      if(!gmNav.rooted){
+        // Una entrada "raíz" debajo de Inicio: es la que impide que atrás saque de la app.
+        gmNav.rooted=true;
+        window.history.replaceState({gm:page,root:true},"");window.history.pushState({gm:page},"");return;
+      }
       const cur=window.history.state&&window.history.state.gm;
-      if(!cur){window.history.replaceState({gm:page},"");return;}
-      if(cur!==page){window.history.pushState({gm:page},"");navDepth.current++;}
+      if(cur!==page||(window.history.state&&window.history.state.ov)){window.history.pushState({gm:page},"");navDepth.current++;gmNav.deadTop=0;}
     }catch{/* navegador sin historial: se sigue usando la flecha */}
   },[page,user]);
   const goBack=useCallback(fallback=>{if(navDepth.current>0)window.history.back();else setPageState(fallback);},[]);
@@ -7111,7 +7008,7 @@ export default function App(){
       case "salas":        return <SalasTab rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
       default:
         if(page.startsWith("sala_"))return <SalasTab roomId={page.slice(5)} rooms={rooms} setPage={setPage} user={user} genetics={genetics} roomConfig={roomConfig} targets={targets} onTargetsChanged={loadTargets}/>;
-        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets} genetics={genetics}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
+        return user.role==="admin"?<Dashboard setPage={setPage} user={user} roomConfig={roomConfig} rooms={rooms} wide={wide} targets={targets}/>:<MiTurno user={user} setPage={setPage} roomConfig={roomConfig} rooms={rooms} targets={targets}/>;
     }
   };
   const globalCSS=`@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0;}body{-webkit-font-smoothing:antialiased;}.gm-rail::-webkit-scrollbar{display:none}::-webkit-scrollbar{width:5px;height:5px;}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px;}input,select,button,textarea{font-family:inherit;}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.page{animation:fadeUp 0.2s ease;}@keyframes gmDraw{to{stroke-dashoffset:0}}.gm-draw{stroke-dasharray:24;stroke-dashoffset:24;animation:gmDraw .2s ease-out forwards}@keyframes gmFlashA{from{background:${C.greenLight}}to{background:transparent}}@keyframes gmFlashB{from{background:${C.greenLight}}to{background:transparent}}@media (prefers-reduced-motion:reduce){.gm-draw{animation:none;stroke-dashoffset:0}}`;
@@ -7124,16 +7021,18 @@ export default function App(){
       <GMWatch user={user}/>
       <AdminNav page={page} setPage={setPage} wide user={user}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
-        <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
+        <AdminTopBar page={page} onBack={goBack} onHome={()=>setPage(homeFor(user))} home={homeFor(user)}/>
         <div className="page" style={{padding:"18px 32px 32px",maxWidth:1080,width:"100%",margin:"0 auto"}}>{render()}</div>
       </div>
+      {page!=="bot"&&<FloatingBot user={user} currentPage={page} wide/>}
     </div>;
   }
   return <div key={theme} style={{minHeight:"100vh",background:C.bg,fontFamily:H,color:C.text,maxWidth:480,margin:"0 auto",...zoomStyle}}>
     <style>{globalCSS}</style>
     <GMWatch user={user}/>
-    <AdminTopBar page={page} onBack={goBack} home={homeFor(user)}/>
-    <div className="page" style={{padding:"14px 16px 104px"}}>{render()}</div>
-    <AdminNav page={page} setPage={setPage} user={user}/>
+    <AdminTopBar page={page} onBack={goBack} onHome={()=>setPage(homeFor(user))} home={homeFor(user)}/>
+    <div className="page" style={{padding:isAdmin?"14px 16px 96px":"14px 16px 104px"}}>{render()}</div>
+    {!isAdmin&&<AdminNav page={page} setPage={setPage} user={user}/>}
+    {page!=="bot"&&<FloatingBot user={user} currentPage={page} lift={!isAdmin}/>}
   </div>;
 }
